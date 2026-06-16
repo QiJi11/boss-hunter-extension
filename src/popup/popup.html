@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<script src="./error-bootstrap.js"></script>
+<link rel="stylesheet" href="popup.css">
+<style>
+.progress-tip {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.progress-tip.hidden { display: none; }
+.progress-tip .tip-line { margin: 2px 0; }
+.progress-tip .tip-title { font-weight: 600; color: #111827; }
+.progress-tip .tip-warn { color: #b45309; }
+.progress-tip .tip-ok { color: #047857; }
+.progress-tip .tip-note { color: #6b7280; margin-top: 4px; }
+/* 诊断包（问题反馈）— 低视觉权重，跟随设置抽屉风格 */
+.diag-hint { font-size: 11px; color: #6b7280; line-height: 1.6; margin: 4px 0 10px; }
+.diag-copy-btn { width: 100%; padding: 8px 0; font-size: 13px; }
+.diag-download-btn { display: block; margin: 4px auto 0; font-size: 12px; padding: 9px 36px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header class="header">
+    <div class="header-left" id="headerLeft">
+      <span class="title" id="hdrTitle">即投</span>
+      <button class="btn-back hidden" id="btnBack">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 3L5 8l5 5"/></svg>
+      </button>
+    </div>
+    <div class="header-right">
+      <button class="gear-btn" id="gearBtn" title="设置">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <input type="file" id="hiddenFileInput" accept=".jpg,.jpeg,.png" style="display:none" multiple>
+  <!-- B 页按组图片上传专用（data-ggi 标识目标组，与 A 页全局上传隔离） -->
+  <input type="file" id="hiddenFileInputB" accept=".jpg,.jpeg,.png" style="display:none" multiple>
+
+  <div class="scroll-content" id="scrollContent">
+
+    <div id="settingsPanel">
+
+      <div class="section">
+        <div class="section-title">图片版简历</div>
+        <div class="univ-thumb-area" id="resumeThumbArea">
+          <div class="univ-thumb-add" data-gact="addImg">+</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">目标城市</div>
+        <div class="city-input-wrap" style="margin-bottom:8px">
+          <input type="text" id="cityInput" placeholder="搜索城市" autocomplete="off">
+        </div>
+        <div class="city-chip-container" id="cityChipContainer"></div>
+        <div id="citySelectedArea"></div>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <div class="section">
+        <div class="section-title">期望职位</div>
+        <div class="search-box">
+          <svg class="search-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+          <input type="text" id="posSearch" placeholder="搜索岗位..." autocomplete="off">
+          <svg class="search-clear" id="posSearchClear" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 3l8 8M11 3l-8 8"/></svg>
+        </div>
+        <div id="posBrowseArea"></div>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <div class="section">
+        <div class="section-title">公司行业</div>
+        <div class="search-box">
+          <svg class="search-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+          <input type="text" id="indSearch" placeholder="搜索行业..." autocomplete="off">
+          <svg class="search-clear" id="indSearchClear" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 3l8 8M11 3l-8 8"/></svg>
+        </div>
+        <div id="indArea"></div>
+        <div style="margin-top:4px">
+          <button class="expand-btn" id="expandIndustries">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 4.5l3 3 3-3"/></svg>
+            展开全部行业（15个）
+          </button>
+        </div>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <div class="chips-section">
+        <div class="section-title">工作区域</div>
+        <div class="chips-wrap" id="workAreaChips"></div>
+      </div>
+      <div class="chips-section">
+        <div class="section-title">工作性质</div>
+        <div class="chips-wrap" id="jobTypeChips"></div>
+      </div>
+      <div class="chips-section">
+        <div class="section-title">HR 活跃度</div>
+        <div class="chips-wrap" id="hrActiveChips"></div>
+      </div>
+      <div class="chips-section">
+        <div class="section-title">薪资待遇</div>
+        <div class="chips-wrap" id="salaryChips"></div>
+      </div>
+      <div class="chips-section">
+        <div class="section-title">工作经验</div>
+        <div class="chips-wrap" id="expChips"></div>
+      </div>
+      <div class="chips-section">
+        <div class="section-title">学历要求</div>
+        <div class="chips-wrap" id="eduChips"></div>
+      </div>
+      <div class="chips-section">
+        <div class="section-title">公司规模</div>
+        <div class="chips-wrap" id="sizeChips"></div>
+      </div>
+      <div class="chips-section">
+        <div class="section-title">融资阶段</div>
+        <div class="chips-wrap" id="stageChips"></div>
+      </div>
+
+      <!-- BOSS 直聘提示 -->
+      <div style="font-size:11px;color:var(--text-muted);text-align:center;padding:8px 0 4px;border-top:1px solid var(--border-light);margin-top:4px">请先在浏览器中打开 BOSS 直聘职位搜索页</div>
+
+    </div><!-- /settingsPanel -->
+
+    <div id="resultsPanel" class="hidden">
+
+      <div id="progressSection">
+        <div class="progress-section">
+          <div class="progress-bar-wrap">
+            <div class="progress-fill" id="progressFill"></div>
+          </div>
+          <div class="progress-text" id="progressText">正在搜索匹配岗位...</div>
+          <div class="progress-sub hidden" id="progressSub"></div>
+          <div class="progress-tip hidden" id="progressTip">
+            <div class="tip-line tip-title">🚀 投递中 · 约 2-3 分钟</div>
+            <div class="tip-line tip-warn">⚠️ 请勿操作 BOSS 弹窗</div>
+            <div class="tip-line tip-ok">✅ 切换其他页面不影响任务</div>
+            <div class="tip-line tip-note">✨ 任务完成后会自动跳转结果页，耐心等待即可</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="resultsContent" class="hidden fade-in">
+        <div id="groupedContent"></div>
+      </div>
+
+      <!-- Review panel: send completion summary (rendered by render-review.js) -->
+      <div id="reviewPanel" class="panel" style="display:none;"></div>
+
+    </div><!-- /resultsPanel -->
+
+  </div><!-- /scrollContent -->
+
+  <div class="bottom-bar" id="bottomSettings">
+    <div></div>
+    <div class="bottom-actions">
+      <button class="btn btn-ghost" id="btnReset">重置</button>
+      <button class="btn btn-primary" id="btnCollect">开始收集</button>
+    </div>
+  </div>
+
+  <div class="bottom-bar hidden" id="bottomResults">
+    <div class="selected-info">
+      <span class="count-num" id="resultCountNum">0</span>
+      <span class="count-unit">/ <span id="resultCountTotal">0</span>个岗位已选</span>
+    </div>
+    <div class="bottom-actions">
+      <button class="btn btn-send" id="btnSend">一键发送</button>
+    </div>
+  </div>
+
+</div><!-- /app -->
+
+  <!-- ═══════ Settings Overlay Panel ═══════ -->
+  <div class="settings-overlay hidden" id="settingsOverlay">
+    <div class="settings-drawer" id="settingsDrawer">
+      <div class="settings-header">
+        <button class="settings-close" id="settingsClose">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l8 8M11 3l-8 8"/></svg>
+        </button>
+      </div>
+      <div class="settings-body">
+        <!-- 模块一：用户沟通群 -->
+        <div class="settings-section">
+          <div class="settings-section-title">即投-产品用户沟通群</div>
+          <img class="settings-qr" src="group-qr.jpg" alt="产品用户沟通群">
+          <p class="settings-qr-hint">二维码过期请添加PM微信进群：13631515693</p>
+        </div>
+        <div class="settings-divider"></div>
+        <!-- 模块二：赞赏支持 -->
+        <div class="settings-section">
+          <div class="settings-section-title">如果产品有帮到你，欢迎给 PM 加个鸡腿🍗</div>
+          <div class="pay-row">
+            <div class="pay-item">
+              <img class="pay-qr" src="wechat-pay.jpg" alt="微信收款码">
+              <span class="pay-label">微信</span>
+            </div>
+            <div class="pay-item">
+              <img class="pay-qr" src="alipay-pay.jpg" alt="支付宝收款码">
+              <span class="pay-label">支付宝</span>
+            </div>
+          </div>
+        </div>
+        <div class="settings-divider"></div>
+        <!-- 模块三：问题反馈（诊断包） -->
+        <div class="settings-section">
+          <div class="settings-section-title">问题反馈</div>
+          <p class="diag-hint">遇到问题？把诊断文件发给产品负责人定位，隐私数据已脱敏。</p>
+          <button class="btn btn-ghost diag-download-btn" id="btnDiagDownload">下载文件</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ═══════ /Settings Overlay Panel ═══════ -->
+
+  <!-- shared -->
+<script src="../shared/constants.js"></script>
+<script src="../shared/diag-logger.js"></script>
+<script src="../shared/device-id.js"></script>
+<!-- data -->
+<script src="../content/tag-data.js"></script>
+<!-- foundation -->
+<script src="helpers.js"></script>
+<script src="state.js"></script>
+<!-- render -->
+<script src="render-a.js"></script>
+<script src="render-b.js"></script>
+<script src="render-review.js"></script>
+<!-- events -->
+<script src="events-a.js"></script>
+<script src="events-b.js"></script>
+<!-- diagnostics (问题反馈/诊断包) -->
+<script src="diag-export.js"></script>
+<!-- entry -->
+<script src="popup.js"></script>
+</body>
+</html>
