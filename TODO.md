@@ -5,7 +5,7 @@
 1. 本地 Git 已初始化，当前开发分支为 `ralph/mvp-screening-bugfix`。
 2. GitHub SSH 已可认证到 `QiJi11`。
 3. `origin` 已配置为 `git@github.com:QiJi11/boss-hunter-extension.git`。
-4. 已记录远程阻塞：GitHub 当前返回 `Repository not found`，在 `git push` 成功前不能视为远程备份完成。
+4. 已推送到 GitHub：`main` 和 `ralph/mvp-screening-bugfix` 都已同步到远程仓库。
 5. 已修复旧结算页状态泄漏：进入配置页或修改配置后，旧结算不会自动弹回。
 6. 已增加显式查看上次结算入口。
 7. 已修复重新投递流程：结算页点击重新投递后回到现有岗位列表重选，不直接重新采集。
@@ -15,10 +15,9 @@
 
 ## 待做
 
-1. 在 GitHub 创建空仓库 `QiJi11/boss-hunter-extension` 后执行 `git push -u origin ralph/mvp-screening-bugfix` 或合并到 `main` 后推送。
-2. 在真实 BOSS 页面手动验收结算状态、重投流程、AI 筛选展示和投递结果统计。
-3. 首页 AI 对话框暂缓。
-4. 招呼语 AI 润色框暂缓到筛选和投递流程稳定之后。
+1. 在真实 BOSS 页面手动验收结算状态、重投流程、AI 筛选展示和投递结果统计。
+2. 首页 AI 对话框暂缓。
+3. 招呼语 AI 润色框暂缓到筛选和投递流程稳定之后。
 
 ## 验收清单
 
