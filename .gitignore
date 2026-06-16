@@ -8,6 +8,7 @@ build/
 coverage/
 .cache/
 .parcel-cache/
+release/
 
 *.log
 *.tmp
