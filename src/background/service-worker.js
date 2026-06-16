@@ -1170,9 +1170,6 @@ async function startCollect(params) {
     state.jobs = allJobs;
     state.clusters = clusterJobs(allJobs, state.selectedPositions, state.customPositions);
     state.jdSamples = sampleJDs(state.clusters, 5);
-    allJobs = await applyAiScreeningToJobs(allJobs);
-    state.jobs = allJobs;
-    state.clusters = clusterJobs(allJobs, state.selectedPositions, state.customPositions);
     state.phase = 'ready';
     pushState();
 
@@ -1180,6 +1177,15 @@ async function startCollect(params) {
       chrome.runtime.sendMessage({ type: 'ERROR', message: '未找到匹配岗位，请调整筛选条件' }).catch(() => {});
       return;
     }
+
+    applyAiScreeningToJobs(allJobs).then(function(screenedJobs) {
+      state.jobs = screenedJobs;
+      state.clusters = clusterJobs(screenedJobs, state.selectedPositions, state.customPositions);
+      pushState();
+    }).catch(function(e) {
+      chrome.runtime.sendMessage({ type: 'ERROR', message: 'AI 筛选失败，请人工确认岗位' }).catch(() => {});
+      ErrorLogger.logError(e.message || String(e), e?.stack, 'AI screening batch failed');
+    });
 
     // 如果已提前启动招呼语生成，等待完成后补充新增分类
     if (earlyGreetingStarted) {
