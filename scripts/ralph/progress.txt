@@ -1,0 +1,16 @@
+# Ralph Progress Log
+Started: 2026-06-16T12:58:19.6955876+08:00
+---
+## Codebase Patterns
+- This extension repository has no package.json; use direct checks such as `node --check` for JavaScript files and JSON parsing for `manifest.json`.
+- GitHub SSH auth for QiJi11 can succeed while repository access still fails with `Repository not found` for `git@github.com:QiJi11/boss-hunter-extension.git`.
+---
+## 2026-06-16 12:59:33 +08:00 - repo-push-status
+- Documented GitHub remote recovery status in TODO.md: SSH auth works for QiJi11, origin points to git@github.com:QiJi11/boss-hunter-extension.git, and GitHub still returns Repository not found.
+- Files changed: TODO.md, scripts/ralph/prd.json, scripts/ralph/progress.txt
+- Quality checks run and results: `node --check` passed for all JavaScript files; `manifest.json` and `scripts/ralph/prd.json` parsed successfully.
+- Browser verification result: not applicable; documentation-only story.
+- **Learnings for future iterations:**
+  - The repository has no package.json, so use direct Node checks such as node --check for JavaScript syntax validation.
+  - GitHub SSH auth can succeed while repository access still fails with Repository not found for git@github.com:QiJi11/boss-hunter-extension.git.
+---

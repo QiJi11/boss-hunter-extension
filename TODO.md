@@ -12,7 +12,8 @@
 
 1. 首页 AI 对话框暂缓。
 2. 招呼语 AI 润色框暂缓到筛选和投递流程稳定之后。
-3. GitHub 远程仓库等 gh 可用或完成网页登录后再推送。
+3. GitHub 远程仓库状态：SSH 已通过 QiJi11 鉴权，`origin` 已配置为 `git@github.com:QiJi11/boss-hunter-extension.git`。
+4. GitHub 推送仍被阻塞：远端当前返回 `Repository not found`，在 `git push` 成功前不能声明 GitHub 备份已完成。
 
 ## 验收
 
