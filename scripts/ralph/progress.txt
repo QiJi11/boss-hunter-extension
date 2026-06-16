@@ -65,3 +65,9 @@ Started: 2026-06-16T12:58:19.6955876+08:00
 - Quality checks run and results: node --check passed for modified JS files; manifest.json and prd.json parsed successfully after saving PRD without BOM; git diff --check passed with only CRLF conversion warnings.
 - Browser verification result: manual verification required in extension UI.
 ---
+
+## 2026-06-16 13:34:00 +08:00 - todo-and-verification
+- Updated TODO.md with completed work, remaining GitHub blocker, deferred AI chat/polish items, and acceptance checklist.
+- Final checks run: node --check on modified JS files, JSON parse for manifest/prd, diff check, and secret scans for sk-/Bearer tokens.
+- Browser verification remains manual because local DevTools automation could not attach reliably.
+---
