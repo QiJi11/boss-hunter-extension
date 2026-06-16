@@ -1243,7 +1243,18 @@ async function singleCityCollect(params) {
   } else {
     const tabs = await chrome.tabs.query({ url: '*://*.zhipin.com/web/geek/jobs*' });
     if (!tabs.length) throw new Error('请先打开 BOSS 直聘岗位搜索页');
+    assertCollectableBossTab(tabs[0]);
     await chrome.tabs.sendMessage(tabs[0].id, { type: 'DO_COLLECT', params });
+  }
+}
+
+function assertCollectableBossTab(tab) {
+  var url = (tab && tab.url) || '';
+  if (!url || url.indexOf('zhipin.com') < 0 || url.indexOf('/web/geek/jobs') < 0) {
+    throw new Error('请先打开 BOSS 直聘岗位搜索页');
+  }
+  if (url.indexOf('_security_check') >= 0) {
+    throw new Error('请先完成 BOSS 安全验证后再收集');
   }
 }
 

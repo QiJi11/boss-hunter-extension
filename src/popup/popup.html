@@ -38,6 +38,9 @@
       </button>
     </div>
     <div class="header-right">
+      <button class="gear-btn ai-btn" id="aiBtn" title="AI 设置">
+        <span>AI</span>
+      </button>
       <button class="gear-btn" id="gearBtn" title="设置">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/>
@@ -232,6 +235,51 @@
     </div>
   </div>
   <!-- ═══════ /Settings Overlay Panel ═══════ -->
+
+  <div class="settings-overlay hidden" id="aiOverlay">
+    <div class="settings-drawer ai-drawer" id="aiDrawer">
+      <div class="settings-header">
+        <div class="ai-drawer-title">AI 设置</div>
+        <button class="settings-close" id="aiClose" title="关闭">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l8 8M11 3l-8 8"/></svg>
+        </button>
+      </div>
+      <div class="settings-body">
+        <div class="settings-section">
+          <div class="settings-section-title">OpenAI-compatible 接口</div>
+          <div class="ai-field">
+            <label for="aiProvider">Provider</label>
+            <input id="aiProvider" type="text" placeholder="openai-compatible" autocomplete="off">
+          </div>
+          <div class="ai-field">
+            <label for="aiBaseUrl">Base URL</label>
+            <input id="aiBaseUrl" type="url" placeholder="https://api.openai.com/v1" autocomplete="off">
+          </div>
+          <div class="ai-field">
+            <label for="aiApiKey">API Key</label>
+            <input id="aiApiKey" type="password" placeholder="sk-..." autocomplete="off">
+          </div>
+          <div class="ai-field">
+            <label for="aiModel">Model</label>
+            <input id="aiModel" type="text" placeholder="gpt-4.1-mini" autocomplete="off">
+          </div>
+          <div class="ai-field">
+            <label for="aiScoreThreshold">AI 筛选阈值</label>
+            <input id="aiScoreThreshold" type="number" min="0" max="100" step="1" placeholder="60">
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">文字简历</div>
+          <textarea id="aiTextResume" class="ai-textarea" rows="7" placeholder="粘贴你的文字简历，AI 会用它判断岗位是否符合。"></textarea>
+        </div>
+        <div class="ai-actions">
+          <button class="btn btn-ghost" id="aiTestBtn">测试连接</button>
+          <button class="btn btn-primary" id="aiSaveBtn">保存设置</button>
+        </div>
+        <div class="ai-status" id="aiStatus"></div>
+      </div>
+    </div>
+  </div>
 
   <!-- shared -->
 <script src="../shared/constants.js"></script>

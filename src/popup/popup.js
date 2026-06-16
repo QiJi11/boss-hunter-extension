@@ -41,6 +41,10 @@ function initDomRefs(){
   E.progressSection=$('#progressSection');E.progressFill=$('#progressFill');
   E.progressText=$('#progressText');E.progressSub=$('#progressSub');
   E.resultsContent=$('#resultsContent');E.groupedContent=$('#groupedContent');
+  E.aiBtn=$('#aiBtn');E.aiOverlay=$('#aiOverlay');E.aiClose=$('#aiClose');
+  E.aiProvider=$('#aiProvider');E.aiBaseUrl=$('#aiBaseUrl');E.aiApiKey=$('#aiApiKey');
+  E.aiModel=$('#aiModel');E.aiScoreThreshold=$('#aiScoreThreshold');E.aiTextResume=$('#aiTextResume');
+  E.aiTestBtn=$('#aiTestBtn');E.aiSaveBtn=$('#aiSaveBtn');E.aiStatus=$('#aiStatus');
   E.gearBtn=$('#gearBtn');E.settingsOverlay=$('#settingsOverlay');
   E.settingsClose=$('#settingsClose');
 }
@@ -290,8 +294,28 @@ function completeCollection(){
   E.progressSection.classList.add('hidden');
   E.resultsContent.classList.remove('hidden');
   E.bottomResults.classList.remove('hidden');
+  updateAiNotConfiguredHint();
   window.updResCnt();
   window.syncResumeFileNames&&window.syncResumeFileNames();
+}
+
+function updateAiNotConfiguredHint(){
+  if(!E.groupedContent)return;
+  var jobs=Store.get('jobs')||[];
+  var hasJobs=jobs.length>0;
+  var hasAi=jobs.some(function(job){return !!(job&&job.aiScreen)});
+  var el=document.getElementById('aiNotConfiguredHint');
+  if(!hasJobs||hasAi){
+    if(el)el.remove();
+    return;
+  }
+  if(!el){
+    el=document.createElement('div');
+    el.id='aiNotConfiguredHint';
+    el.style.cssText='font-size:12px;color:var(--text-weak);padding:8px 16px;text-align:center;background:#f9fafb;border-bottom:1px solid var(--border-light)';
+    E.groupedContent.insertBefore(el,E.groupedContent.firstChild);
+  }
+  el.textContent='未配置 AI，当前仅展示普通岗位列表；点击顶部 AI 按钮可开启岗位匹配判断';
 }
 
 function updateGreetingProgress(progress){
@@ -314,6 +338,8 @@ function updateGreetingProgress(progress){
 }
 
 function updateAiScreeningProgress(progress){
+  var hint=document.getElementById('aiNotConfiguredHint');
+  if(hint)hint.remove();
   var el=document.getElementById('aiScreeningProgress');
   if(!el){
     el=document.createElement('div');
@@ -553,6 +579,124 @@ function showCaptchaWarning(){
 // INIT
 // ════════════════════════════════════════════════════════════
 
+function setAiStatus(text, cls){
+  if(!E.aiStatus)return;
+  E.aiStatus.textContent=text||'';
+  E.aiStatus.className='ai-status '+(cls||'');
+}
+
+function readAiDrawerConfig(){
+  return {
+    provider:E.aiProvider?E.aiProvider.value.trim():'openai-compatible',
+    baseUrl:E.aiBaseUrl?E.aiBaseUrl.value.trim():'',
+    apiKey:E.aiApiKey?E.aiApiKey.value.trim():'',
+    model:E.aiModel?E.aiModel.value.trim():'',
+    scoreThreshold:E.aiScoreThreshold?Number(E.aiScoreThreshold.value||60):60
+  };
+}
+
+function fillAiDrawer(config,textResume){
+  var cfg=Object.assign({
+    provider:'openai-compatible',
+    baseUrl:'https://api.openai.com/v1',
+    apiKey:'',
+    model:'gpt-4.1-mini',
+    scoreThreshold:60
+  },config||{});
+  if(E.aiProvider)E.aiProvider.value=cfg.provider||'openai-compatible';
+  if(E.aiBaseUrl)E.aiBaseUrl.value=cfg.baseUrl||'';
+  if(E.aiApiKey)E.aiApiKey.value=cfg.apiKey||'';
+  if(E.aiModel)E.aiModel.value=cfg.model||'';
+  if(E.aiScoreThreshold)E.aiScoreThreshold.value=cfg.scoreThreshold||60;
+  if(E.aiTextResume)E.aiTextResume.value=textResume||'';
+  if(E.aiBtn)E.aiBtn.classList.toggle('configured',!!cfg.apiKey);
+}
+
+function loadAiDrawerConfig(done){
+  try{
+    chrome.storage.local.get(['apiKey','textResume','sw:aiConfig'],function(items){
+      var cfg=Object.assign({
+        provider:'openai-compatible',
+        baseUrl:'https://api.openai.com/v1',
+        apiKey:'',
+        model:'gpt-4.1-mini',
+        scoreThreshold:60
+      },items['sw:aiConfig']||{});
+      if(items.apiKey&&!cfg.apiKey)cfg.apiKey=items.apiKey;
+      fillAiDrawer(cfg,items.textResume||'');
+      if(done)done(cfg);
+    });
+  }catch(e){
+    setAiStatus('读取 AI 设置失败: '+e.message,'error');
+  }
+}
+
+function saveAiDrawerConfig(callback){
+  var cfg=readAiDrawerConfig();
+  var textResume=E.aiTextResume?E.aiTextResume.value.trim():'';
+  try{
+    chrome.runtime.sendMessage({type:MSG.SAVE_AI_CONFIG,config:cfg},function(resp){
+      if(chrome.runtime.lastError||!resp||!resp.success){
+        var err=(resp&&resp.error)||chrome.runtime.lastError?.message||'未知错误';
+        setAiStatus('保存失败: '+err,'error');
+        if(callback)callback(false);
+        return;
+      }
+      chrome.storage.local.set({apiKey:cfg.apiKey,'sw:aiConfig':cfg,textResume:textResume},function(){
+        fillAiDrawer(cfg,textResume);
+        setAiStatus('AI 设置已保存','success');
+        if(callback)callback(true);
+      });
+    });
+  }catch(e){
+    setAiStatus('保存失败: '+e.message,'error');
+    if(callback)callback(false);
+  }
+}
+
+function wireAiDrawer(){
+  if(!E.aiBtn||!E.aiOverlay)return;
+  function showAi(){
+    setAiStatus('','');
+    loadAiDrawerConfig();
+    E.aiOverlay.classList.remove('hidden');
+  }
+  function hideAi(){E.aiOverlay.classList.add('hidden')}
+  E.aiBtn.addEventListener('click',showAi);
+  if(E.aiClose)E.aiClose.addEventListener('click',hideAi);
+  E.aiOverlay.addEventListener('click',function(e){
+    if(e.target===E.aiOverlay)hideAi();
+  });
+  if(E.aiSaveBtn)E.aiSaveBtn.addEventListener('click',function(){
+    E.aiSaveBtn.disabled=true;
+    setAiStatus('正在保存...','');
+    saveAiDrawerConfig(function(){
+      E.aiSaveBtn.disabled=false;
+    });
+  });
+  if(E.aiTestBtn)E.aiTestBtn.addEventListener('click',function(){
+    E.aiTestBtn.disabled=true;
+    setAiStatus('正在测试 AI 连接...','');
+    chrome.runtime.sendMessage({type:MSG.TEST_AI_CONFIG,config:readAiDrawerConfig()},function(resp){
+      E.aiTestBtn.disabled=false;
+      if(chrome.runtime.lastError||!resp||!resp.success){
+        setAiStatus('AI 连接失败: '+((resp&&resp.error)||chrome.runtime.lastError?.message||'未知错误'),'error');
+        return;
+      }
+      setAiStatus('AI 连接成功','success');
+    });
+  });
+  loadAiDrawerConfig();
+}
+
+function refineCollectErrorText(text){
+  var raw=String(text||'').trim();
+  if(/_security_check|安全验证|security/i.test(raw)){
+    return '请先完成 BOSS 安全验证后再收集';
+  }
+  return raw||'请重试';
+}
+
 function init(){
   if(typeof TAG_DATA==='undefined'){
     console.warn('TAG_DATA not loaded, attempting dynamic load...');
@@ -637,6 +781,7 @@ function init(){
   E.settingsOverlay.addEventListener('click',function(e){
     if(e.target===E.settingsOverlay)hideSettings();
   });
+  wireAiDrawer();
 
   // ── Chrome message listener ──
   if(typeof chrome!=='undefined'&&chrome.runtime&&chrome.runtime.onMessage){
@@ -697,7 +842,7 @@ function init(){
         var _errText=msg.message||msg.error;
         if(Store.get('mode')==='results'&&!Store.get('progressDone')){
           E.progressText.textContent='收集过程中出现错误';
-          E.progressSub.textContent=_errText||'请重试';
+          E.progressSub.textContent=refineCollectErrorText(_errText);
         }
         if(Store.get('sending')){
           Store.set('sending',false);

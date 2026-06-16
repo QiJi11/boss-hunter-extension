@@ -409,6 +409,13 @@ body{
 .gear-btn:hover{color:var(--text-secondary);background:var(--border-light)}
 .gear-btn:hover svg{transform:rotate(45deg)}
 .gear-btn:active svg{transform:rotate(90deg)}
+.ai-btn span{
+  font-size:12px;font-weight:700;letter-spacing:0;color:inherit;
+}
+.ai-btn.configured{
+  color:var(--accent);background:rgba(0,122,255,.08);
+}
+.ai-btn:hover span{transform:none}
 
 /* ════════════════════════════════════════════════════════════
    Settings Overlay Panel
@@ -435,6 +442,7 @@ body{
   padding:12px 20px 8px;flex-shrink:0;
   border-bottom:1px solid var(--border-light);
 }
+.ai-drawer .settings-header{justify-content:space-between}
 .settings-close{
   display:flex;align-items:center;justify-content:center;
   width:30px;height:30px;border:none;background:transparent;
@@ -492,3 +500,28 @@ body{
 .pay-label{
   font-size:11px;font-weight:500;color:var(--text-weak);user-select:none;
 }
+
+.ai-drawer-title{
+  font-size:15px;font-weight:700;color:var(--text);line-height:30px;
+}
+.ai-field{margin-bottom:12px}
+.ai-field label{
+  display:block;margin-bottom:6px;font-size:12px;font-weight:600;color:var(--text-secondary);
+}
+.ai-field input,.ai-textarea{
+  width:100%;box-sizing:border-box;border:1px solid var(--border-light);
+  border-radius:8px;background:var(--card);color:var(--text);
+  font-size:13px;line-height:1.5;outline:none;transition:border-color .12s,box-shadow .12s;
+}
+.ai-field input{height:38px;padding:8px 10px}
+.ai-textarea{padding:10px;resize:vertical;min-height:120px}
+.ai-field input:focus,.ai-textarea:focus{
+  border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,122,255,.10);
+}
+.ai-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:10px}
+.ai-actions .btn{min-width:96px}
+.ai-status{
+  min-height:18px;margin-top:10px;font-size:12px;line-height:1.5;color:var(--text-weak);
+}
+.ai-status.success{color:var(--green)}
+.ai-status.error{color:#d93025}
