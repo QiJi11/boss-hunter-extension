@@ -1,97 +1,23 @@
 {
-    "branchName":  "ralph/mvp-screening-bugfix",
-    "project":  "boss-hunter-extension",
-    "goal":  "Fix the BOSS Hunter extension MVP flow: review state isolation, retry to job list, reliable send result finalization, online AI screening display, TODO updates, and keep GitHub push status visible.",
-    "userStories":  [
-                        {
-                            "id":  "repo-push-status",
-                            "priority":  1,
-                            "title":  "Document GitHub remote push status",
-                            "userStory":  "As the project owner, I want the repository push status documented so I know whether remote recovery is available.",
-                            "acceptanceCriteria":  [
-                                                       "TODO.md records that SSH auth works for QiJi11 and remote git@github.com:QiJi11/boss-hunter-extension.git is configured.",
-                                                       "TODO.md records that remote push is blocked while GitHub returns Repository not found.",
-                                                       "No code claims GitHub backup is complete until git push succeeds.",
-                                                       "Typecheck passes"
-                                                   ],
-                            "passes":  true,
-                            "notes":  "TODO.md documents QiJi11 SSH auth, configured GitHub SSH remote, and current Repository not found push blocker."
-                        },
-                        {
-                            "id":  "review-state-isolation",
-                            "priority":  2,
-                            "title":  "Prevent old settlement review from hijacking config edits",
-                            "userStory":  "As a user editing search criteria after a send, I do not want the previous settlement page to reopen automatically.",
-                            "acceptanceCriteria":  [
-                                                       "Editing city, position, industry, or filters hides the old review and suppresses automatic review re-open.",
-                                                       "The previous review remains available through an explicit view-last-review entry.",
-                                                       "Opening settings after phase=review does not get pulled back to review by stale state updates.",
-                                                       "Record manual verification steps when browser automation is unavailable.",
-                                                       "Typecheck passes"
-                                                   ],
-                            "passes":  true,
-                            "notes":  "Config edits now dismiss stale review state, auto review rendering is limited to results mode, and previous review remains available via an explicit settings-page entry. Browser MCP could not connect to local Chrome, so manual verification steps were recorded in progress.txt."
-                        },
-                        {
-                            "id":  "retry-to-job-list",
-                            "priority":  3,
-                            "title":  "Make settlement retry return to existing job selection",
-                            "userStory":  "As a user after settlement, I want retry to return to the current job list so I can reselect jobs without recollecting.",
-                            "acceptanceCriteria":  [
-                                                       "Clicking retry on the review page shows the current job list and existing selection state.",
-                                                       "Retry does not immediately start a new collection.",
-                                                       "Retry does not return to the config collection page.",
-                                                       "Record manual verification steps when browser automation is unavailable.",
-                                                       "Typecheck passes"
-                                                   ],
-                            "passes":  true,
-                            "notes":  "Retry now returns to the existing B-page job list without START_COLLECT; static checks passed, and manual browser verification steps were recorded because DevTools MCP could not connect."
-                        },
-                        {
-                            "id":  "send-result-finalization",
-                            "priority":  4,
-                            "title":  "Finalize every processed job into sendResults",
-                            "userStory":  "As a user reviewing settlement, I want every processed or queued job to appear in the result counts.",
-                            "acceptanceCriteria":  [
-                                                       "Success, failure, skipped, stopped, and connected-but-unconfirmed jobs all create visible sendResults entries.",
-                                                       "cleanupV6 does not erase pending queue data before unrecorded jobs are finalized.",
-                                                       "Review does not show 0 success and 0 failure when the send batch had processed or queued jobs.",
-                                                       "Connected but unconfirmed jobs remain eligible for missed repair where possible.",
-                                                       "Typecheck passes"
-                                                   ],
-                            "passes":  true,
-                            "notes":  "V6 finalization now uses a preserved batch queue snapshot before cleanup, records unconfirmed connected jobs as visible missed sendResults eligible for repair, and routes normal/resume/repair completion through finalizeTask before cleanupV6 clears queues."
-                        },
-                        {
-                            "id":  "ai-screening-ui",
-                            "priority":  5,
-                            "title":  "Surface online AI screening results in job list",
-                            "userStory":  "As a user collecting jobs, I want AI screening scores and reasons visible so I can quickly choose jobs.",
-                            "acceptanceCriteria":  [
-                                                       "Collected jobs show AI score, reason, and risks when available.",
-                                                       "Jobs below scoreThreshold are unchecked by default.",
-                                                       "AI failure marks the job unchecked and visible for manual review.",
-                                                       "The UI still works when no AI config is present.",
-                                                       "Record manual verification steps when browser automation is unavailable.",
-                                                       "Typecheck passes"
-                                                   ],
-                            "passes":  true,
-                            "notes":  "AI screening results now show score, status, reason, risks, failure state, and refresh send counts when screening completes. Static checks passed; browser verification remains manual."
-                        },
-                        {
-                            "id":  "todo-and-verification",
-                            "priority":  6,
-                            "title":  "Update TODO and run verification",
-                            "userStory":  "As the project owner, I want TODO and checks updated so the project can be resumed safely.",
-                            "acceptanceCriteria":  [
-                                                       "TODO.md reflects completed and remaining MVP work.",
-                                                       "node --check passes on modified JavaScript files.",
-                                                       "manifest.json parses as JSON.",
-                                                       "Secret scan finds no hardcoded API key.",
-                                                       "Git status is reviewed before final report."
-                                                   ],
-                            "passes":  true,
-                            "notes":  "TODO.md updated with completed work, remaining work, and acceptance checklist. Final syntax, JSON, diff, and secret scans were run."
-                        }
-                    ]
+  "project": "boss-hunter-extension",
+  "branchName": "ralph/options-backup-jd-refresh",
+  "description": "Add full options backup import/export and refresh popup UI when JD hydration updates job details.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Deliver options backup import/export and JD hydration refresh",
+      "description": "As a user, I want to export and import my full options profile and see popup job cards refresh when JD hydration updates arrive.",
+      "acceptanceCriteria": [
+        "Options page exports versioned JSON containing filterState, resumeImages, textResume, aiConfig, and exportedAt.",
+        "Options page imports JSON through preview then confirm flow, rejecting invalid structures without mutating existing config.",
+        "Applying import updates chrome.storage.local and IndexedDB resume image storage consistently.",
+        "Popup jobs update processing reacts to changes in detail, desc, jdStatus, jdAttempts, and jdLastError so JD hydration refreshes visible cards and overview data.",
+        "node --check or equivalent syntax validation passes for modified JavaScript files.",
+        "Record manual extension verification steps for import/export and JD hydration refresh."
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Options page now supports full profile export/import with preview-confirm flow and synced IndexedDB resume storage. Popup jobs diffing now reacts to JD hydration field changes so cards and overview refresh without manual navigation. Manual extension verification steps recorded in progress.txt."
+    }
+  ]
 }

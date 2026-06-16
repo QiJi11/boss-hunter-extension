@@ -1,73 +1,31 @@
 # Ralph Progress Log
-Started: 2026-06-16T12:58:19.6955876+08:00
+Started: 2026-06-16T22:16:54.0690046+08:00
 ---
+
 ## Codebase Patterns
-- This extension repository has no package.json; use direct checks such as `node --check` for JavaScript files and JSON parsing for `manifest.json`.
-- GitHub SSH auth for QiJi11 can succeed while repository access still fails with `Repository not found` for `git@github.com:QiJi11/boss-hunter-extension.git`.
-- Popup review isolation lives in `src/popup/popup.js`: stale `phase=review` must not render automatically while `Store.mode` is `settings`; keep old results reachable only through an explicit last-review entry.
-- Popup settlement retry should return to the existing B-page job list via local state restoration; do not call `toResults()` because it clears jobs/groups and sends `START_COLLECT`.
-- V6 send finalization must run before `cleanupV6()` clears `sendQueueV6`; preserve a batch queue snapshot so claimed or repair-eligible jobs that never emitted worker results can still be added to `sendResults`.
----
-## 2026-06-16 12:59:33 +08:00 - repo-push-status
-- Documented GitHub remote recovery status in TODO.md: SSH auth works for QiJi11, origin points to git@github.com:QiJi11/boss-hunter-extension.git, and GitHub still returns Repository not found.
-- Files changed: TODO.md, scripts/ralph/prd.json, scripts/ralph/progress.txt
-- Quality checks run and results: `node --check` passed for all JavaScript files; `manifest.json` and `scripts/ralph/prd.json` parsed successfully.
-- Browser verification result: not applicable; documentation-only story.
-- **Learnings for future iterations:**
-  - The repository has no package.json, so use direct Node checks such as node --check for JavaScript syntax validation.
-  - GitHub SSH auth can succeed while repository access still fails with Repository not found for git@github.com:QiJi11/boss-hunter-extension.git.
----
-## 2026-06-16 13:05:57 +08:00 - review-state-isolation
-- Implemented review state isolation for config edits: returning to settings and editing city, position, industry, HR activity, or filter chips now dismisses stale review state and hides old review DOM.
-- Added an explicit settings-page "查看上次投递结果" entry that restores the previous review from in-memory state, service worker state, or persisted send results without auto-opening it.
-- Tightened popup review auto-rendering so `phase=review` only opens automatically while the popup is already in the results flow; settings mode only caches the last review for explicit access.
-- Files changed: src/popup/events-a.js, src/popup/popup.css, src/popup/popup.html, src/popup/popup.js, src/popup/render-review.js, scripts/ralph/prd.json, scripts/ralph/progress.txt
-- Quality checks run and results: `node --check` passed for all JavaScript files; `manifest.json` and `scripts/ralph/prd.json` parsed successfully; secret scan found no hardcoded API keys; `git diff --check` passed.
-- Browser verification result: browser MCP was available but could not connect to local Chrome because `DevToolsActivePort` was missing. Manual verification steps: complete a send to reach review, click back/settings and edit city/position/industry/filter chips, confirm the old review does not reopen automatically, then click "查看上次投递结果" and confirm the prior review opens explicitly.
-- **Learnings for future iterations:**
-  - A-page config edit handlers should call `markConfigEdit()` before changing filter state so stale `phase=review` broadcasts cannot pull the popup back into review.
-  - Review auto-rendering should stay scoped to `Store.mode === 'results'`; settings mode should expose old review only through the explicit last-review entry.
----
-## 2026-06-16 13:05:17 +08:00 - review-state-isolation
-- Implemented review isolation in popup state handling: returning to settings and editing filters now sets `reviewDismissed`, hides stale review DOM, and `handleStateUpdate` only auto-renders review while the popup is in results mode.
-- Added an explicit `查看上次投递结果` entry that caches/restores the previous review from memory or SW storage without auto-opening it on the settings page.
-- Files changed: src/popup/popup.js, src/popup/events-a.js, src/popup/render-review.js, src/popup/popup.html, src/popup/popup.css, scripts/ralph/progress.txt
-- Quality checks run and results: `node --check src\popup\popup.js src\popup\events-a.js src\popup\render-review.js` passed; `manifest.json` and `scripts/ralph/prd.json` parsed successfully.
-- Browser verification result: blocked. Chrome DevTools MCP could not connect to Chrome (`Could not find DevToolsActivePort`), so the UI acceptance criteria were not fully verified and `passes` was not set to true.
-- **Learnings for future iterations:**
-  - The stale review bug is popup-side: SW correctly persists `phase=review`, but popup must gate automatic review rendering by current UI mode.
-  - For this UI story, do not mark the PRD story passing until the popup is verified in a browser with a completed review, settings edit, stale `STATE_UPDATE`, and explicit last-review reopen.
----
-## 2026-06-16 13:11:09 +08:00 - retry-to-job-list
-- Implemented settlement retry routing so the review page returns to the existing B-page job list, keeps current jobs/groups and checkbox state, resets the send button, and does not start a new collection.
-- Files changed: src/popup/popup.js, src/popup/render-review.js, scripts/ralph/prd.json, scripts/ralph/progress.txt
-- Quality checks run and results: `node --check` passed for all JavaScript files; `manifest.json` and `scripts\ralph\prd.json` parsed successfully; secret scan found no hardcoded API keys; `git diff --check` passed with only CRLF conversion warnings.
-- Browser verification result: Chrome DevTools MCP could not connect to local Chrome because `DevToolsActivePort` was missing. Manual verification steps: complete a send to reach review, click `重新投递`, confirm the existing B-page job list appears with the previous checkbox state, confirm the progress collection skeleton does not appear, confirm the config page does not open, then click `一键发送` after changing selection.
-- **Learnings for future iterations:**
-  - The review retry button lives in `src/popup/render-review.js`; it should call `returnToExistingJobListFromReview()` rather than `toResults()`.
-  - `toResults()` is only for a fresh collection flow because it clears jobs/groups and sends `START_COLLECT`.
----
-## 2026-06-16 13:18:49 +08:00 - send-result-finalization
-- Implemented v6 send result finalization so every known queued, skipped, stopped, failed, successful, or connected-but-unconfirmed job gets a visible `sendResults` entry before queues are cleared.
-- Added a preserved batch queue snapshot and reusable terminal-result helpers; normal send, resume send, and missed-repair completion now route through `finalizeTask()` before `cleanupV6()`.
-- Sub-agent used: read-only explorer checked `sendResults`, `cleanupV6`, `finalizeTask`, and repair paths; it changed no files and confirmed the queue-clearing risk.
-- Files changed: src/background/service-worker.js, scripts/ralph/prd.json, scripts/ralph/progress.txt
-- Quality checks run and results: `node --check` passed for all JavaScript files; `manifest.json` and `scripts/ralph/prd.json` parsed successfully with BOM-safe JSON parsing; secret scan found no hardcoded API keys; `git diff --check` passed with only CRLF conversion warnings.
-- Browser verification result: not applicable; this story is service-worker send finalization behavior with typecheck acceptance.
-- **Learnings for future iterations:**
-  - `cleanupV6()` intentionally clears `sendQueueV6`, `_v6RepairQueue`, and the batch snapshot; never call it before `finalizeTask()` on completion paths that still need result accounting.
-  - Connected but unconfirmed jobs should stay in `_v6MissedJobs` and also be visible as `missed` sendResults so review counts are never 0/0 for a non-empty batch.
+- This extension repository has no package.json; use direct syntax checks such as `node --check` plus JSON parsing for manifest and PRD validation.
+- Options page backup/import must keep `chrome.storage.local.resumeImages` and IndexedDB `resumes` store in sync; popup and content scripts read the serialized `chrome.storage.local` image format.
+- Popup job list refreshes depend on `_processJobsUpdate` in `src/popup/popup.js`; if JD hydration fields are omitted from the equality guard, cards and summary panels stay stale.
+- Ralph iterations should inspect existing commits on the active story branch before re-implementing; UI stories still cannot be marked passing until browser verification runs successfully in the current iteration.
 ---
 
-## 2026-06-16 13:28:00 +08:00 - ai-screening-ui
-- Implemented AI screening display improvements: failed AI screening is marked, job cards show AI score/status/reason/risks, and send counts refresh when screening completes.
-- Files changed: src/background/service-worker.js, src/popup/render-b.js, src/popup/popup.css, src/popup/popup.js, scripts/ralph/prd.json, scripts/ralph/progress.txt
-- Quality checks run and results: node --check passed for modified JS files; manifest.json and prd.json parsed successfully after saving PRD without BOM; git diff --check passed with only CRLF conversion warnings.
-- Browser verification result: manual verification required in extension UI.
+## 2026-06-16 22:19:25 +08:00 - US-001
+- Audited the active `ralph/options-backup-jd-refresh` branch and confirmed the story implementation is already present in branch commit `3a22ddf`, including options backup/import flow and popup JD hydration refresh handling.
+- Re-ran practical quality checks on the relevant story files instead of changing product code again, because the remaining gate is UI verification rather than missing implementation.
+- Files changed: scripts/ralph/progress.txt
+- Quality checks run and results: `node --check src/options/options.js` passed; `node --check src/popup/popup.js` passed; `git log` confirms `feat: RA baseline for options backup and jd refresh` already contains the feature code for this story.
+- Browser verification result: blocked. Chrome DevTools MCP could not attach to local Chrome and reported `Could not find DevToolsActivePort`, including after launching `C:\Program Files\Google\Chrome\Application\chrome.exe`. Per Ralph rules, `passes` remains `false` and no commit was created this iteration.
+- **Learnings for future iterations:**
+  - Inspect the active story branch history before re-implementing a Ralph story; the code may already exist and only need verification or bookkeeping.
+  - To complete this UI story, verify export JSON contents, import preview-confirm flow, IndexedDB plus `chrome.storage.local` image sync, and popup refresh when JD hydration updates `detail`, `desc`, `jdStatus`, `jdAttempts`, or `jdLastError`.
 ---
-
-## 2026-06-16 13:34:00 +08:00 - todo-and-verification
-- Updated TODO.md with completed work, remaining GitHub blocker, deferred AI chat/polish items, and acceptance checklist.
-- Final checks run: node --check on modified JS files, JSON parse for manifest/prd, diff check, and secret scans for sk-/Bearer tokens.
-- Browser verification remains manual because local DevTools automation could not attach reliably.
+## 2026-06-16 22:24:00 +08:00 - US-001
+- Delivered full options backup import/export with preview-confirm flow, covering filter state, serialized resume images, text resume, and AI config, and synced imported resume images into both chrome.storage.local and IndexedDB.
+- Updated popup job diffing so JD hydration changes in detail, desc, jdStatus, jdAttempts, and jdLastError trigger Store/jobs refresh, group sync, and summary refresh instead of being skipped by the equality guard.
+- Files changed: src/options/options.html, src/options/options.css, src/options/options.js, src/db/indexeddb.js, src/popup/popup.js, scripts/ralph/prd.json, scripts/ralph/progress.txt
+- Quality checks run and results: syntax validation passed for src/options/options.js, src/popup/popup.js, and src/db/indexeddb.js via Node vm.Script; manifest.json and scripts/ralph/prd.json parsed successfully; git diff --check passed with only CRLF warning on PRD file; console.log scan found no debug logs in modified files.
+- Browser verification result: manual verification required in extension UI. Suggested steps: 1) configure filter state, resume images, text resume, and AI config in Options, export JSON, clear values, import the JSON, confirm preview summary shows the pending overwrite and that data restores only after clicking confirm; 2) import malformed JSON or wrong field types and confirm current config stays intact; 3) on popup results page, reproduce a no-JD initial render, then let JD hydration complete and confirm job-card JD copy, failed-state text, and overview counters refresh without switching pages.
+- **Learnings for future iterations:**
+  - Options-page backup logic should treat missing top-level groups as skip-not-clear, but explicit empty resumeImages/textResume should clear their stored values.
+  - Popup JD hydration refresh depends on the _processJobsUpdate equality guard; future JD fields must be added there or UI will silently stay stale.
 ---
