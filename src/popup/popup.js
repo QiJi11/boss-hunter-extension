@@ -35,6 +35,7 @@ function initDomRefs(){
   E.sizeChips=$('#sizeChips');E.stageChips=$('#stageChips');
   E.bottomSettings=$('#bottomSettings');E.bottomResults=$('#bottomResults');
   E.btnReset=$('#btnReset');E.btnCollect=$('#btnCollect');E.btnSend=$('#btnSend');
+  E.btnViewLastReview=$('#btnViewLastReview');
   E.resultCountNum=$('#resultCountNum');E.resultCountTotal=$('#resultCountTotal');
   E.hiddenFileInput=$('#hiddenFileInput');E.hiddenFileInputB=$('#hiddenFileInputB');E.resumeThumbArea=$('#resumeThumbArea');
   E.progressSection=$('#progressSection');E.progressFill=$('#progressFill');
@@ -51,6 +52,7 @@ function initDomRefs(){
 function toSettings(){
   Store.set('mode','settings');Store.set('progressDone',false);
   Store.set('collecting',false);Store.set('sending',false);
+  Store.set('reviewDismissed',true);
   // 回 A 页＝放弃上一轮采集结果：清 Store + 渲染 DOM，否则重新筛选进 B 页会残留上次岗位/计数
   Store.set('jobs',[]);Store.set('groups',[]);Store.set('groupExpanded',{});
   if(E.groupedContent)E.groupedContent.innerHTML='';
@@ -63,7 +65,68 @@ function toSettings(){
   // 清掉 review 面板内容（不只是隐藏）——否则上一批 review DOM 残留，A 页下滑可见、且会被重渲染盖上来
   var rp=document.getElementById('reviewPanel');
   if(rp){rp.style.display='none';rp.innerHTML='';rp._expandWired=false;}
+  updateLastReviewEntry();
   window.renderSettings();
+}
+
+/** 记录用户主动修改配置，防止旧 review 状态再次自动覆盖筛选页。 */
+window.dismissReviewForConfigEdit=function(){
+  Store.set('reviewDismissed',true);
+  var rp=document.getElementById('reviewPanel');
+  if(rp){rp.style.display='none';rp.innerHTML='';rp._expandWired=false;}
+  if(E.resultsContent)E.resultsContent.classList.add('hidden');
+  if(E.progressSection)E.progressSection.classList.remove('hidden');
+  updateLastReviewEntry();
+};
+
+/** 按当前缓存状态控制“查看上次投递结果”入口显示。 */
+function updateLastReviewEntry(){
+  if(!E.btnViewLastReview)return;
+  var last=Store.get('lastReview');
+  var hasLast=last&&Array.isArray(last.sendResults)&&last.sendResults.length;
+  E.btnViewLastReview.classList.toggle('hidden',!hasLast);
+}
+
+/** 从内存、SW 或 storage 恢复上一轮 review，并由用户显式打开。 */
+function openLastReview(){
+  function show(last){
+    if(!last||!Array.isArray(last.sendResults)||!last.sendResults.length)return;
+    Store.set('lastReview',last);
+    Store.set('reviewDismissed',false);
+    Store.set('mode','results');
+    E.hdrTitle.classList.add('hidden');
+    E.btnBack.classList.remove('hidden');
+    E.settingsPanel.classList.add('hidden');
+    E.resultsPanel.classList.remove('hidden');
+    E.progressSection.classList.add('hidden');
+    E.bottomSettings.classList.add('hidden');
+    window.renderReview(last.sendResults,last.duration||0,last.missedCount||0);
+  }
+  var cached=Store.get('lastReview');
+  if(cached&&cached.sendResults&&cached.sendResults.length){show(cached);return}
+  try{
+    chrome.runtime.sendMessage({type:MSG.GET_STATE},function(resp){
+      if(resp&&resp.success&&resp.state&&resp.state.sendResults&&resp.state.sendResults.length){
+        show({sendResults:resp.state.sendResults,duration:resp.state.sendDuration||0,missedCount:(resp.state._v6MissedJobs||[]).length});
+      }else{
+        chrome.storage.local.get([STORAGE_KEYS.SW.SEND_RESULTS,STORAGE_KEYS.SW.SEND_DURATION,STORAGE_KEYS.SW.MISSED_JOBS],function(items){
+          show({sendResults:items[STORAGE_KEYS.SW.SEND_RESULTS]||[],duration:items[STORAGE_KEYS.SW.SEND_DURATION]||0,missedCount:(items[STORAGE_KEYS.SW.MISSED_JOBS]||[]).length});
+        });
+      }
+    });
+  }catch(e){}
+}
+
+/** popup 重开时预热上一轮 review 入口，但不自动打开。 */
+function hydrateLastReviewEntry(){
+  try{
+    chrome.storage.local.get([STORAGE_KEYS.SW.SEND_RESULTS,STORAGE_KEYS.SW.SEND_DURATION,STORAGE_KEYS.SW.MISSED_JOBS],function(items){
+      var results=items[STORAGE_KEYS.SW.SEND_RESULTS]||[];
+      if(!Array.isArray(results)||!results.length)return;
+      Store.set('lastReview',{sendResults:results,duration:items[STORAGE_KEYS.SW.SEND_DURATION]||0,missedCount:(items[STORAGE_KEYS.SW.MISSED_JOBS]||[]).length});
+      updateLastReviewEntry();
+    });
+  }catch(e){}
 }
 
 function toResults(){
@@ -310,10 +373,13 @@ function handleStateUpdate(state){
     showCaptchaWarning();
   }
 
-  // Show review page (popup reopened after send complete, or STATE_UPDATE arrives)
-  // 已点「再投一批」后 reviewDismissed=true → 不再自动弹上一批 review，避免盖在新一批 B 页上。
-  // 新一批点「一键发送」时清掉该 flag（events-b.js），新一批投完仍正常显示 review。
-  if(state.phase==='review'&&!Store.get('reviewDismissed')){
+  if(state.phase==='review'&&state.sendResults&&state.sendResults.length){
+    Store.set('lastReview',{sendResults:state.sendResults,duration:state.sendDuration||0,missedCount:(state._v6MissedJobs||[]).length});
+    updateLastReviewEntry();
+  }
+
+  // 仅结果流程中自动展示 review；设置页里的旧结果只通过显式入口查看。
+  if(state.phase==='review'&&Store.get('mode')==='results'&&!Store.get('reviewDismissed')){
     renderReview(state.sendResults||[],state.sendDuration||0,(state._v6MissedJobs||[]).length);
     E.resultsContent.classList.add('hidden');
     E.progressSection.classList.add('hidden');
@@ -444,8 +510,10 @@ function init(){
   // Init event delegation
   window.initEventsA();
   window.initEventsB();
+  hydrateLastReviewEntry();
 
   // ── Settings overlay events ──
+  if(E.btnViewLastReview)E.btnViewLastReview.addEventListener('click',openLastReview);
   function showSettings(){E.settingsOverlay.classList.remove('hidden')}
   function hideSettings(){E.settingsOverlay.classList.add('hidden')}
   E.gearBtn.addEventListener('click',showSettings);

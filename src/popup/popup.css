@@ -351,6 +351,8 @@ body{
 .review-expand-toggle{padding:8px 0;font-size:12px;font-weight:500;color:var(--accent);cursor:pointer;text-align:center;user-select:none;transition:all .12s}
 .review-expand-toggle:hover{background:rgba(217,119,6,.04)}
 .review-actions{text-align:center;padding:16px 0 8px}
+.view-last-review{display:block;margin:8px auto 0;font-size:12px;padding:8px 14px}
+.view-last-review.hidden{display:none}
 
 /* ════════════════════════════════════════════════════════════
    CAPTCHA Warning

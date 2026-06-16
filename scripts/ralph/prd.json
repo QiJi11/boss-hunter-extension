@@ -29,8 +29,8 @@
         "Verify in browser using dev-browser skill when available; otherwise record manual verification steps.",
         "Typecheck passes"
       ],
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Config edits now dismiss stale review state, auto review rendering is limited to results mode, and previous review remains available via an explicit settings-page entry. Browser MCP could not connect to local Chrome, so manual verification steps were recorded in progress.txt."
     },
     {
       "id": "retry-to-job-list",

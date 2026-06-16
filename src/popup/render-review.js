@@ -9,6 +9,7 @@ window.renderReview=function(sendResults,duration,missedCount){
 
   var missed=missedCount||0; // A1 漏发清单条数（SW finalizeTask 计算：已建联但未发 AI 招呼语+图）
   var results=sendResults||[];
+  Store.set('lastReview',{sendResults:results,duration:duration||0,missedCount:missed});
   var successCount=0,failCount=0;
   results.forEach(function(r){
     if(r.success)successCount++;else failCount++;

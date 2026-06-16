@@ -10,9 +10,14 @@ window.initEventsA=function(){
   if(window._eventsAInitialized)return;
   window._eventsAInitialized=true;
 
+  function markConfigEdit(){
+    if(window.dismissReviewForConfigEdit)window.dismissReviewForConfigEdit();
+  }
+
   // ── City chips ──
   E.cityChipContainer.addEventListener('click',function(e){
     var chip=e.target.closest('.city-chip');if(!chip)return;
+    markConfigEdit();
     var code=chip.dataset.code;
     var selected=Store.get('selectedCities')||[];
     var i=selected.indexOf(code);
@@ -22,12 +27,13 @@ window.initEventsA=function(){
     window.renderChipSecs();
     try{persistFilterState()}catch(ex){}
   });
-  E.cityInput.addEventListener('input',function(){window.renderCityChips(E.cityInput.value)});
+  E.cityInput.addEventListener('input',function(){markConfigEdit();window.renderCityChips(E.cityInput.value)});
 
   // ── City selected tags（删除已选城市，复刻「期望职位」已选 tag 交互）──
   E.citySelectedArea.addEventListener('click',function(e){
     var tag=e.target.closest('.selected-tag[data-code]');
     if(!tag)return;
+    markConfigEdit();
     var selected=Store.get('selectedCities')||[];
     var i=selected.indexOf(tag.dataset.code);
     if(i>=0)selected.splice(i,1);
@@ -158,6 +164,7 @@ window.initEventsA=function(){
   E.posBrowseArea.addEventListener('click',function(e){
     var addBtn=e.target.closest('[data-addcustom]');
     if(addBtn){
+      markConfigEdit();
       var w=(addBtn.dataset.addcustom||'').trim();
       if(w){
         var cp=Store.get('customPositions')||[];
@@ -171,6 +178,7 @@ window.initEventsA=function(){
     }
     var ctag=e.target.closest('.selected-tag[data-custompos]');
     if(ctag){
+      markConfigEdit();
       var cp2=Store.get('customPositions')||[];
       var ci=cp2.indexOf(ctag.dataset.custompos);
       if(ci>=0)cp2.splice(ci,1);
@@ -180,6 +188,7 @@ window.initEventsA=function(){
     }
     var chip=e.target.closest('.chip[data-pos]');
     if(chip){
+      markConfigEdit();
       var sel=Store.get('selectedPositions')||[];
       togD(sel,chip.dataset.pos,false);
       Store.set('selectedPositions',sel);
@@ -189,6 +198,7 @@ window.initEventsA=function(){
     }
     var tag=e.target.closest('.selected-tag[data-pos]');
     if(tag){
+      markConfigEdit();
       var sel=Store.get('selectedPositions')||[];
       var i=sel.indexOf(tag.dataset.pos);
       if(i>=0)sel.splice(i,1);
@@ -203,18 +213,21 @@ window.initEventsA=function(){
   if(_hrActiveCont){
     _hrActiveCont.addEventListener('click',function(e){
       var c=e.target.closest('.chip[data-hract]');if(!c)return;
+      markConfigEdit();
       Store.set('hrActiveFilter',c.dataset.hract);
       if(window.renderHrActiveChips)window.renderHrActiveChips();
       persistFilterState();
     });
   }
   E.posSearch.addEventListener('input',function(){
+    markConfigEdit();
     Store.set('posSearchQuery',E.posSearch.value);
     var q=Store.get('posSearchQuery');
     E.posSearchClear.style.display=q?'block':'none';
     window.renderPosBrowse()
   });
   E.posSearchClear.addEventListener('click',function(){
+    markConfigEdit();
     E.posSearch.value='';
     Store.set('posSearchQuery','');
     E.posSearchClear.style.display='none';
@@ -226,6 +239,7 @@ window.initEventsA=function(){
   E.indArea.addEventListener('click',function(e){
     var chip=e.target.closest('.chip[data-ind]');
     if(chip){
+      markConfigEdit();
       var sel=Store.get('selectedIndustries')||[];
       togD(sel,chip.dataset.ind,false);
       Store.set('selectedIndustries',sel);
@@ -235,6 +249,7 @@ window.initEventsA=function(){
     }
     var tag=e.target.closest('.selected-tag[data-ind]');
     if(tag){
+      markConfigEdit();
       var sel=Store.get('selectedIndustries')||[];
       var i=sel.indexOf(tag.dataset.ind);
       if(i>=0)sel.splice(i,1);
@@ -247,12 +262,14 @@ window.initEventsA=function(){
     if(hdr){var g=hdr.closest('.industry-group');if(g)g.classList.toggle('collapsed')}
   });
   E.indSearch.addEventListener('input',function(){
+    markConfigEdit();
     Store.set('indSearchQuery',E.indSearch.value);
     var q=Store.get('indSearchQuery');
     E.indSearchClear.style.display=q?'block':'none';
     window.renderInd()
   });
   E.indSearchClear.addEventListener('click',function(){
+    markConfigEdit();
     E.indSearch.value='';
     Store.set('indSearchQuery','');
     E.indSearchClear.style.display='none';
@@ -287,6 +304,7 @@ window.initEventsA=function(){
   chipSecs.forEach(function(sec){
     sec.e.addEventListener('click',function(e){
       var c=e.target.closest('.chip');if(!c||!c.dataset.val)return;
+      markConfigEdit();
       var v=c.dataset.val;
       var arr=Store.get(sec.k)||[];
       var da=sec.k==='workAreas'?getWorkAreas():chipData[sec.k];
@@ -301,6 +319,7 @@ window.initEventsA=function(){
 
   // ── Reset & Collect buttons ──
   E.btnReset.addEventListener('click',function(){
+    markConfigEdit();
     Store.set('selectedCities',[]);
     Store.set('selectedPositions',[]);
     Store.set('customPositions',[]);

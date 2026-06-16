@@ -4,6 +4,7 @@ Started: 2026-06-16T12:58:19.6955876+08:00
 ## Codebase Patterns
 - This extension repository has no package.json; use direct checks such as `node --check` for JavaScript files and JSON parsing for `manifest.json`.
 - GitHub SSH auth for QiJi11 can succeed while repository access still fails with `Repository not found` for `git@github.com:QiJi11/boss-hunter-extension.git`.
+- Popup review isolation lives in `src/popup/popup.js`: stale `phase=review` must not render automatically while `Store.mode` is `settings`; keep old results reachable only through an explicit last-review entry.
 ---
 ## 2026-06-16 12:59:33 +08:00 - repo-push-status
 - Documented GitHub remote recovery status in TODO.md: SSH auth works for QiJi11, origin points to git@github.com:QiJi11/boss-hunter-extension.git, and GitHub still returns Repository not found.
@@ -13,4 +14,25 @@ Started: 2026-06-16T12:58:19.6955876+08:00
 - **Learnings for future iterations:**
   - The repository has no package.json, so use direct Node checks such as node --check for JavaScript syntax validation.
   - GitHub SSH auth can succeed while repository access still fails with Repository not found for git@github.com:QiJi11/boss-hunter-extension.git.
+---
+## 2026-06-16 13:05:57 +08:00 - review-state-isolation
+- Implemented review state isolation for config edits: returning to settings and editing city, position, industry, HR activity, or filter chips now dismisses stale review state and hides old review DOM.
+- Added an explicit settings-page "查看上次投递结果" entry that restores the previous review from in-memory state, service worker state, or persisted send results without auto-opening it.
+- Tightened popup review auto-rendering so `phase=review` only opens automatically while the popup is already in the results flow; settings mode only caches the last review for explicit access.
+- Files changed: src/popup/events-a.js, src/popup/popup.css, src/popup/popup.html, src/popup/popup.js, src/popup/render-review.js, scripts/ralph/prd.json, scripts/ralph/progress.txt
+- Quality checks run and results: `node --check` passed for all JavaScript files; `manifest.json` and `scripts/ralph/prd.json` parsed successfully; secret scan found no hardcoded API keys; `git diff --check` passed.
+- Browser verification result: browser MCP was available but could not connect to local Chrome because `DevToolsActivePort` was missing. Manual verification steps: complete a send to reach review, click back/settings and edit city/position/industry/filter chips, confirm the old review does not reopen automatically, then click "查看上次投递结果" and confirm the prior review opens explicitly.
+- **Learnings for future iterations:**
+  - A-page config edit handlers should call `markConfigEdit()` before changing filter state so stale `phase=review` broadcasts cannot pull the popup back into review.
+  - Review auto-rendering should stay scoped to `Store.mode === 'results'`; settings mode should expose old review only through the explicit last-review entry.
+---
+## 2026-06-16 13:05:17 +08:00 - review-state-isolation
+- Implemented review isolation in popup state handling: returning to settings and editing filters now sets `reviewDismissed`, hides stale review DOM, and `handleStateUpdate` only auto-renders review while the popup is in results mode.
+- Added an explicit `查看上次投递结果` entry that caches/restores the previous review from memory or SW storage without auto-opening it on the settings page.
+- Files changed: src/popup/popup.js, src/popup/events-a.js, src/popup/render-review.js, src/popup/popup.html, src/popup/popup.css, scripts/ralph/progress.txt
+- Quality checks run and results: `node --check src\popup\popup.js src\popup\events-a.js src\popup\render-review.js` passed; `manifest.json` and `scripts/ralph/prd.json` parsed successfully.
+- Browser verification result: blocked. Chrome DevTools MCP could not connect to Chrome (`Could not find DevToolsActivePort`), so the UI acceptance criteria were not fully verified and `passes` was not set to true.
+- **Learnings for future iterations:**
+  - The stale review bug is popup-side: SW correctly persists `phase=review`, but popup must gate automatic review rendering by current UI mode.
+  - For this UI story, do not mark the PRD story passing until the popup is verified in a browser with a completed review, settings edit, stale `STATE_UPDATE`, and explicit last-review reopen.
 ---
