@@ -6,6 +6,7 @@ Started: 2026-06-16T12:58:19.6955876+08:00
 - GitHub SSH auth for QiJi11 can succeed while repository access still fails with `Repository not found` for `git@github.com:QiJi11/boss-hunter-extension.git`.
 - Popup review isolation lives in `src/popup/popup.js`: stale `phase=review` must not render automatically while `Store.mode` is `settings`; keep old results reachable only through an explicit last-review entry.
 - Popup settlement retry should return to the existing B-page job list via local state restoration; do not call `toResults()` because it clears jobs/groups and sends `START_COLLECT`.
+- V6 send finalization must run before `cleanupV6()` clears `sendQueueV6`; preserve a batch queue snapshot so claimed or repair-eligible jobs that never emitted worker results can still be added to `sendResults`.
 ---
 ## 2026-06-16 12:59:33 +08:00 - repo-push-status
 - Documented GitHub remote recovery status in TODO.md: SSH auth works for QiJi11, origin points to git@github.com:QiJi11/boss-hunter-extension.git, and GitHub still returns Repository not found.
@@ -45,3 +46,15 @@ Started: 2026-06-16T12:58:19.6955876+08:00
 - **Learnings for future iterations:**
   - The review retry button lives in `src/popup/render-review.js`; it should call `returnToExistingJobListFromReview()` rather than `toResults()`.
   - `toResults()` is only for a fresh collection flow because it clears jobs/groups and sends `START_COLLECT`.
+---
+## 2026-06-16 13:18:49 +08:00 - send-result-finalization
+- Implemented v6 send result finalization so every known queued, skipped, stopped, failed, successful, or connected-but-unconfirmed job gets a visible `sendResults` entry before queues are cleared.
+- Added a preserved batch queue snapshot and reusable terminal-result helpers; normal send, resume send, and missed-repair completion now route through `finalizeTask()` before `cleanupV6()`.
+- Sub-agent used: read-only explorer checked `sendResults`, `cleanupV6`, `finalizeTask`, and repair paths; it changed no files and confirmed the queue-clearing risk.
+- Files changed: src/background/service-worker.js, scripts/ralph/prd.json, scripts/ralph/progress.txt
+- Quality checks run and results: `node --check` passed for all JavaScript files; `manifest.json` and `scripts/ralph/prd.json` parsed successfully with BOM-safe JSON parsing; secret scan found no hardcoded API keys; `git diff --check` passed with only CRLF conversion warnings.
+- Browser verification result: not applicable; this story is service-worker send finalization behavior with typecheck acceptance.
+- **Learnings for future iterations:**
+  - `cleanupV6()` intentionally clears `sendQueueV6`, `_v6RepairQueue`, and the batch snapshot; never call it before `finalizeTask()` on completion paths that still need result accounting.
+  - Connected but unconfirmed jobs should stay in `_v6MissedJobs` and also be visible as `missed` sendResults so review counts are never 0/0 for a non-empty batch.
+---

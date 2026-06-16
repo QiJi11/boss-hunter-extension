@@ -59,8 +59,8 @@
                                                        "Connected but unconfirmed jobs remain eligible for missed repair where possible.",
                                                        "Typecheck passes"
                                                    ],
-                            "passes":  false,
-                            "notes":  ""
+                            "passes":  true,
+                            "notes":  "V6 finalization now uses a preserved batch queue snapshot before cleanup, records unconfirmed connected jobs as visible missed sendResults eligible for repair, and routes normal/resume/repair completion through finalizeTask before cleanupV6 clears queues."
                         },
                         {
                             "id":  "ai-screening-ui",

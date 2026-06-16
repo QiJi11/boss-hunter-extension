@@ -321,6 +321,7 @@ let state = {
   searchTabId: null,
   sendPhase: '',            // '' | 'stage1' | 'stage2'
   sendQueueV6: [],          // [{jobId, hrName, hrCompany, greeting, positionName, companyName}]
+  _v6CurrentBatchQueue: [],  // 本批原始队列快照：终态补齐已取走但未落账的岗位
   sendQueueV6Index: 0,
   _v6WorkerTabIds: [],      // worker tab id 数组
   _v6WorkerWindowIds: [],   // worker tab 所在的独立后台窗口 id 数组
@@ -418,21 +419,52 @@ function dropMissingGreetingJobs() {
   if (!dropped.length) return;
   state.sendQueueV6 = state.sendQueueV6.filter(function(item) { return !isGreetingMissing(item.greeting); });
   for (var i = 0; i < dropped.length; i++) {
-    var d = dropped[i];
-    if (sentJobIds.has(d.jobId)) continue; // 已有结果的不重复记
-    sentJobIds.add(d.jobId);
-    state.sendProgress.sent++;
-    state.sendResults.push({
-      jobId: d.jobId,
-      positionName: d.positionName,
-      companyName: d.companyName,
-      success: false, skipped: true,
+    recordV6TerminalResult(dropped[i], {
+      skipped: true,
       error: 'AI招呼语缺失，未投递（请刷新重新采集）',
-      time: Date.now(),
     });
   }
   console.warn('[即投] 空招呼语保险丝：剔除', dropped.length, '个岗位不入队');
   pushState();
+}
+
+/** 为未产出 worker 结果的队列项补记一次终态 sendResults。 */
+function recordV6TerminalResult(item, opts) {
+  if (!item || item.jobId == null || sentJobIds.has(item.jobId)) return false;
+  opts = opts || {};
+  sentJobIds.add(item.jobId);
+  state.sendProgress.sent++;
+  state.sendResults.push({
+    jobId: item.jobId,
+    positionName: item.positionName || '',
+    companyName: item.companyName || '',
+    success: !!opts.success,
+    skipped: opts.skipped !== false,
+    hrName: item.hrName || '',
+    error: opts.error || '未投递',
+    stage: opts.stage || null,
+    time: Date.now(),
+  });
+  return true;
+}
+
+/** 汇总所有 v6 队列来源，按 jobId 去重后供终态补记使用。 */
+function collectV6QueueSnapshot() {
+  var seen = {};
+  var out = [];
+  var addList = function(list) {
+    list = Array.isArray(list) ? list : [];
+    for (var i = 0; i < list.length; i++) {
+      var it = list[i];
+      if (!it || it.jobId == null || seen[it.jobId]) continue;
+      seen[it.jobId] = true;
+      out.push(it);
+    }
+  };
+  addList(state.sendQueueV6);
+  addList(state._v6RepairQueue);
+  addList(state._v6CurrentBatchQueue);
+  return out;
 }
 
 // ── 状态持久化：确保 SW 重启后 popup 能恢复 B 页 ──
@@ -1396,11 +1428,9 @@ async function finalizeTask(reason) {
   for (var ri = 0; ri < state.sendResults.length; ri++) {
     if (state.sendResults[ri] && state.sendResults[ri].jobId != null) recorded[state.sendResults[ri].jobId] = true;
   }
-  var leftovers = []
-    .concat(state.sendQueueV6 || [])
-    .concat(state._v6RepairQueue || []);
+  var leftovers = collectV6QueueSnapshot();
   // A1 漏发清单：已建联（stage1 点过「立即沟通」，hrName 非空）但没有任何投递结果记录的岗位。
-  // 此处只计算并留存清单（保留 greeting/hrName 等队列项字段，补发要用），不发送任何内容——
+  // 此处留存清单（保留 greeting/hrName 等队列项字段，补发要用），并补一条可见 sendResults——
   // 「停止 = 立即硬中止」语义零改动；补发仅由 review 页「一键补发」或恢复路径触发。
   // 排除：已有结果记录（成功/失败/跳过，在 recorded/sentJobIds）的、空/占位招呼语的（#36 保险丝语义，
   // 正常路径这类岗早被 dropMissingGreetingJobs 剔队并记失败，此处兜底不让其入补发清单）。
@@ -1408,11 +1438,22 @@ async function finalizeTask(reason) {
   for (var mi = 0; mi < leftovers.length; mi++) {
     var mt = leftovers[mi];
     if (!mt || mt.jobId == null || !mt.hrName) continue;
-    if (recorded[mt.jobId] || sentJobIds.has(mt.jobId) || _missedSeen[mt.jobId]) continue;
+    if (recorded[mt.jobId] || _missedSeen[mt.jobId]) continue;
     if (isGreetingMissing(mt.greeting)) continue;
     _missedSeen[mt.jobId] = true;
     _missed.push(mt);
-    recorded[mt.jobId] = true;  // 标记已处理：归入待补发清单，下方循环不再把它当「未投递」重复记
+    recorded[mt.jobId] = true;  // 标记已处理：归入待补发清单，下方循环不再把它当普通「未投递」重复记
+    state.sendResults.push({
+      jobId: mt.jobId,
+      positionName: mt.positionName || '',
+      companyName: mt.companyName || '',
+      success: false,
+      skipped: true,
+      missed: true,
+      hrName: mt.hrName,
+      error: reason === 'stopped' ? '已建联但停止前未确认发送，可补发' : '已建联但未确认发送，可补发',
+      time: Date.now(),
+    });
   }
   state._v6MissedJobs = _missed;
   if (_missed.length) {
@@ -1422,18 +1463,21 @@ async function finalizeTask(reason) {
     var it = leftovers[li];
     if (!it || it.jobId == null || recorded[it.jobId]) continue;
     recorded[it.jobId] = true;
+    sentJobIds.add(it.jobId);
+    state.sendProgress.sent++;
     state.sendResults.push({
       jobId: it.jobId,
       positionName: it.positionName || '',
       companyName: it.companyName || '',
       success: false,
       skipped: true,                       // 计入 failCount，renderReview 以中性灰呈现
+      hrName: it.hrName || '',
       error: reason === 'stopped' ? '未投递：已停止' : '未投递',
       time: Date.now(),
     });
   }
-  // total 反映本批所有已记录结果（已投 + skip + 未投递），review 据此展示
-  state.sendProgress.total = state.sendResults.length;
+  // sent/total 反映本批所有已记录结果（已投 + skip + 未投递），review 据此展示
+  state.sendProgress = { sent: state.sendResults.length, total: state.sendResults.length };
   state.sendPhase = '';
   await persistState();
   // 诊断滚动归档：把本轮完整诊断摘要存进 diag:recentRuns（最近 5 次），开新任务清内存也不丢
@@ -1867,8 +1911,8 @@ async function resumeSendV6() {
   await teardownWorkerWindows(); // 先关 worker 窗口 → 补发在 0-worker 单连接安静环境跑
   await sleep(3000);             // 给服务器登记连接关闭、退出多连接 kick 状态的余量
   await runRepairV6();
+  await finalizeTask('done');
   await cleanupV6();
-  await finishSend();
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2026,6 +2070,7 @@ async function startSendV6(jobIds) {
   sendStartTime = Date.now(); // v6 也记录开始时间，finishSend/finalizeTask 计算耗时用
   await loadJobCustomIntoState(); // per-job 自定义招呼语：建队前灌入 state.jobCustom，buildSendQueueV6 据此覆盖组级招呼语
   state.sendQueueV6 = buildSendQueueV6(state, jobIds);
+  state._v6CurrentBatchQueue = state.sendQueueV6.slice();
   state.sendQueueV6Index = 0;
   state.sendProgress = { sent: 0, total: jobIds.length };
   state.sendResults = [];
@@ -2033,6 +2078,7 @@ async function startSendV6(jobIds) {
   _dailyCountedJobIds.clear(); // 投递数量闸门：新批次清幂等去重集（计数本身落盘累积，不归零）
   state._v6MissedJobs = []; // 新批次开始，清上一批漏发清单（防 review 残留旧「一键补发」）
   dropMissingGreetingJobs(); // 空招呼语保险丝：空/占位 greeting 不入队，记失败（须在 sendResults/sentJobIds 重置之后）
+  state._v6CurrentBatchQueue = state._v6CurrentBatchQueue.filter(function(item) { return !sentJobIds.has(item.jobId); });
   state.phase = 'sending';
   state.sendPhase = 'stage1';
   await persistState();
@@ -2097,16 +2143,9 @@ async function startSendV6(jobIds) {
   state.sendQueueV6 = state.sendQueueV6.filter(function(item) { return item.hrName; });
   for (var _fi = 0; _fi < _extractFailed.length; _fi++) {
     var _ft = _extractFailed[_fi];
-    if (sentJobIds.has(_ft.jobId)) continue; // 已有结果的不重复记
-    sentJobIds.add(_ft.jobId);
-    state.sendProgress.sent++;
-    state.sendResults.push({
-      jobId: _ft.jobId,
-      positionName: _ft.positionName,
-      companyName: _ft.companyName,
-      success: false, skipped: true,
+    recordV6TerminalResult(_ft, {
+      skipped: true,
       error: '未投递：' + (_ft.extractError || '未能在搜索页找到该岗位卡片'),
-      time: Date.now(),
     });
   }
   if (_extractFailed.length) {
@@ -2119,6 +2158,7 @@ async function startSendV6(jobIds) {
   state.sendQueueV6 = state.sendQueueV6.filter(function(item) { return !item.alreadyChatted; });
   for (var _si = 0; _si < _skippedAlready.length; _si++) {
     var _it = _skippedAlready[_si];
+    if (sentJobIds.has(_it.jobId)) continue;
     sentJobIds.add(_it.jobId);
     state.sendProgress.sent++;
     state.sendResults.push({
@@ -2152,8 +2192,8 @@ async function startSendV6(jobIds) {
   await teardownWorkerWindows(); // 先关 worker 窗口 → 补发在 0-worker 单连接安静环境跑
   await sleep(3000);             // 给服务器登记连接关闭、退出多连接 kick 状态的余量
   await runRepairV6();   // 补发阶段：全新单 tab、单 WS 连接，逐个核对并补漏
+  await finalizeTask('done');
   await cleanupV6();
-  await finishSend();
 }
 
 async function runStage1() {
@@ -2700,7 +2740,7 @@ async function runRepairV6() {
     queue = still;
   }
 
-  state._v6RepairQueue = [];
+  state._v6RepairQueue = queue;
   // 关补发窗口，并从追踪数组移除（否则 cleanupV6 的 teardown 会对已关窗口空跑一次 1.5s）
   try { if (repairWinId != null) await chrome.windows.remove(repairWinId); } catch (e) {}
   try { if (repairTabId != null) await chrome.tabs.remove(repairTabId); } catch (e) {}
@@ -2809,6 +2849,8 @@ async function cleanupV6() {
   state.sendPhase = '';
   state.sendQueueV6 = [];
   state.sendQueueV6Index = 0;
+  state._v6RepairQueue = [];
+  state._v6CurrentBatchQueue = [];
   await persistState();
   await activateOriginalMainWindow();
 }
@@ -2855,6 +2897,7 @@ async function stopSend() {
   //    故在 finalizeTask 之后再清队列。
   await finalizeTask('stopped');
   state.sendQueueV6 = [];
+  state._v6CurrentBatchQueue = [];
   state.sendQueueV6Index = 0;
   state._v6RepairQueue = [];
   await persistState();
@@ -2889,8 +2932,8 @@ async function startRepairMissed() {
   await runRepairV6();          // 内部 phase!=='sending' 即中断，停止按钮仍即时生效
   if (sendAborted) return;      // 补发中被停止：stopSend 已 finalizeTask 进终态，不重复收尾
   state.sendProgress = { sent: state.sendResults.length, total: state.sendResults.length };
+  await finalizeTask('repair');
   await cleanupV6();
-  await finishSend();
 }
 
 // ── 读取 API Key（从 storage 读取，首次启动由 ensureApiKey 预置） ──
