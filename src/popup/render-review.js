@@ -95,7 +95,7 @@ window.renderReview=function(sendResults,duration,missedCount){
 
   html+='</div>' // review-groups
 
-    // Retry button — 统一终态：「重新投递」用已存的 A 页筛选直接重收集，不回 A 页
+    // Retry button — 回到现有 B 页岗位列表，不触发重新采集
     +'<div class="review-actions">'
     +'<button class="btn btn-primary" id="btnRetryBatch">重新投递</button>'
     +'</div>'
@@ -129,9 +129,7 @@ window.renderReview=function(sendResults,duration,missedCount){
     });
   }
 
-  // Wire 「重新投递」→ 全 reset + 用已存的 A 页筛选直接重新收集（不回 A 页配置），落 results 结果页。
-  // toResults() 内部：清 jobs/groups、重置投递按钮、用 buildCollectParams()(读已存筛选) 发 START_COLLECT。
-  // SW 侧 startCollect 会重置发送相关 state；新一批点投递时 startSendV6 又会清 sendAborted/队列/worker。
+  // Wire 「重新投递」→ 回到当前 B 页岗位列表，保留岗位勾选状态，让用户重新选择后再发送。
   var retryBtn=document.getElementById('btnRetryBatch');
   if(retryBtn){
     retryBtn.addEventListener('click',function(){
@@ -139,7 +137,7 @@ window.renderReview=function(sendResults,duration,missedCount){
       reviewPanel.style.display='none';
       reviewPanel.innerHTML='';
       reviewPanel._expandWired=false;
-      window.toResults(); // 跳过 A 页，直接用已存筛选重新收集 → 落结果页
+      window.returnToExistingJobListFromReview();
     });
   }
 

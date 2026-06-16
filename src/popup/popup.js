@@ -171,6 +171,119 @@ function toResults(){
   startBPagePollFallback();
 }
 
+/** 将 SW/storage 里的岗位快照恢复为 B 页可渲染状态，优先保留本地勾选状态。 */
+function restoreJobListSnapshot(snapshot){
+  if(!snapshot||!Array.isArray(snapshot.jobs)||!snapshot.jobs.length)return false;
+
+  var localJobs=Store.get('jobs')||[];
+  var checkedById={};
+  localJobs.forEach(function(job){
+    if(job&&job.id!==undefined&&job.checked!==undefined)checkedById[job.id]=job.checked;
+  });
+
+  var jobs=JSON.parse(JSON.stringify(snapshot.jobs));
+  jobs.forEach(function(job){
+    if(job&&Object.prototype.hasOwnProperty.call(checkedById,job.id)){
+      job.checked=checkedById[job.id];
+    }else if(job&&job.checked===undefined){
+      job.checked=true;
+    }
+  });
+  Store.set('jobs',jobs);
+
+  if(Array.isArray(snapshot.selectedPositions))Store.set('selectedPositions',snapshot.selectedPositions);
+  if(Array.isArray(snapshot.customPositions))Store.set('customPositions',snapshot.customPositions);
+  if(snapshot.greetings)Store.set('greetings',snapshot.greetings);
+
+  var groups=Store.get('groups')||[];
+  if(groups.length){
+    window.syncGroupsWithJobs&&window.syncGroupsWithJobs();
+  }else{
+    var picker=Store.get('selectedPositions')||[];
+    var custom=Store.get('customPositions')||[];
+    var nextGroups=window.prepareGroups(picker,custom,jobs);
+    if(!nextGroups.length){
+      nextGroups=[{position:'全部岗位',greeting:{text:'正在生成招呼语...',editing:false},fileName:'',jobs:jobs,images:window.defaultGroupImages()}];
+    }
+    Store.set('groups',nextGroups);
+    window.initJobCustom(false);
+  }
+  return true;
+}
+
+/** 为 review 的重新投递恢复现有岗位列表，不发起 START_COLLECT。 */
+function hydrateExistingJobListForRetry(done){
+  var currentJobs=Store.get('jobs')||[];
+  if(currentJobs.length){
+    restoreJobListSnapshot({
+      jobs:currentJobs,
+      selectedPositions:Store.get('selectedPositions')||[],
+      customPositions:Store.get('customPositions')||[],
+      greetings:Store.get('greetings')||{}
+    });
+    done(true);
+    return;
+  }
+
+  try{
+    chrome.runtime.sendMessage({type:MSG.GET_STATE},function(resp){
+      if(resp&&resp.success&&restoreJobListSnapshot(resp.state)){done(true);return}
+      try{
+        chrome.storage.local.get([
+          STORAGE_KEYS.SW.JOBS,
+          STORAGE_KEYS.SW.GREETINGS,
+          STORAGE_KEYS.SW.SELECTED_POSITIONS,
+          STORAGE_KEYS.SW.CUSTOM_POSITIONS
+        ],function(items){
+          done(restoreJobListSnapshot({
+            jobs:items[STORAGE_KEYS.SW.JOBS]||[],
+            greetings:items[STORAGE_KEYS.SW.GREETINGS]||{},
+            selectedPositions:items[STORAGE_KEYS.SW.SELECTED_POSITIONS]||[],
+            customPositions:items[STORAGE_KEYS.SW.CUSTOM_POSITIONS]||[]
+          }));
+        });
+      }catch(e){done(false)}
+    });
+  }catch(e){done(false)}
+}
+
+/** 从 review 返回现有 B 页岗位列表，保留岗位和勾选状态，不启动新采集。 */
+window.returnToExistingJobListFromReview=function(){
+  hydrateExistingJobListForRetry(function(hasJobs){
+    Store.set('mode','results');
+    Store.set('collecting',false);
+    Store.set('sending',false);
+    Store.set('progressDone',true);
+    Store.set('reviewDismissed',true);
+    Store.set('awaitingCollect',false);
+
+    E.hdrTitle.classList.add('hidden');E.btnBack.classList.remove('hidden');
+    E.settingsPanel.classList.add('hidden');E.resultsPanel.classList.remove('hidden');
+    E.resultsContent.classList.remove('hidden');E.progressSection.classList.add('hidden');
+    E.bottomSettings.classList.add('hidden');E.bottomResults.classList.remove('hidden');
+
+    var rp=document.getElementById('reviewPanel');
+    if(rp){rp.style.display='none';rp.innerHTML='';rp._expandWired=false;}
+
+    if(E.btnSend){
+      E.btnSend.textContent='一键发送';
+      E.btnSend.classList.remove('sending');
+      E.btnSend.disabled=false;
+      E.btnSend.style.background='';
+    }
+
+    if((Store.get('groups')||[]).length&&E.groupedContent&&!E.groupedContent.querySelector('.group-card')){
+      window.renderGroupsStable();
+    }
+    if(!hasJobs&&E.groupedContent){
+      E.groupedContent.innerHTML='<div class="empty-positions">当前没有可重新投递的岗位，请返回筛选页重新采集</div>';
+    }
+    if(window.applyGreetingsToGroups())window.updateAllGreetings();
+    window.updResCnt();
+    window.syncResumeFileNames&&window.syncResumeFileNames();
+  });
+};
+
 function completeCollection(){
   if(p1dPollHandle){clearInterval(p1dPollHandle);p1dPollHandle=null;}
   Store.set('progressDone',true);Store.set('collecting',false);
