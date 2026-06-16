@@ -329,7 +329,10 @@ function updateAiScreeningProgress(progress){
   if(E.btnSend){
     E.btnSend.disabled=running;
     if(running)E.btnSend.textContent='AI筛选中';
-    else if(!Store.get('sending'))E.btnSend.textContent='一键发送';
+    else if(!Store.get('sending')){
+      E.btnSend.textContent='一键发送';
+      if(window.updResCnt)window.updResCnt();
+    }
   }
 }
 

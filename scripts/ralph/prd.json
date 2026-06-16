@@ -1,4 +1,4 @@
-﻿{
+{
     "branchName":  "ralph/mvp-screening-bugfix",
     "project":  "boss-hunter-extension",
     "goal":  "Fix the BOSS Hunter extension MVP flow: review state isolation, retry to job list, reliable send result finalization, online AI screening display, TODO updates, and keep GitHub push status visible.",
@@ -75,8 +75,8 @@
                                                        "Record manual verification steps when browser automation is unavailable.",
                                                        "Typecheck passes"
                                                    ],
-                            "passes":  false,
-                            "notes":  ""
+                            "passes":  true,
+                            "notes":  "AI screening results now show score, status, reason, risks, failure state, and refresh send counts when screening completes. Static checks passed; browser verification remains manual."
                         },
                         {
                             "id":  "todo-and-verification",

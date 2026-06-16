@@ -58,3 +58,10 @@ Started: 2026-06-16T12:58:19.6955876+08:00
   - `cleanupV6()` intentionally clears `sendQueueV6`, `_v6RepairQueue`, and the batch snapshot; never call it before `finalizeTask()` on completion paths that still need result accounting.
   - Connected but unconfirmed jobs should stay in `_v6MissedJobs` and also be visible as `missed` sendResults so review counts are never 0/0 for a non-empty batch.
 ---
+
+## 2026-06-16 13:28:00 +08:00 - ai-screening-ui
+- Implemented AI screening display improvements: failed AI screening is marked, job cards show AI score/status/reason/risks, and send counts refresh when screening completes.
+- Files changed: src/background/service-worker.js, src/popup/render-b.js, src/popup/popup.css, src/popup/popup.js, scripts/ralph/prd.json, scripts/ralph/progress.txt
+- Quality checks run and results: node --check passed for modified JS files; manifest.json and prd.json parsed successfully after saving PRD without BOM; git diff --check passed with only CRLF conversion warnings.
+- Browser verification result: manual verification required in extension UI.
+---

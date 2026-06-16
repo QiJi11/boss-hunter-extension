@@ -231,18 +231,25 @@ window.renderGroupsStable=function(){
 
 // ── Level 2: Job item HTML ──
 
-function renderJobItemHTML(job){
+function renderJobAiHTML(job){
   var ai=job.aiScreen||null;
-  var aiHtml='';
-  if(ai){
-    var score=Number(ai.score||0);
-    var cls=score>=80?' ai-good':(score>=60?' ai-mid':' ai-low');
-    aiHtml='<div class="job-ai'+cls+'">'
-      +'<span class="job-ai-score">AI '+score+'</span>'
-      +'<span class="job-ai-reason">'+esc(ai.reason||'')+'</span>'
-      +((ai.risks&&ai.risks.length)?'<div class="job-ai-risks">'+ai.risks.map(function(r){return'<span>'+esc(r)+'</span>'}).join('')+'</div>':'')
-      +'</div>';
-  }
+  if(!ai)return '';
+  var score=Number(ai.score||0);
+  var cls=score>=80?' ai-good':(score>=60?' ai-mid':' ai-low');
+  var failed=(ai.failed===true)||/失败|error/i.test(String(ai.reason||''))||((ai.risks||[]).join(' ').toLowerCase().indexOf('error')>=0);
+  var status=failed?'需人工确认':(job.checked?'建议投递':'低于阈值');
+  if(failed)cls+=' ai-failed';
+  return '<div class="job-ai'+cls+'">'
+    +'<div class="job-ai-main">'
+    +'<span class="job-ai-score">AI '+score+'</span>'
+    +'<span class="job-ai-status">'+status+'</span>'
+    +'</div>'
+    +'<div class="job-ai-reason">'+esc(ai.reason||'暂无原因')+'</div>'
+    +((ai.risks&&ai.risks.length)?'<div class="job-ai-risks">'+ai.risks.map(function(r){return'<span>'+esc(r)+'</span>'}).join('')+'</div>':'')
+    +'</div>';
+}
+
+function renderJobItemHTML(job){
   return '<div class="job-item" data-job-id="'+job.id+'"><div class="job-top-row">'
     +'<div class="job-checkbox'+(job.checked?' checked':'')+'" data-job-id="'+job.id+'"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2.5 6l2.5 3 4.5-5"/></svg></div>'
     +'<div class="job-info">'
@@ -250,9 +257,26 @@ function renderJobItemHTML(job){
     +'<div class="job-company">'+esc(job.company)+'</div>'
     +'<div class="job-salary">'+esc(job.salary||'')+'</div>'
     +'<div class="job-tags">'+(job.tags||[]).map(function(t){return'<span class="job-tag">'+esc(t)+'</span>'}).join('')+'</div>'
-    +aiHtml
+    +renderJobAiHTML(job)
     +'<div class="job-custom-toggle" data-job-id="'+job.id+'" style="margin-top:10px">&#9654; 自定义消息</div>'
     +'</div></div></div>';
+}
+
+function syncRenderedJobItem(job){
+  var el=document.querySelector('#groupedContent .job-item[data-job-id="'+job.id+'"]');
+  if(!el)return;
+  var cb=el.querySelector('.job-checkbox[data-job-id="'+job.id+'"]');
+  if(cb)cb.classList.toggle('checked',!!job.checked);
+  var info=el.querySelector('.job-info');
+  if(!info)return;
+  var oldAi=info.querySelector('.job-ai');
+  if(oldAi&&oldAi.parentNode)oldAi.parentNode.removeChild(oldAi);
+  var aiHtml=renderJobAiHTML(job);
+  if(!aiHtml)return;
+  var wrapper=document.createElement('div');
+  wrapper.innerHTML=aiHtml;
+  var before=info.querySelector('.job-custom-toggle');
+  info.insertBefore(wrapper.firstElementChild,before||null);
 }
 
 // ── Level 2: Incremental job append (DocumentFragment) ──
@@ -533,9 +557,10 @@ window.syncGroupsWithJobs=function(){
       var old=oldJobs[j];
       var nj=jobById[old.id];
       if(nj){
-        if(old.checked!==undefined)nj.checked=old.checked;
+        if(old.checked!==undefined&&JSON.stringify(old.aiScreen||null)===JSON.stringify(nj.aiScreen||null))nj.checked=old.checked;
         kept.push(nj);
         inGroup[old.id]=true;
+        syncRenderedJobItem(nj);
       }else{
         touched[gi]=true;
         var el=document.querySelector('#groupedContent .job-item[data-job-id="'+old.id+'"]');

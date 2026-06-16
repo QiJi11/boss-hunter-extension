@@ -218,10 +218,15 @@ body{
 .job-checkbox svg{width:12px;height:12px;color:#fff;display:none}
 .job-checkbox.checked svg{display:block}
 .job-ai{margin-top:8px;padding:7px 8px;border:1px solid var(--border);border-radius:6px;background:#f9fafb;font-size:11px;line-height:1.45;color:var(--text-secondary)}
-.job-ai-score{font-weight:700;margin-right:8px}
+.job-ai-main{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px}
+.job-ai-score{font-weight:700}
+.job-ai-status{font-weight:600;color:var(--text-weak);white-space:nowrap}
+.job-ai-reason{word-break:break-word}
 .job-ai-good .job-ai-score{color:#047857}
 .job-ai-mid .job-ai-score{color:#b45309}
 .job-ai-low .job-ai-score{color:#dc2626}
+.job-ai-failed{background:#fff7ed;border-color:#fed7aa}
+.job-ai-failed .job-ai-status{color:#c2410c}
 .job-ai-risks{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
 .job-ai-risks span{padding:2px 5px;border-radius:4px;background:#fff;border:1px solid var(--border-light);color:var(--text-muted)}
 .job-master-checkbox{

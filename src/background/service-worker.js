@@ -160,7 +160,7 @@ async function applyAiScreeningToJobs(jobs) {
         current.checked = screening.score >= threshold;
         if (screening.greeting) current.aiGreeting = screening.greeting;
       } catch (err) {
-        current.aiScreen = { score: 0, reason: 'AI筛选失败，请人工确认', greeting: '', risks: [err.message || 'AI error'] };
+        current.aiScreen = { score: 0, reason: 'AI筛选失败，请人工确认', greeting: '', risks: [err.message || 'AI error'], failed: true };
         current.checked = false;
         ErrorLogger.logError(err.message || String(err), err?.stack, 'AI screening failed');
       }
