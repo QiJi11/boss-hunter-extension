@@ -215,5 +215,8 @@ window.renderChipSecs=function(){
   window.renderHrActiveChips();
 };
 window.renderSettings=function(){window.renderPosBrowse();window.renderInd();window.renderChipSecs()};
+window.renderSendGreetingToggle=function(){
+  if(E.sendGreetingToggle)E.sendGreetingToggle.checked=Store.get('sendGreeting')!==false;
+};
 
 // ── Misc helpers ──

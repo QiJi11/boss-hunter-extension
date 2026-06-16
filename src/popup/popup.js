@@ -33,6 +33,10 @@ function initDomRefs(){
   E.workAreaChips=$('#workAreaChips');E.jobTypeChips=$('#jobTypeChips');
   E.salaryChips=$('#salaryChips');E.expChips=$('#expChips');E.eduChips=$('#eduChips');
   E.sizeChips=$('#sizeChips');E.stageChips=$('#stageChips');
+  E.aiFilterBox=$('#aiFilterBox');E.aiFilterPrompt=$('#aiFilterPrompt');
+  E.aiFilterGenerateBtn=$('#aiFilterGenerateBtn');E.aiFilterApplyBtn=$('#aiFilterApplyBtn');
+  E.aiFilterDiscardBtn=$('#aiFilterDiscardBtn');E.aiFilterStatus=$('#aiFilterStatus');E.aiFilterPreview=$('#aiFilterPreview');
+  E.sendGreetingToggle=$('#sendGreetingToggle');
   E.bottomSettings=$('#bottomSettings');E.bottomResults=$('#bottomResults');
   E.btnReset=$('#btnReset');E.btnCollect=$('#btnCollect');E.btnSend=$('#btnSend');
   E.btnViewLastReview=$('#btnViewLastReview');
@@ -295,8 +299,27 @@ function completeCollection(){
   E.resultsContent.classList.remove('hidden');
   E.bottomResults.classList.remove('hidden');
   updateAiNotConfiguredHint();
+  if(window.renderSummaryPanel)window.renderSummaryPanel();
   window.updResCnt();
   window.syncResumeFileNames&&window.syncResumeFileNames();
+}
+
+function updateAiFilterAssistantState(){
+  if(!E.aiFilterGenerateBtn||!E.aiFilterPrompt)return;
+  var hasAi=!!(E.aiBtn&&E.aiBtn.classList.contains('configured'));
+  E.aiFilterGenerateBtn.disabled=!hasAi;
+  E.aiFilterPrompt.disabled=!hasAi;
+  if(!hasAi){
+    if(E.aiFilterStatus){
+      E.aiFilterStatus.textContent='未配置 AI，暂时不能生成筛选建议';
+      E.aiFilterStatus.className='ai-filter-status';
+    }
+    return;
+  }
+  if(E.aiFilterStatus&&/未配置 AI/.test(E.aiFilterStatus.textContent||'')){
+    E.aiFilterStatus.textContent='';
+    E.aiFilterStatus.className='ai-filter-status';
+  }
 }
 
 function updateAiNotConfiguredHint(){
@@ -373,11 +396,8 @@ function _processJobsUpdate(jobsData){
   var curJobs=Store.get('jobs');
   if(curJobs&&curJobs.length===jobsData.length){
     var same=true;
-    for(var _i=0;_i<Math.min(curJobs.length,5);_i++){
-      if(curJobs[_i].id!==jobsData[_i].id){same=false;break}
-      var curAi=curJobs[_i].aiScreen&&curJobs[_i].aiScreen.score;
-      var newAi=jobsData[_i].aiScreen&&jobsData[_i].aiScreen.score;
-      if(curAi!==newAi||curJobs[_i].checked!==jobsData[_i].checked){same=false;break}
+    for(var _i=0;_i<curJobs.length;_i++){
+      if(!isSameJobSnapshot(curJobs[_i],jobsData[_i])){same=false;break}
     }
     if(same){
       // Jobs unchanged, but greetings may have been updated (async generation completes)
@@ -467,6 +487,8 @@ function handleStateUpdate(state){
   if(state.selectedPositions&&state.selectedPositions.length)Store.set('selectedPositions',state.selectedPositions);
   if(state.customPositions)Store.set('customPositions',state.customPositions);
   if(state.greetings)Store.set('greetings',state.greetings);
+  if(state.aiBatchOverview)Store.set('aiBatchOverview',state.aiBatchOverview);
+  if(state.jdHydrationProgress)Store.set('jdHydrationProgress',state.jdHydrationProgress);
   if(state.aiScreeningProgress)updateAiScreeningProgress(state.aiScreeningProgress);
 
   // 排除 'review'：投完的旧批 state.jobs 不该重渲 B 页岗位列表/底部计数（这是 18→3 残留的根）
@@ -482,6 +504,7 @@ function handleStateUpdate(state){
   }else if(state.greetings&&Store.get('groups')&&Store.get('groups').length&&Store.get('mode')==='results'){
     if(window.applyGreetingsToGroups())window.updateAllGreetings();
   }
+  if(Store.get('mode')==='results'&&window.renderSummaryPanel)window.renderSummaryPanel();
 
   if(state.phase==='ready'&&Store.get('mode')==='results'&&!Store.get('progressDone')){completeCollection()}
 
@@ -610,6 +633,7 @@ function fillAiDrawer(config,textResume){
   if(E.aiScoreThreshold)E.aiScoreThreshold.value=cfg.scoreThreshold||60;
   if(E.aiTextResume)E.aiTextResume.value=textResume||'';
   if(E.aiBtn)E.aiBtn.classList.toggle('configured',!!cfg.apiKey);
+  updateAiFilterAssistantState();
 }
 
 function loadAiDrawerConfig(done){
@@ -629,6 +653,21 @@ function loadAiDrawerConfig(done){
   }catch(e){
     setAiStatus('读取 AI 设置失败: '+e.message,'error');
   }
+}
+
+function isSameJobSnapshot(curJob,newJob){
+  if(!curJob||!newJob)return false;
+  if(curJob.id!==newJob.id)return false;
+  var curAi=curJob.aiScreen&&curJob.aiScreen.score;
+  var newAi=newJob.aiScreen&&newJob.aiScreen.score;
+  if(curAi!==newAi)return false;
+  if(curJob.checked!==newJob.checked)return false;
+  if((curJob.detail||'')!==(newJob.detail||''))return false;
+  if((curJob.desc||'')!==(newJob.desc||''))return false;
+  if((curJob.jdStatus||'')!==(newJob.jdStatus||''))return false;
+  if((curJob.jdAttempts||0)!==(newJob.jdAttempts||0))return false;
+  if((curJob.jdLastError||'')!==(newJob.jdLastError||''))return false;
+  return true;
 }
 
 function saveAiDrawerConfig(callback){
@@ -723,6 +762,8 @@ function init(){
   window.renderCityChips('');
   window.renderSettings();
   window.renderResumeImages();
+  updateAiFilterAssistantState();
+  window.renderFilterSuggestionPreview&&window.renderFilterSuggestionPreview(Store.get('filterSuggestionDraft'));
 
   // Restore resume images + filter state from storage (merged single call)
   try{chrome.storage.local.get(['resumeImages',STORAGE_KEYS.UI.FILTER_STATE],function(r){
@@ -754,9 +795,11 @@ function init(){
       if(filterState.education)Store.set('education',filterState.education);
       if(filterState.companySizes)Store.set('companySizes',filterState.companySizes);
       if(filterState.fundingStages)Store.set('fundingStages',filterState.fundingStages);
+      if(typeof filterState.sendGreeting==='boolean')Store.set('sendGreeting',filterState.sendGreeting);
       window.renderCityChips('');
       window.renderChipSecs();
       window.renderSettings();
+      window.renderSendGreetingToggle&&window.renderSendGreetingToggle();
     }
   })}catch(e){}
 

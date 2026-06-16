@@ -119,6 +119,13 @@
         <div class="chips-wrap" id="hrActiveChips"></div>
       </div>
       <div class="chips-section">
+        <div class="section-title">投递设置</div>
+        <label class="send-greeting-toggle">
+          <input type="checkbox" id="sendGreetingToggle" checked>
+          <span>发送招呼语</span>
+        </label>
+      </div>
+      <div class="chips-section">
         <div class="section-title">薪资待遇</div>
         <div class="chips-wrap" id="salaryChips"></div>
       </div>
@@ -137,6 +144,22 @@
       <div class="chips-section">
         <div class="section-title">融资阶段</div>
         <div class="chips-wrap" id="stageChips"></div>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <div class="section">
+        <div class="section-title">AI 改筛选条件</div>
+        <div class="ai-filter-box" id="aiFilterBox">
+          <textarea id="aiFilterPrompt" class="ai-filter-textarea" rows="4" placeholder="例如：减少销售岗，多加深圳南山/福田的 AI 产品和增长运营岗位，薪资至少 15K。"></textarea>
+          <div class="ai-filter-actions">
+            <button class="btn btn-ghost" id="aiFilterGenerateBtn">生成建议</button>
+            <button class="btn btn-primary hidden" id="aiFilterApplyBtn">一键应用</button>
+            <button class="btn btn-ghost hidden" id="aiFilterDiscardBtn">放弃</button>
+          </div>
+          <div class="ai-filter-status" id="aiFilterStatus"></div>
+          <div class="ai-filter-preview hidden" id="aiFilterPreview"></div>
+        </div>
       </div>
 
       <!-- BOSS 直聘提示 -->
@@ -164,6 +187,7 @@
       </div>
 
       <div id="resultsContent" class="hidden fade-in">
+        <div id="summaryPanelHost"></div>
         <div id="groupedContent"></div>
       </div>
 

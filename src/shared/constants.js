@@ -19,6 +19,8 @@ const MSG = {
   GET_AI_CONFIG: 'GET_AI_CONFIG',
   SAVE_AI_CONFIG: 'SAVE_AI_CONFIG',
   TEST_AI_CONFIG: 'TEST_AI_CONFIG',
+  GENERATE_FILTER_SUGGESTION: 'GENERATE_FILTER_SUGGESTION',
+  RETRY_JOB_DETAILS: 'RETRY_JOB_DETAILS',
   REPAIR_MISSED: 'REPAIR_MISSED',   // A1：review 页「一键补发」漏发岗位（popup→SW 专用，CS 不用，无需镜像 selectors.js）
 
   // SW → Popup
@@ -35,6 +37,7 @@ const MSG = {
   CHAT_DETECTED: 'CHAT_DETECTED',
   AUTO_REPLY_SENT: 'AUTO_REPLY_SENT',
   JD_FETCHED: 'JD_FETCHED',
+  FETCH_JOB_DETAIL: 'FETCH_JOB_DETAIL',
   PONG: 'PONG',
 
   // SW → Content
@@ -119,6 +122,12 @@ const CONFIG = {
   GREETING_TIMEOUT_MS: 8000,
   // AI 招呼语并发数
   GREETING_CONCURRENCY: 3,
+  // JD 自动补拉单批岗位数
+  JD_HYDRATION_BATCH_SIZE: 12,
+  // JD 自动补拉并发数
+  JD_HYDRATION_CONCURRENCY: 2,
+  // 连续无新增成功的批次数，达到后自动暂停补拉
+  JD_HYDRATION_STALL_LIMIT: 2,
   // 采集/发送批处理大小
   BATCH_SIZE: 50,
   // 发送间隔下限（ms）

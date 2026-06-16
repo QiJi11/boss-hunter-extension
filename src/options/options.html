@@ -69,6 +69,33 @@
       </div>
     </section>
 
+    <section class="card">
+      <h2 class="card-title">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        完整资料备份
+      </h2>
+      <p class="card-desc">导出或导入筛选配置、简历图片、文字简历与 AI 设置。导入会先预览，再确认覆盖。</p>
+      <div class="backup-actions">
+        <button type="button" id="exportBtn" class="btn-secondary">导出配置</button>
+        <button type="button" id="importBtn" class="btn-secondary">导入配置</button>
+        <input type="file" id="importFileInput" accept="application/json,.json" hidden>
+      </div>
+      <div id="importStatus" class="import-status hidden"></div>
+      <div id="importPreviewCard" class="import-preview hidden">
+        <div class="import-preview-header">
+          <div>
+            <div class="import-preview-title">导入预览</div>
+            <div id="importPreviewMeta" class="import-preview-meta"></div>
+          </div>
+          <div class="import-preview-actions">
+            <button type="button" id="confirmImportBtn" class="btn-save">确认导入</button>
+            <button type="button" id="cancelImportBtn" class="btn-ghost">取消</button>
+          </div>
+        </div>
+        <div id="importPreviewSummary" class="import-preview-summary"></div>
+      </div>
+    </section>
+
     <!-- 保存 -->
     <div class="save-bar">
       <button type="button" id="saveBtn" class="btn-save">

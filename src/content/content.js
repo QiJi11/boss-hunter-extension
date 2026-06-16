@@ -1038,6 +1038,13 @@ function assertOpenConversationIdentity(targetHrName, targetHrCompany) {
         );
         return true;
 
+      case 'FETCH_JOB_DETAIL':
+        handleFetchJobDetail().then(
+          (result) => sendResponse(result),
+          (e) => sendResponse({ success: false, error: e.message })
+        );
+        return true;
+
       case 'GET_ERROR_LOG':
         if (typeof ErrorLogger !== 'undefined') {
           ErrorLogger.getErrors()
@@ -1080,6 +1087,20 @@ async function handleCollect(params) {
     jdSamples: result.jdSamples,
   });
   return result;
+}
+
+async function handleFetchJobDetail() {
+  var root = document.querySelector(SELECTORS.jobDetail.jobDetail);
+  if (!root) return { success: false, error: '未找到 JD 详情容器' };
+  var sections = Array.from(document.querySelectorAll(SELECTORS.jobDetail.jobSecText || '.job-sec-text'))
+    .map(function(el){ return (el.textContent || '').trim(); })
+    .filter(Boolean);
+  var detail = sections.join('\n\n').trim();
+  return {
+    success: !!detail,
+    detail: detail,
+    error: detail ? '' : 'JD 详情为空'
+  };
 }
 
 // ── 处理发送（按 jobIds 逐个调用 sendSingle）──

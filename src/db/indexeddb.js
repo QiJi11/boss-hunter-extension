@@ -53,6 +53,18 @@ async function getResumeImages() {
   });
 }
 
+/**
+ * 清空 IndexedDB 中保存的简历图片。
+ */
+async function clearResumeImages() {
+  const store = await withStore('resumes', 'readwrite');
+  return new Promise((resolve, reject) => {
+    const req = store.clear();
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
 // ── 设置 ──
 async function saveSetting(key, value) {
   const store = await withStore('settings', 'readwrite');

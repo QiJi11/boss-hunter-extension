@@ -9,6 +9,20 @@ window.initEventsB=function(){
   if(window._eventsBInitialized)return;
   window._eventsBInitialized=true;
 
+  document.addEventListener('click',function(e){
+    var retryBtn=e.target.closest('#btnRetryJobDetails');
+    if(!retryBtn)return;
+    if(retryBtn.disabled)return;
+    retryBtn.disabled=true;
+    retryBtn.textContent='JD补拉中...';
+    chrome.runtime.sendMessage({type:MSG.RETRY_JOB_DETAILS},function(resp){
+      if(chrome.runtime.lastError||!resp||!resp.success){
+        retryBtn.disabled=false;
+        retryBtn.textContent='继续补拉 JD';
+      }
+    });
+  });
+
   // ── Grouped content delegation ──
   E.groupedContent.addEventListener('click',function(e){
     try{
