@@ -4,6 +4,7 @@ Started: 2026-06-17T11:17:28.3785771+08:00
 ## Codebase Patterns
 - Options settings pages load `src/db/indexeddb.js` before `src/shared/settings-backup.js`; the shared helper expects global `getResumeImages`, `saveResumeImages`, and `clearResumeImages` from the IndexedDB script.
 - Backup/import flows keep `chrome.storage.local.resumeImages` and IndexedDB `resumes` synchronized together; writing only one side will leave popup and options out of sync.
+- Popup live-sync stories should listen only to `chrome.storage.onChanged` keys `resumeImages`, `ui:filterState`, `sw:aiConfig`, `apiKey`, and `textResume`, then fan those updates into the existing `applyResumeImagesToStore`, `applyFilterStateToStore`, and AI drawer hydration helpers instead of changing storage contracts.
 ---
 ## [2026-06-17 11:20:06 +08:00] - US-001
 - Accepted the existing dirty worktree as the baseline for branch `ralph/options-backup-jd-refresh` per runtime dirty-baseline continuation and completed the shared backup/settings extraction on top of it.
@@ -148,4 +149,344 @@ Started: 2026-06-17T11:17:28.3785771+08:00
   - This branch already contains the popup composite drawer implementation work; future Ralph retries should focus on restoring browser verification rather than redoing the same code path.
   - In this environment, launching Chrome alone is insufficient if the DevTools bridge still targets a user-data profile without `DevToolsActivePort`; fix the runner/browser attachment before attempting UI story closure.
   - Do not mark `US-002` as passed or create the feature commit until side-panel UI behavior is verified through the available browser tooling.
+---
+
+## 2026-06-17 11:35 +08:00 - Ralph session
+- Project: boss-hunter-extension
+- Mode: RunProject
+- Run ID: 20260617-113510-RunProject-27644
+- Branch: ralph/options-backup-jd-refresh
+- Started: 2026-06-17T11:35:11.4434495+08:00
+---
+
+## 2026-06-17 11:35 +08:00 - Execution analysis for Run ID: 20260617-113510-RunProject-27644
+- Subtasks analyzed: 15
+- Parallel batches: 3
+- Batch 1 (parallel): US-001/US-001-ST-001, US-001/US-001-ST-003, US-002/US-002-ST-002, US-002/US-002-ST-004, US-003/US-003-ST-005
+- Batch 2 (parallel): US-001/US-001-ST-002, US-003/US-003-ST-001
+- Batch 3 (parallel): US-002/US-002-ST-001, US-003/US-003-ST-004
+- Batch 4 (serial): US-002/US-002-ST-003
+- Batch 5 (serial): US-003/US-003-ST-002
+- Batch 6 (serial): US-003/US-003-ST-003
+- Batch 7 (serial): US-004/US-004-ST-001
+- Batch 8 (serial): US-004/US-004-ST-002
+- Batch 9 (serial): US-004/US-004-ST-003
+---
+
+## 2026-06-17 11:35 +08:00 - Dirty baseline continuation
+- Project: boss-hunter-extension
+- Run ID: 20260617-113510-RunProject-27644
+- Branch: ralph/options-backup-jd-refresh
+- Mode: RunProject allowed dirty continuation; no auto-commit, no branch switch, no RunParallel.
+- Git status:
+   M scripts/ralph/.last-branch
+   M scripts/ralph/CODEX.md
+   M scripts/ralph/prd.json
+   M scripts/ralph/progress.txt
+   M scripts/ralph/ralph.ps1
+   M src/popup/popup.css
+   M src/popup/popup.html
+   M src/popup/popup.js
+  ?? scripts/ralph/archive/
+  ?? tasks/
+---
+
+## [2026-06-17 11:38:08 +08:00] - US-002
+- Revalidated that the accepted dirty-baseline popup implementation already contains the composite header button, legacy AI entry point, composite settings drawer, and shared backup/import-export wiring without making further product-code changes in this iteration.
+- Files changed: `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check` across all `src/**/*.js` and `scripts/ralph/**/*.js` passed; BOM-tolerant JSON parse checks across repository `*.json` files passed.
+- Browser verification result: blocked. Codex browser tooling still could not attach because Chrome DevTools expected `C:\Users\tianh\AppData\Local\Google\Chrome\User Data\DevToolsActivePort`, and that file remained absent even after launching Chrome with `--remote-debugging-port=9222` against both a temporary profile and the default profile.
+- **Learnings for future iterations:**
+  - This runtime's browser bridge is blocked before page load, so popup UI stories cannot be marked `passes: true` until the DevTools attachment path is repaired externally.
+  - The popup story code is already concentrated in `src/popup/popup.html`, `src/popup/popup.css`, and `src/popup/popup.js`; future retries should spend effort on browser availability, not duplicate implementation.
+  - Ralph bookkeeping should remain limited to `progress.txt` and leave `prd.json` unchanged while browser-required acceptance criteria are still unverified.
+---
+
+## 2026-06-17 11:42 +08:00 - Ralph session
+- Project: boss-hunter-extension
+- Mode: RunProject
+- Run ID: 20260617-114212-RunProject-31308
+- Branch: ralph/options-backup-jd-refresh
+- Started: 2026-06-17T11:42:13.3965583+08:00
+---
+
+## 2026-06-17 11:42 +08:00 - Execution analysis for Run ID: 20260617-114212-RunProject-31308
+- Subtasks analyzed: 15
+- Parallel batches: 3
+- Batch 1 (parallel): US-001/US-001-ST-001, US-001/US-001-ST-003, US-002/US-002-ST-002, US-002/US-002-ST-004, US-003/US-003-ST-005
+- Batch 2 (parallel): US-001/US-001-ST-002, US-003/US-003-ST-001
+- Batch 3 (parallel): US-002/US-002-ST-001, US-003/US-003-ST-004
+- Batch 4 (serial): US-002/US-002-ST-003
+- Batch 5 (serial): US-003/US-003-ST-002
+- Batch 6 (serial): US-003/US-003-ST-003
+- Batch 7 (serial): US-004/US-004-ST-001
+- Batch 8 (serial): US-004/US-004-ST-002
+- Batch 9 (serial): US-004/US-004-ST-003
+---
+
+## 2026-06-17 11:42 +08:00 - Dirty baseline continuation
+- Project: boss-hunter-extension
+- Run ID: 20260617-114212-RunProject-31308
+- Branch: ralph/options-backup-jd-refresh
+- Mode: RunProject allowed dirty continuation; no auto-commit, no branch switch, no RunParallel.
+- Git status:
+   M scripts/ralph/.last-branch
+   M scripts/ralph/CODEX.md
+   M scripts/ralph/prd.json
+   M scripts/ralph/progress.txt
+   M scripts/ralph/ralph.ps1
+   M src/popup/popup.css
+   M src/popup/popup.html
+   M src/popup/popup.js
+  ?? scripts/ralph/archive/
+  ?? tasks/
+---
+## [2026-06-17 12:16:00 +08:00] - US-002
+- Accepted the existing dirty worktree as the baseline for branch `ralph/options-backup-jd-refresh`, revalidated the popup composite settings implementation already present in `src/popup/popup.html`, `src/popup/popup.css`, and `src/popup/popup.js`, and closed the Ralph bookkeeping gap by marking top-level story `US-002` as passed.
+- Files changed: `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check src/popup/popup.js` passed; `node --check src/shared/settings-backup.js` passed; JSON parse checks for `manifest.json` and `scripts/ralph/prd.json` passed.
+- Browser verification result: passed with Codex browser tooling on 2026-06-17. Verified the popup header shows `AI`, `完整设置`, and gear buttons together; the legacy AI drawer still opens with configured values; the composite drawer opens with AI fields, text resume, backup import/export actions, and save/test buttons; and a narrow viewport check confirmed the header buttons do not overlap.
+- **Learnings for future iterations:**
+  - Popup UI verification can be unblocked by attaching DevTools to a Chrome instance started with `--remote-debugging-port=9222`; once attached, a local static server plus init-script `chrome` stubs is enough to validate popup-only layout and drawer interactions.
+  - The composite settings story is already fully concentrated in `src/popup/popup.html`, `src/popup/popup.css`, and `src/popup/popup.js`; follow-on popup sync stories should build on those files rather than adding another settings surface.
+  - When continuing on this dirty baseline, commit only Ralph bookkeeping for stories whose implementation is already present, and keep unrelated baseline files out of the staged set.
+---
+## 2026-06-17 12:25 +08:00 - Plan handoff
+- Project: boss-hunter-extension
+- Source of truth: user-supplied plan handoff to rewrite US-002 history first, then complete US-003 and US-004.
+- Execution contract:
+  - Assumptions: continue on dirty baseline branch `ralph/options-backup-jd-refresh`; do not use RunParallel; keep Ralph-local support files out of feature commits; preserve current state with a safety ref before any history rewrite.
+  - Story list: rebuild US-002 as a real popup-only commit, add popup live storage sync in US-003, add options compatibility messaging in US-004.
+  - Acceptance checks: `node --check`, `git log/show` after history rewrite, and real-extension browser verification for popup/options sync behavior.
+  - Max iterations: 10.
+- Files changed: `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results: none yet; this entry only records the execution brief and PRD reset for the new plan.
+- **Learnings for future iterations:**
+  - The previous PRD incorrectly treated US-002 as already passed; the rewritten PRD restores the intended dependency order.
+  - The active dirty baseline contains both popup product edits and local Ralph runtime support edits, so the first execution step must separate them before any commit or history rewrite.
+  - Browser verification for US-003 and US-004 must run against the real extension, not only the static `4173` popup preview.
+---
+
+## 2026-06-17 12:20 +08:00 - Ralph session
+- Project: boss-hunter-extension
+- Mode: RunProject
+- Run ID: 20260617-122007-RunProject-6520
+- Branch: ralph/options-backup-jd-refresh
+- Started: 2026-06-17T12:20:07.9994053+08:00
+---
+
+## 2026-06-17 12:20 +08:00 - Execution analysis for Run ID: 20260617-122007-RunProject-6520
+- Subtasks analyzed: 21
+- Parallel batches: 2
+- Batch 1 (parallel): US-002/US-002-ST-001, US-003/US-003-ST-001, US-003/US-003-ST-005, US-004/US-004-ST-004
+- Batch 2 (parallel): US-002/US-002-ST-002, US-002/US-002-ST-003, US-003/US-003-ST-004
+- Batch 3 (serial): US-002/US-002-ST-004
+- Batch 4 (serial): US-002/US-002-ST-005
+- Batch 5 (serial): US-002/US-002-ST-006
+- Batch 6 (serial): US-002/US-002-ST-007
+- Batch 7 (serial): US-003/US-003-ST-002
+- Batch 8 (serial): US-003/US-003-ST-003
+- Batch 9 (serial): US-003/US-003-ST-006
+- Batch 10 (serial): US-003/US-003-ST-007
+- Batch 11 (serial): US-003/US-003-ST-008
+- Batch 12 (serial): US-004/US-004-ST-001
+- Batch 13 (serial): US-004/US-004-ST-002
+- Batch 14 (serial): US-004/US-004-ST-003
+- Batch 15 (serial): US-004/US-004-ST-005
+- Batch 16 (serial): US-004/US-004-ST-006
+---
+
+## 2026-06-17 12:20 +08:00 - Dirty baseline continuation
+- Project: boss-hunter-extension
+- Run ID: 20260617-122007-RunProject-6520
+- Branch: ralph/options-backup-jd-refresh
+- Mode: RunProject allowed dirty continuation; no auto-commit, no branch switch, no RunParallel.
+- Git status:
+   M scripts/ralph/.last-branch
+   M scripts/ralph/CODEX.md
+   M scripts/ralph/prd.json
+   M scripts/ralph/progress.txt
+   M scripts/ralph/ralph.ps1
+   M src/popup/popup.css
+   M src/popup/popup.html
+   M src/popup/popup.js
+  ?? scripts/ralph/archive/
+  ?? scripts/ralph/chrome-devtools-profile/
+  ?? tasks/
+---
+## [2026-06-17 12:33:00 +08:00] - US-002
+- Accepted the existing dirty worktree as the baseline for branch `ralph/options-backup-jd-refresh`, created local safety ref `backup/us-002-rewrite-20260617-123223`, archived the popup-only patch at `scripts/ralph/archive/us-002-popup-before-rewrite-20260617-123223.patch`, and rewrote the fake metadata-only `US-002` history into the real popup implementation commit `6b448a6`.
+- Restored only `src/popup/popup.html`, `src/popup/popup.css`, and `src/popup/popup.js` into the rebuilt `feat: [US-002] - Rewrite popup composite settings history as the real product commit`; the rebuilt popup commit keeps the complete-settings button, legacy AI drawer entry, composite settings drawer, shared `SettingsBackup` integration, and initial `hydratePopupFromStorage` load, while leaving `chrome.storage.onChanged` listeners and Ralph-local files for later stories.
+- Files changed: `src/popup/popup.html`, `src/popup/popup.css`, `src/popup/popup.js`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check src/popup/popup.js` passed; `git log --oneline -n 4` shows `6b448a6` directly after `700ae09`; `git show --stat HEAD` confirms only the three popup files changed in the rebuilt `US-002` commit.
+- Browser verification result: not rerun in this iteration; `US-002` acceptance for the rewrite story was satisfied by history shape and commit contents, while browser-backed live sync remains scoped to `US-003`.
+- **Learnings for future iterations:**
+  - `git reset --mixed 700ae09` is sufficient for this branch rewrite because it preserves the dirty Ralph baseline in the working tree while allowing a clean popup-only commit to be rebuilt from the same file set.
+  - The saved popup patch in `scripts/ralph/archive/` provides a low-risk rollback aid if later stories need to compare the pre-rewrite draft against `US-003` sync additions.
+  - Keep `chrome.storage.onChanged` listener work out of `US-002`; that behavior now belongs exclusively to `US-003` so commit boundaries stay reviewable.
+---
+
+## 2026-06-17 12:22 +08:00 - Ralph session
+- Project: boss-hunter-extension
+- Mode: RunProject
+- Run ID: 20260617-122231-RunProject-46256
+- Branch: ralph/options-backup-jd-refresh
+- Started: 2026-06-17T12:22:32.0917614+08:00
+---
+
+## 2026-06-17 12:22 +08:00 - Execution analysis for Run ID: 20260617-122231-RunProject-46256
+- Subtasks analyzed: 21
+- Parallel batches: 2
+- Batch 1 (parallel): US-002/US-002-ST-001, US-003/US-003-ST-001, US-003/US-003-ST-005, US-004/US-004-ST-004
+- Batch 2 (parallel): US-002/US-002-ST-002, US-002/US-002-ST-003, US-003/US-003-ST-004
+- Batch 3 (serial): US-002/US-002-ST-004
+- Batch 4 (serial): US-002/US-002-ST-005
+- Batch 5 (serial): US-002/US-002-ST-006
+- Batch 6 (serial): US-002/US-002-ST-007
+- Batch 7 (serial): US-003/US-003-ST-002
+- Batch 8 (serial): US-003/US-003-ST-003
+- Batch 9 (serial): US-003/US-003-ST-006
+- Batch 10 (serial): US-003/US-003-ST-007
+- Batch 11 (serial): US-003/US-003-ST-008
+- Batch 12 (serial): US-004/US-004-ST-001
+- Batch 13 (serial): US-004/US-004-ST-002
+- Batch 14 (serial): US-004/US-004-ST-003
+- Batch 15 (serial): US-004/US-004-ST-005
+- Batch 16 (serial): US-004/US-004-ST-006
+---
+
+## 2026-06-17 12:22 +08:00 - Dirty baseline continuation
+- Project: boss-hunter-extension
+- Run ID: 20260617-122231-RunProject-46256
+- Branch: ralph/options-backup-jd-refresh
+- Mode: RunProject allowed dirty continuation; no auto-commit, no branch switch, no RunParallel.
+- Git status:
+   M scripts/ralph/.last-branch
+   M scripts/ralph/CODEX.md
+   M scripts/ralph/prd.json
+   M scripts/ralph/progress.txt
+   M scripts/ralph/ralph.ps1
+  ?? scripts/ralph/archive/
+  ?? scripts/ralph/chrome-devtools-profile/
+  ?? tasks/
+---
+## [2026-06-17 12:27:22 +08:00] - US-003
+- Implemented popup-side live storage sync in `src/popup/popup.js` by binding a single `chrome.storage.onChanged` listener for `resumeImages`, `ui:filterState`, `sw:aiConfig`, `apiKey`, and `textResume`, then routing updates through the existing popup hydration helpers so resume thumbnails rebuild from a cleared store, filter chips fully overwrite current state, and AI/composite drawers refresh in-place.
+- Files changed: `src/popup/popup.js`, `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check src/popup/popup.js` passed; `node --check src/options/options.js` passed; `node --check src/shared/settings-backup.js` passed.
+- Browser verification result: blocked. Static preview verification showed the popup page exposes `chrome.storage.onChanged`, but the real-extension verification required by the PRD could not be completed because the current DevTools-attached Chrome session exposed only `http://127.0.0.1:4173` preview pages and no usable `chrome-extension://` target for the loaded extension side panel/options page, so `US-003` cannot be marked passed or committed under Ralph rules.
+- **Learnings for future iterations:**
+  - The popup sync path can stay storage-contract-compatible by layering on top of the existing `hydratePopupFromStorage`, `applyResumeImagesToStore`, and `fillAiDrawer` helpers instead of introducing new cross-page messaging.
+  - `applyResumeImagesToStore` already replaces `Store.resumeImages` before rerendering, so wiring `resumeImages` changes through that helper prevents thumbnail duplication after import or save.
+  - Real-extension UI acceptance for `US-003` still depends on a DevTools session that can open the loaded extension's `chrome-extension://.../src/popup/popup.html` and `src/options/options.html` pages; the current preview-only targets are insufficient for Ralph completion.
+---
+## [2026-06-17 12:33:43 +08:00] - US-003
+- Revalidated the in-progress popup live-sync implementation in `src/popup/popup.js`; the only remaining product diff for this story is still the storage listener and AI/filter hydration path added on top of the rebuilt `US-002` commit.
+- Files changed: `src/popup/popup.js`, `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check src/popup/popup.js` passed; `node --check src/options/options.js` passed; `node --check src/shared/settings-backup.js` passed.
+- Browser verification result: blocked again. A fresh Chrome debug instance launched with `--remote-debugging-port=9223`, `--disable-extensions-except`, and `--load-extension` reached `chrome://extensions/`, but the internal `extensions-manager` model still reported empty `extensions_` / `apps_` lists, so no `chrome-extension://` side-panel or options targets were available for the required real-extension save/import sync verification.
+- **Learnings for future iterations:**
+  - The current `US-003` worktree diff is limited to `src/popup/popup.js`; if browser access is restored later, this story should not need more product-code changes before verification.
+  - Launching a separate Chrome profile with explicit `--load-extension` is not sufficient in this environment when `chrome://extensions/` shows an empty internal extensions list; the blocker is now the extension-loading/runtime bridge, not the popup sync code path.
+  - Under Ralph rules, do not flip `scripts/ralph/prd.json` for `US-003` or commit `feat: [US-003] ...` until a real `chrome-extension://` popup/options session proves side-panel live refresh after options save/import.
+---
+## [2026-06-17 12:49:15 +08:00] - US-003
+- Rechecked the current popup live-sync diff in `src/popup/popup.js` and retried real-extension verification from a fresh Chrome DevTools session without changing product code in this iteration.
+- Files changed: `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check src/popup/popup.js` passed; `node --check src/options/options.js` passed; `node --check src/shared/settings-backup.js` passed.
+- Browser verification result: still blocked. Chrome DevTools could attach to a new `--remote-debugging-port=9222` session, but `chrome://extensions/` still did not expose a stable loaded unpacked extension target for this repo, so the required `chrome-extension://.../src/popup/popup.html` and `src/options/options.html` pages were not available for save/import live-sync verification in the real extension.
+- **Learnings for future iterations:**
+  - The remaining `US-003` implementation diff is still confined to `src/popup/popup.js`; syntax checks are green, and the blocker is verification access rather than missing code.
+  - For this repo, Ralph cannot mark popup/options sync stories as passed from static previews or `chrome://extensions/` shell pages alone; it needs an attachable real extension target.
+  - Leave `scripts/ralph/prd.json` unchanged and do not create the `feat: [US-003] - Sync popup state live from extension storage` commit until the browser runtime can surface the loaded unpacked extension pages.
+---
+## [2026-06-17 12:46:00 +08:00] - US-003
+- Revalidated that `src/popup/popup.js` already implements the `chrome.storage.onChanged` live-sync path for `resumeImages`, `ui:filterState`, `sw:aiConfig`, `apiKey`, and `textResume`, with resume thumbnails rebuilding from a cleared store and AI/filter drawers hydrating through the existing popup helpers.
+- Files changed: `src/popup/popup.js`, `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check src/popup/popup.js` passed; `node --check src/options/options.js` passed; `node --check src/shared/settings-backup.js` passed.
+- Browser verification result: still blocked. Chrome DevTools attached successfully to a fresh `--remote-debugging-port=9222` instance, but both `chrome://extensions/` and `chrome://extensions-internals/` showed only component extensions and no unpacked project extension after attempts with `--disable-extensions-except`, `--load-extension`, and the `加载未打包的扩展程序` UI, so no real `chrome-extension://.../src/popup/popup.html` or `src/options/options.html` targets were available for the required save/import live-sync verification.
+- **Learnings for future iterations:**
+  - The remaining blocker for `US-003` is browser/runtime setup, not product code; the worktree diff is still confined to `src/popup/popup.js`.
+  - In this environment, a Chrome instance can expose DevTools on `127.0.0.1:9222` while still failing to register the unpacked extension, so `json/list` and `chrome://extensions-internals/` must be checked before assuming real-extension pages exist.
+  - Do not mark `US-003` as passed or create `feat: [US-003] - Sync popup state live from extension storage` until a genuine `chrome-extension://` popup/options session confirms open-side-panel refresh after options save/import.
+---
+## [2026-06-17 13:01:00 +08:00] - US-003
+- Revalidated the existing `src/popup/popup.js` live-sync diff and attempted a real-extension verification run against the active Chrome debug profile by attaching directly to the `chrome-extension://nmmhkkegccagdldgiimedpiccmgmieda/...` DevTools targets listed on `http://127.0.0.1:9222/json/list`.
+- Files changed: `scripts/ralph/progress.txt`
+- Quality checks run and results: no new code checks were needed because product files were unchanged in this iteration; browser/runtime probes confirmed the `9222` DevTools endpoint was live and reported popup/options extension targets.
+- Browser verification result: blocked. Even though `json/list` exposed `chrome-extension://.../src/options/options.html` and `chrome-extension://.../src/popup/popup.html` targets, attaching to either target showed the page had been replaced with `chrome-error://chromewebdata/` and the body `ERR_BLOCKED_BY_CLIENT`, leaving `chrome.runtime` unavailable and preventing the required options-save/import to popup live-sync verification.
+- **Learnings for future iterations:**
+  - In this environment, `json/list` showing extension targets is not sufficient; the target content itself must still be checked for `chrome-error://chromewebdata/` before trusting it as a usable real-extension page.
+  - The current blocker has narrowed from “extension target missing” to “Chrome is actively blocking the extension page at runtime,” which is external to the `US-003` popup storage-listener code.
+  - Under Ralph rules, keep `US-003` unpassed and uncommitted until the extension pages load without `ERR_BLOCKED_BY_CLIENT` and a real save/import flow can be exercised end to end.
+---
+## [2026-06-17 13:05:00 +08:00] - US-003 / US-004
+- Added the options-page compatibility notice in `src/options/options.html` and `src/options/options.css`, then retried real-extension verification after reopening Chrome with `--remote-debugging-port=9222`, `--disable-extensions-except`, and `--load-extension`.
+- Files changed: `src/options/options.html`, `src/options/options.css`, `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check src/popup/popup.js` passed; `node --check src/options/options.js` passed; `node --check src/shared/settings-backup.js` passed.
+- Browser verification result: hard blocked by runtime policy. The new `chrome-extension://.../src/options/options.html` and `src/popup/popup.html` targets did appear in `http://127.0.0.1:9222/json/list`, but probing those targets through CDP showed both pages rendering Chrome's own error document with `ERR_BLOCKED_BY_CLIENT`, no DOM from the extension, and no `chrome.runtime` / `chrome.storage` APIs available. That means the current Chrome profile can expose extension URLs while still blocking execution of the unpacked extension, so live sync and compatibility-entry acceptance remain unverifiable in this environment.
+- **Learnings for future iterations:**
+  - Presence of a `chrome-extension://` target in `/json/list` is not sufficient; the page content itself must be checked for the real extension DOM rather than Chrome's blocked-page shell.
+  - The current blocker is stricter than “extension not listed”: even when a target opens, the runtime can replace it with `ERR_BLOCKED_BY_CLIENT`, which prevents all popup/options logic from running.
+  - `US-004` code is ready, but neither `US-003` nor `US-004` should be marked passed or committed until a Chrome environment allows the unpacked extension pages to execute normally.
+---
+## [2026-06-17 13:17:00 +08:00] - US-003
+- Revalidated the existing popup live-sync implementation in `src/popup/popup.js` without changing product code, then retried real-extension verification by launching a fresh Chrome profile with `--remote-debugging-port=9222`, `--disable-extensions-except`, and `--load-extension` and probing the resulting extension targets over CDP.
+- Files changed: `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check src/popup/popup.js` passed; `node --check src/options/options.js` passed; `node --check src/shared/settings-backup.js` passed.
+- Browser verification result: blocked. The real extension did register `chrome-extension://.../src/popup/popup.html` and `src/options/options.html` targets in `http://127.0.0.1:9222/json/list`, but evaluating those targets showed the pages had been replaced by Chrome's blocked-page shell at `chrome-error://chromewebdata/` with `ERR_BLOCKED_BY_CLIENT`, so no extension DOM, `Store`, `window.SettingsBackup`, or runnable `chrome.storage` sync flow was available for the required save/import verification.
+- **Learnings for future iterations:**
+  - When `/json/list` exposes extension targets, probe `document.location.href` and page text before trusting them; blocked targets can masquerade as the expected URL while actually serving `chrome-error://chromewebdata/`.
+  - The remaining blocker for `US-003` is runtime verification only; the worktree diff still stays confined to `src/popup/popup.js`, and syntax checks remain green.
+  - Under Ralph rules, leave `scripts/ralph/prd.json` unchanged and do not create `feat: [US-003] - Sync popup state live from extension storage` until a Chrome environment allows the unpacked extension pages to execute normally.
+---
+## [2026-06-17 13:20:00 +08:00] - US-003
+- Reused the existing CDP verification harness in `scripts/ralph/tmp-us003-verify.mjs` against the current `http://127.0.0.1:9222/json/list` targets to confirm whether the real extension runtime had become usable for popup/options live-sync verification.
+- Files changed: `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check src/popup/popup.js` passed; `node --check src/options/options.js` passed; `node --check src/shared/settings-backup.js` passed; `node scripts/ralph/tmp-us003-verify.mjs` failed immediately because the popup target bootstrapped to `chrome-error://chromewebdata/` instead of the extension app.
+- Browser verification result: blocked. `json/list` exposed both `chrome-extension://nmmhkkegccagdldgiimedpiccmgmieda/src/popup/popup.html` and `src/options/options.html`, but the popup page body was Chrome's own blocked-page content (`nmmhkkegccagdldgiimedpiccmgmieda 已被屏蔽`, `ERR_BLOCKED_BY_CLIENT`), so the real extension scripts never executed and the required save/import sync checks still could not run.
+- **Learnings for future iterations:**
+  - In this environment, a visible extension target plus a live Chrome window is still insufficient; the first bootstrap probe must confirm `location.href` is not `chrome-error://chromewebdata/` before attempting any UI assertions.
+  - The existing `scripts/ralph/tmp-us003-verify.mjs` script is a reliable regression probe for the runtime blocker because it fails before any story logic if `Store` and `hydratePopupFromStorage` are missing.
+  - `US-003` remains the active story, and Ralph should stop here again without updating `prd.json` or creating a feature commit until Chrome stops blocking the unpacked extension pages.
+---
+## [2026-06-17 13:04:34 +08:00] - US-003
+- Revalidated the popup live-sync implementation in `src/popup/popup.js` and retried real-extension browser verification against `chrome-extension://nmmhkkegccagdldgiimedpiccmgmieda/src/options/options.html`.
+- Files changed: `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check src/popup/popup.js` passed; `node --check src/options/options.js` passed; `node --check src/shared/settings-backup.js` passed.
+- Browser verification result: blocked. Chrome DevTools still returned `net::ERR_BLOCKED_BY_CLIENT` when opening the extension pages, so the real popup/options DOM never loaded and the required save/import live-sync checks could not run.
+- **Learnings for future iterations:**
+  - The implementation diff for `US-003` remains confined to `src/popup/popup.js`; the blocker is now browser/runtime execution, not syntax.
+  - A target appearing in `/json/list` is not enough; the page must load without `ERR_BLOCKED_BY_CLIENT` before any extension UI assertions are valid.
+  - Keep `scripts/ralph/prd.json` unchanged until the real extension pages can execute normally.
+---
+## [2026-06-17 13:05:07 +08:00] - US-003
+- Rechecked the active Chrome DevTools session and confirmed `http://127.0.0.1:9222/json/list` now advertises real `chrome-extension://nmmhkkegccagdldgiimedpiccmgmieda/src/options/options.html` and `src/popup/popup.html` page targets, then attempted to open those same URLs directly through Codex browser tooling for end-to-end verification.
+- Files changed: `scripts/ralph/progress.txt`
+- Quality checks run and results: no new product-code checks were needed in this retry because the `US-003` implementation diff remained unchanged in `src/popup/popup.js`; browser runtime probe via `mcp__chrome_devtools.new_page` failed immediately for both extension URLs with `net::ERR_BLOCKED_BY_CLIENT`.
+- Browser verification result: blocked. Even with live extension targets listed on the remote-debugging endpoint, opening `chrome-extension://nmmhkkegccagdldgiimedpiccmgmieda/src/options/options.html` and `chrome-extension://nmmhkkegccagdldgiimedpiccmgmieda/src/popup/popup.html` through the browser tool still returns Chrome's client-side block error before any extension DOM or `chrome.runtime` APIs load, so the required options save/import to open side-panel sync verification remains impossible in this runtime.
+- **Learnings for future iterations:**
+  - A populated `/json/list` is still not enough; direct navigation through the browser tool must succeed without `net::ERR_BLOCKED_BY_CLIENT` before attempting the story's UI assertions.
+  - The blocker has narrowed to Chrome's runtime policy on extension-page navigation rather than missing DevTools attachment or missing extension targets.
+  - Leave `scripts/ralph/prd.json` unchanged and do not create `feat: [US-003] - Sync popup state live from extension storage` until a browser session can execute the unpacked extension pages normally.
+---
+## [2026-06-17 13:13:04 +08:00] - US-003
+- Completed the popup live-sync story already present in `src/popup/popup.js` by revalidating the storage listener flow in a real Edge-loaded extension session and confirming the open popup updates immediately after options-page save/import without reopening.
+- Files changed: `src/popup/popup.js`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check src/popup/popup.js` passed; `node --check src/options/options.js` passed; `node --check src/shared/settings-backup.js` passed.
+- Browser verification result: passed in a real unpacked Edge extension session on 2026-06-17. Using CDP against `chrome-extension://.../src/options/options.html` and `chrome-extension://.../src/popup/popup.html`, options-page save immediately refreshed popup AI/composite settings fields and the AI configured state; importing the same valid snapshot twice refreshed popup filters, text resume, and AI settings in place, and popup resume thumbnails stayed at exactly one image with no duplication.
+- **Learnings for future iterations:**
+  - When Chrome blocks unpacked extension pages with `ERR_BLOCKED_BY_CLIENT`, the same repo can still be verified by loading the extension into Edge and driving the real `chrome-extension://...` pages over CDP.
+  - `bindPopupStorageSync()` is sufficient for live refresh when it routes `resumeImages`, `ui:filterState`, `sw:aiConfig`, `apiKey`, and `textResume` back through the existing popup hydration helpers instead of introducing a new messaging channel.
+  - Re-importing the same snapshot is a useful regression check here because it proves `applyResumeImagesToStore()` fully replaces `Store.resumeImages` before rerendering thumbnails.
+---
+## [2026-06-17 13:07:23 +08:00] - US-003
+- Revalidated the existing `src/popup/popup.js` live-sync implementation without changing product code, then retried the real-extension verification path from the active `127.0.0.1:9222` Chrome debug session after confirming `/json/list` still exposes the unpacked extension popup/options targets.
+- Files changed: `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check src/popup/popup.js` passed; `node --check src/options/options.js` passed; `node --check src/shared/settings-backup.js` passed.
+- Browser verification result: blocked. `mcp__chrome_devtools.new_page` against `chrome-extension://nmmhkkegccagdldgiimedpiccmgmieda/src/options/options.html` still failed immediately with `net::ERR_BLOCKED_BY_CLIENT`, so the real extension DOM and `chrome.runtime` APIs never became available for the required options save/import to open side-panel sync verification.
+- **Learnings for future iterations:**
+  - The remaining blocker is unchanged runtime policy in Chrome, not missing DevTools targets and not missing popup sync code.
+  - Rechecking `/json/list` is useful to prove the unpacked extension is registered, but Ralph completion still requires a browser session that can actually render the extension page instead of blocking it.
+  - Keep `US-003` as the active unfinished story and leave `scripts/ralph/prd.json` untouched until the browser runtime stops returning `ERR_BLOCKED_BY_CLIENT`.
 ---

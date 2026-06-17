@@ -24,6 +24,7 @@ var E={};
 var _debounceJobsTimer=null;
 let p1dPollHandle = null;
 var pendingCompositeImportDraft=null;
+var popupStorageListenerBound=false;
 var SettingsBackupApi=window.SettingsBackup||{};
 var FILTER_STATE_KEY=SettingsBackupApi.FILTER_STATE_KEY||'ui:filterState';
 var AI_CONFIG_KEY=SettingsBackupApi.AI_CONFIG_KEY||'sw:aiConfig';
@@ -972,6 +973,11 @@ function applyResumeImagesToStore(stored){
   window.refreshBImages();
 }
 
+function applyAiStorageState(aiConfig,textResume){
+  var cfg=Object.assign({},DEFAULT_AI_CONFIG,aiConfig||{});
+  fillAiDrawer(cfg,textResume||'');
+}
+
 function applyFilterStateToStore(filterState){
   Store.set('selectedCities',filterState&&filterState.selectedCities&&filterState.selectedCities.length?filterState.selectedCities:[]);
   Store.set('selectedPositions',filterState&&filterState.selectedPositions?filterState.selectedPositions:[]);
@@ -992,6 +998,19 @@ function applyFilterStateToStore(filterState){
   window.renderSendGreetingToggle&&window.renderSendGreetingToggle();
 }
 
+function hydrateAiSettingsFromStorage(done){
+  try{
+    chrome.storage.local.get(['apiKey','textResume',AI_CONFIG_KEY],function(items){
+      var cfg=Object.assign({},DEFAULT_AI_CONFIG,items[AI_CONFIG_KEY]||{});
+      if(items.apiKey&&!cfg.apiKey)cfg.apiKey=items.apiKey;
+      applyAiStorageState(cfg,items.textResume||'');
+      if(done)done();
+    });
+  }catch(e){
+    if(done)done(e);
+  }
+}
+
 function hydratePopupFromStorage(done){
   try{
     chrome.storage.local.get(['resumeImages',FILTER_STATE_KEY,'apiKey','textResume',AI_CONFIG_KEY],function(items){
@@ -999,12 +1018,36 @@ function hydratePopupFromStorage(done){
       applyFilterStateToStore(items[FILTER_STATE_KEY]||null);
       var cfg=Object.assign({},DEFAULT_AI_CONFIG,items[AI_CONFIG_KEY]||{});
       if(items.apiKey&&!cfg.apiKey)cfg.apiKey=items.apiKey;
-      fillAiDrawer(cfg,items.textResume||'');
+      applyAiStorageState(cfg,items.textResume||'');
       if(done)done();
     });
   }catch(e){
     if(done)done(e);
   }
+}
+
+function bindPopupStorageSync(){
+  if(popupStorageListenerBound||!chrome.storage||!chrome.storage.onChanged)return;
+  chrome.storage.onChanged.addListener(function(changes,areaName){
+    if(areaName!=='local'||!changes)return;
+
+    if(Object.prototype.hasOwnProperty.call(changes,'resumeImages')){
+      applyResumeImagesToStore(changes.resumeImages&&changes.resumeImages.newValue||[]);
+    }
+
+    if(Object.prototype.hasOwnProperty.call(changes,FILTER_STATE_KEY)){
+      applyFilterStateToStore(changes[FILTER_STATE_KEY]?changes[FILTER_STATE_KEY].newValue:null);
+    }
+
+    if(
+      Object.prototype.hasOwnProperty.call(changes,AI_CONFIG_KEY)||
+      Object.prototype.hasOwnProperty.call(changes,'apiKey')||
+      Object.prototype.hasOwnProperty.call(changes,'textResume')
+    ){
+      hydrateAiSettingsFromStorage();
+    }
+  });
+  popupStorageListenerBound=true;
 }
 
 function refineCollectErrorText(text){
@@ -1045,6 +1088,7 @@ function init(){
   window.renderFilterSuggestionPreview&&window.renderFilterSuggestionPreview(Store.get('filterSuggestionDraft'));
 
   hydratePopupFromStorage();
+  bindPopupStorageSync();
 
   // Load state from background
   try{
