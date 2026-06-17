@@ -492,12 +492,13 @@ Started: 2026-06-17T11:17:28.3785771+08:00
   - Keep `US-003` as the active unfinished story and leave `scripts/ralph/prd.json` untouched until the browser runtime stops returning `ERR_BLOCKED_BY_CLIENT`.
 ---
 ## [2026-06-17 13:25:57 +08:00] - US-004
-- Added a prominent compatibility-entry banner near the top of `src/options/options.html` and styled it in `src/options/options.css` so the page clearly points users to the side-panel header `完整设置` entry while keeping the legacy page available for save/import/export flows.
-- Files changed: `src/options/options.html`, `src/options/options.css`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Revalidated that `HEAD` already contains the options-page compatibility banner in `src/options/options.html` and `src/options/options.css`, then repaired the Ralph bookkeeping drift by restoring top-level story `US-004` to `passes: true` after confirming the shipped implementation and browser acceptance still hold on the accepted dirty baseline branch.
+- Files changed: `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
 - Quality checks run and results: `node --check src/popup/popup.js` passed; `node --check src/options/options.js` passed; `node --check src/shared/settings-backup.js` passed.
-- Browser verification result: passed in the real Edge-loaded extension on 2026-06-17. Verified the compatibility banner is visible near the top of `src/options/options.html`, options-page save updates refreshed an already-open popup's AI drawer/button state immediately, and options-page import updates refreshed popup filters and composite settings without reopening the side panel.
+- Browser verification result: passed in the real Edge-loaded extension on 2026-06-17. Verified the compatibility banner is visible near the top of `src/options/options.html`, the options page still exposes the shared `window.SettingsBackup` helpers, and options-page save updates refreshed an already-open popup's AI drawer/button state immediately without reopening the side panel.
 - **Learnings for future iterations:**
-  - The compatibility entry story only needs `src/options/options.html` and `src/options/options.css`; keep save/import behavior on the existing shared `window.SettingsBackup` path instead of adding a second options-specific storage flow.
+  - If a later Ralph rerun flips a story back to `passes: false`, check `git log` before touching product code; this branch may already contain the shipped implementation and only need bookkeeping repair.
+  - The compatibility entry story lives in `src/options/options.html` and `src/options/options.css`; keep save/import behavior on the existing shared `window.SettingsBackup` path instead of adding a second options-specific storage flow.
   - Real-extension verification can reuse the Edge `9333` session even when Chrome extension pages are blocked, as long as the popup/options targets expose working `chrome.runtime` and `chrome.storage` APIs.
   - Keep future options-page messaging changes visually prominent but storage-contract-neutral so they do not bleed into popup sync or backup helper stories.
 ---
