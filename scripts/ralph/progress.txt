@@ -16,3 +16,54 @@ Started: 2026-06-17T11:17:28.3785771+08:00
   - `resumeImages` imports must update both `chrome.storage.local` and IndexedDB so popup thumbnails and send flows read the same source of truth.
   - This repo has no `package.json`; practical quality checks for Ralph runs are `node --check` on touched JS plus explicit JSON parsing for manifest and PRD artifacts.
 ---
+
+## 2026-06-17 11:22 +08:00 - Ralph session
+- Project: boss-hunter-extension
+- Mode: RunProject
+- Run ID: 20260617-112235-RunProject-29772
+- Branch: ralph/options-backup-jd-refresh
+- Started: 2026-06-17T11:22:35.9990631+08:00
+---
+
+## 2026-06-17 11:22 +08:00 - Execution analysis for Run ID: 20260617-112235-RunProject-29772
+- Subtasks analyzed: 15
+- Parallel batches: 3
+- Batch 1 (parallel): US-001/US-001-ST-001, US-001/US-001-ST-003, US-002/US-002-ST-002, US-002/US-002-ST-004, US-003/US-003-ST-005
+- Batch 2 (parallel): US-001/US-001-ST-002, US-003/US-003-ST-001
+- Batch 3 (parallel): US-002/US-002-ST-001, US-003/US-003-ST-004
+- Batch 4 (serial): US-002/US-002-ST-003
+- Batch 5 (serial): US-003/US-003-ST-002
+- Batch 6 (serial): US-003/US-003-ST-003
+- Batch 7 (serial): US-004/US-004-ST-001
+- Batch 8 (serial): US-004/US-004-ST-002
+- Batch 9 (serial): US-004/US-004-ST-003
+---
+
+## 2026-06-17 11:22 +08:00 - Dirty baseline continuation
+- Project: boss-hunter-extension
+- Run ID: 20260617-112235-RunProject-29772
+- Branch: ralph/options-backup-jd-refresh
+- Mode: RunProject allowed dirty continuation; no auto-commit, no branch switch, no RunParallel.
+- Git status:
+   M scripts/ralph/.last-branch
+   M scripts/ralph/CODEX.md
+   M scripts/ralph/prd.json
+   M scripts/ralph/progress.txt
+   M scripts/ralph/ralph.ps1
+   M src/popup/popup.css
+   M src/popup/popup.html
+   M src/popup/popup.js
+  ?? scripts/ralph/archive/
+  ?? tasks/
+---
+
+## [2026-06-17 11:31:00 +08:00] - US-001
+- Revalidated that the shared backup/settings helper extraction already landed in `HEAD`, then closed the Ralph metadata gap by marking top-level story `US-001` as passed for this branch.
+- Files changed: `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check src/shared/settings-backup.js` passed; `node --check src/options/options.js` passed; BOM-tolerant JSON parse for `manifest.json` and `scripts/ralph/prd.json` passed.
+- Browser verification result: not applicable; this story acceptance only requires shared helper extraction and typecheck.
+- **Learnings for future iterations:**
+  - Ralph reruns can reopen `prd.json` story status even when the implementation commit already exists, so check `git log` before redoing code work.
+  - For dirty-baseline continuations, keep later popup draft changes out of story-completion commits and only stage the specific Ralph bookkeeping files needed for the finished story.
+  - This repo's practical validation baseline remains targeted `node --check` plus explicit JSON parsing because no package-driven lint/test entrypoints exist.
+---
