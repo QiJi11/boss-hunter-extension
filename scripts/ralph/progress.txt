@@ -16,6 +16,17 @@ Started: 2026-06-17T11:17:28.3785771+08:00
   - `resumeImages` imports must update both `chrome.storage.local` and IndexedDB so popup thumbnails and send flows read the same source of truth.
   - This repo has no `package.json`; practical quality checks for Ralph runs are `node --check` on touched JS plus explicit JSON parsing for manifest and PRD artifacts.
 ---
+## [2026-06-17 11:35:24 +08:00] - US-002
+- Implemented the popup composite settings entry in the header, added a dedicated composite settings drawer with AI config fields, text resume editing, and shared backup import/export preview-confirm flows, and wired popup save/import paths through `window.SettingsBackup`.
+- Added popup-side storage sync listeners so `resumeImages`, `ui:filterState`, `sw:aiConfig`, `apiKey`, and `textResume` refresh the current drawer/forms without reopening the side panel.
+- Files changed: `src/popup/popup.html`, `src/popup/popup.css`, `src/popup/popup.js`, `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check src/popup/popup.js` passed; `node --check src/shared/settings-backup.js` passed; `node --check` across all `src/**/*.js` and `scripts/ralph/**/*.js` passed.
+- Browser verification result: blocked. Codex browser tooling could not connect because Chrome DevTools port was unavailable (`Could not find DevToolsActivePort`), so this UI story was not marked complete and was not committed.
+- **Learnings for future iterations:**
+  - Popup now depends on `src/db/indexeddb.js` loading before `src/shared/settings-backup.js`, matching the options page helper contract.
+  - Composite drawer save/export/import flows are centralized in `src/popup/popup.js`; follow that path instead of adding a second popup backup implementation.
+  - UI Ralph stories in this repo remain blocked from `passes: true` until browser tooling can open the side panel and confirm layout/interaction behavior.
+---
 
 ## 2026-06-17 11:22 +08:00 - Ralph session
 - Project: boss-hunter-extension
@@ -66,4 +77,75 @@ Started: 2026-06-17T11:17:28.3785771+08:00
   - Ralph reruns can reopen `prd.json` story status even when the implementation commit already exists, so check `git log` before redoing code work.
   - For dirty-baseline continuations, keep later popup draft changes out of story-completion commits and only stage the specific Ralph bookkeeping files needed for the finished story.
   - This repo's practical validation baseline remains targeted `node --check` plus explicit JSON parsing because no package-driven lint/test entrypoints exist.
+---
+
+## 2026-06-17 11:26 +08:00 - Ralph session
+- Project: boss-hunter-extension
+- Mode: RunProject
+- Run ID: 20260617-112621-RunProject-14308
+- Branch: ralph/options-backup-jd-refresh
+- Started: 2026-06-17T11:26:22.8402332+08:00
+---
+
+## 2026-06-17 11:26 +08:00 - Execution analysis for Run ID: 20260617-112621-RunProject-14308
+- Subtasks analyzed: 15
+- Parallel batches: 3
+- Batch 1 (parallel): US-001/US-001-ST-001, US-001/US-001-ST-003, US-002/US-002-ST-002, US-002/US-002-ST-004, US-003/US-003-ST-005
+- Batch 2 (parallel): US-001/US-001-ST-002, US-003/US-003-ST-001
+- Batch 3 (parallel): US-002/US-002-ST-001, US-003/US-003-ST-004
+- Batch 4 (serial): US-002/US-002-ST-003
+- Batch 5 (serial): US-003/US-003-ST-002
+- Batch 6 (serial): US-003/US-003-ST-003
+- Batch 7 (serial): US-004/US-004-ST-001
+- Batch 8 (serial): US-004/US-004-ST-002
+- Batch 9 (serial): US-004/US-004-ST-003
+---
+
+## 2026-06-17 11:26 +08:00 - Dirty baseline continuation
+- Project: boss-hunter-extension
+- Run ID: 20260617-112621-RunProject-14308
+- Branch: ralph/options-backup-jd-refresh
+- Mode: RunProject allowed dirty continuation; no auto-commit, no branch switch, no RunParallel.
+- Git status:
+   M scripts/ralph/.last-branch
+   M scripts/ralph/CODEX.md
+   M scripts/ralph/prd.json
+   M scripts/ralph/progress.txt
+   M scripts/ralph/ralph.ps1
+   M src/popup/popup.css
+   M src/popup/popup.html
+   M src/popup/popup.js
+  ?? scripts/ralph/archive/
+  ?? tasks/
+---
+## [2026-06-17 11:29:06 +08:00] - US-002
+- Revalidated that the popup dirty-baseline changes already implement the composite settings header button, the AI drawer handoff entry, the full composite drawer, and shared backup/import-export wiring in `src/popup/popup.html`, `src/popup/popup.css`, and `src/popup/popup.js`; added one small guard so reopening the composite drawer clears any stale pending import preview state.
+- Files changed: `src/popup/popup.js`, `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check src/popup/popup.js` passed; BOM-tolerant JSON parse checks for `manifest.json` and `scripts/ralph/prd.json` passed.
+- Browser verification result: blocked. Codex browser tooling could not connect because Chrome DevTools was unavailable in this runtime (`Could not find DevToolsActivePort for chrome at C:\Users\tianh\AppData\Local\Google\Chrome\User Data\DevToolsActivePort`), so this UI story cannot be marked passed yet under Ralph rules.
+- **Learnings for future iterations:**
+  - The popup composite settings work is already concentrated in the three popup files and reuses `window.SettingsBackup`; follow-on sync stories should build on those shared helpers instead of duplicating storage hydration.
+  - Reopening the composite drawer should clear any pending import draft and preview DOM first, otherwise a canceled or completed import can visually linger across sessions.
+  - This Ralph environment currently lacks a working Chrome DevTools bridge even after launching a debug Chrome instance, so UI stories may need the runner/browser tool state fixed before they can be closed out.
+---
+
+## [2026-06-17 11:50:00 +08:00] - US-001
+- Revalidated that `HEAD` already contains the shared backup/settings extraction and corrected the PRD bookkeeping drift by restoring top-level story `US-001` to `passes: true` on the accepted dirty baseline branch.
+- Files changed: `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check src/shared/settings-backup.js` passed; `node --check src/options/options.js` passed.
+- Browser verification result: not applicable; this story only requires shared helper extraction and typecheck.
+- **Learnings for future iterations:**
+  - When `prd.json` regresses on a dirty-baseline continuation, prefer revalidating `HEAD` and repairing only Ralph metadata instead of redoing already-committed product code.
+  - This branch still contains unverified popup UI draft changes, so future story commits should stage only story-specific files and keep unrelated dirty baseline work out of bookkeeping commits.
+  - Browser-dependent popup stories remain blocked until the local Chrome DevTools bridge becomes available again.
+---
+## [2026-06-17 11:30:26 +08:00] - US-002
+- Rechecked the dirty-baseline popup implementation and reran repository-practical quality gates for this story without changing product code in this iteration.
+- Files changed: `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check` across all `src/**/*.js` and `scripts/ralph/**/*.js` passed; BOM-tolerant JSON parse checks across repository `*.json` files passed.
+- Browser verification result: still blocked. Codex browser tooling could not connect because Chrome DevTools remained unavailable (`Could not find DevToolsActivePort for chrome at C:\Users\tianh\AppData\Local\Google\Chrome\User Data\DevToolsActivePort`) even after starting a local Chrome debug instance, so this UI story remains unpassed and uncommitted under Ralph rules.
+- **Learnings for future iterations:**
+  - This branch already contains the popup composite drawer implementation work; future Ralph retries should focus on restoring browser verification rather than redoing the same code path.
+  - In this environment, launching Chrome alone is insufficient if the DevTools bridge still targets a user-data profile without `DevToolsActivePort`; fix the runner/browser attachment before attempting UI story closure.
+  - Do not mark `US-002` as passed or create the feature commit until side-panel UI behavior is verified through the available browser tooling.
 ---
