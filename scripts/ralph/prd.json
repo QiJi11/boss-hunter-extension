@@ -1,23 +1,432 @@
 {
   "project": "boss-hunter-extension",
   "branchName": "ralph/options-backup-jd-refresh",
-  "description": "Add full options backup import/export and refresh popup UI when JD hydration updates job details.",
+  "description": "Add a composite settings drawer in the popup, share backup/import-export logic with options, and sync popup state live from extension storage.",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Deliver options backup import/export and JD hydration refresh",
-      "description": "As a user, I want to export and import my full options profile and see popup job cards refresh when JD hydration updates arrive.",
+      "title": "Extract shared backup and settings snapshot helpers",
+      "description": "As a maintainer, I want options and popup to reuse one backup/import/export implementation so storage, IndexedDB, resume serialization, and AI config normalization stay consistent.",
       "acceptanceCriteria": [
-        "Options page exports versioned JSON containing filterState, resumeImages, textResume, aiConfig, and exportedAt.",
-        "Options page imports JSON through preview then confirm flow, rejecting invalid structures without mutating existing config.",
-        "Applying import updates chrome.storage.local and IndexedDB resume image storage consistently.",
-        "Popup jobs update processing reacts to changes in detail, desc, jdStatus, jdAttempts, and jdLastError so JD hydration refreshes visible cards and overview data.",
-        "node --check or equivalent syntax validation passes for modified JavaScript files.",
-        "Record manual extension verification steps for import/export and JD hydration refresh."
+        "Create a shared module for backup snapshot read, import payload normalization, snapshot apply, resume image serialization/deserialization, AI config normalization, and import preview helpers",
+        "Options page uses the shared module instead of duplicating backup/import/export logic inline",
+        "Shared snapshot application keeps chrome.storage.local and IndexedDB resume images in sync",
+        "Typecheck passes"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "Options page now supports full profile export/import with preview-confirm flow and synced IndexedDB resume storage. Popup jobs diffing now reacts to JD hydration field changes so cards and overview refresh without manual navigation. Manual extension verification steps recorded in progress.txt."
+      "notes": "Shared backup/import-export helpers live in src/shared/settings-backup.js and options now consumes them.",
+      "subtasks": [
+        {
+          "id": "US-001-ST-001",
+          "title": "Extract shared backup and settings snapshot helpers - Step 1",
+          "description": "Create a shared module for backup snapshot read, import payload normalization, snapshot apply, resume image serialization/deserialization, AI config normalization, and import preview helpers",
+          "acceptanceCriteria": [
+            "Create a shared module for backup snapshot read, import payload normalization, snapshot apply, resume image serialization/deserialization, AI config normalization, and import preview helpers",
+            "Typecheck passes"
+          ],
+          "priority": 1,
+          "passes": false,
+          "notes": "Auto-split from oversized story US-001.",
+          "dependsOn": [],
+          "parallelSafe": false,
+          "estimatedFiles": [],
+          "touches": [
+            "config/global"
+          ],
+          "stateWrites": [
+            "shared-config"
+          ],
+          "fileBudget": 2,
+          "splitRequired": false,
+          "sourceStoryId": "US-001"
+        },
+        {
+          "id": "US-001-ST-002",
+          "title": "Extract shared backup and settings snapshot helpers - Step 2",
+          "description": "Options page uses the shared module instead of duplicating backup/import/export logic inline",
+          "acceptanceCriteria": [
+            "Options page uses the shared module instead of duplicating backup/import/export logic inline",
+            "Typecheck passes"
+          ],
+          "priority": 1,
+          "passes": false,
+          "notes": "Auto-split from oversized story US-001.",
+          "dependsOn": [
+            "US-001-ST-001"
+          ],
+          "parallelSafe": false,
+          "estimatedFiles": [],
+          "touches": [
+            "ui/component"
+          ],
+          "stateWrites": [],
+          "fileBudget": 3,
+          "splitRequired": false,
+          "sourceStoryId": "US-001"
+        },
+        {
+          "id": "US-001-ST-003",
+          "title": "Extract shared backup and settings snapshot helpers - Step 3",
+          "description": "Shared snapshot application keeps chrome.storage.local and IndexedDB resume images in sync",
+          "acceptanceCriteria": [
+            "Shared snapshot application keeps chrome.storage.local and IndexedDB resume images in sync",
+            "Typecheck passes"
+          ],
+          "priority": 1,
+          "passes": false,
+          "notes": "Auto-split from oversized story US-001.",
+          "dependsOn": [],
+          "parallelSafe": true,
+          "estimatedFiles": [],
+          "touches": [
+            "story/US-001"
+          ],
+          "stateWrites": [],
+          "fileBudget": 3,
+          "splitRequired": false,
+          "sourceStoryId": "US-001"
+        }
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Add popup composite settings drawer",
+      "description": "As a user, I want a dedicated composite settings entry in the popup header so I can manage AI API settings, text resume, and full backup import/export without leaving the side panel flow.",
+      "acceptanceCriteria": [
+        "Popup header adds a composite settings button alongside the existing AI and gear buttons without breaking narrow layout",
+        "Composite settings drawer includes AI API configuration, text resume editing, and full backup import/export preview-confirm UI",
+        "Popup AI settings save and test flows still work and the legacy AI button remains available as a smaller-scope entry point",
+        "Popup uses the shared backup/import/export module for save, export, import preview, confirm import, and cancel import",
+        "Typecheck passes",
+        "Verify in browser using available Codex browser tooling"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "",
+      "subtasks": [
+        {
+          "id": "US-002-ST-001",
+          "title": "Add popup composite settings drawer - Step 1",
+          "description": "Popup header adds a composite settings button alongside the existing AI and gear buttons without breaking narrow layout",
+          "acceptanceCriteria": [
+            "Popup header adds a composite settings button alongside the existing AI and gear buttons without breaking narrow layout",
+            "Typecheck passes",
+            "Verify in browser using available Codex browser tooling"
+          ],
+          "priority": 2,
+          "passes": false,
+          "notes": "Auto-split from oversized story US-002.",
+          "dependsOn": [],
+          "parallelSafe": false,
+          "estimatedFiles": [],
+          "touches": [
+            "ui/component"
+          ],
+          "stateWrites": [],
+          "fileBudget": 3,
+          "splitRequired": false,
+          "sourceStoryId": "US-002"
+        },
+        {
+          "id": "US-002-ST-002",
+          "title": "Add popup composite settings drawer - Step 2",
+          "description": "Composite settings drawer includes AI API configuration, text resume editing, and full backup import/export preview-confirm UI",
+          "acceptanceCriteria": [
+            "Composite settings drawer includes AI API configuration, text resume editing, and full backup import/export preview-confirm UI",
+            "Typecheck passes",
+            "Verify in browser using available Codex browser tooling"
+          ],
+          "priority": 2,
+          "passes": false,
+          "notes": "Auto-split from oversized story US-002.",
+          "dependsOn": [],
+          "parallelSafe": true,
+          "estimatedFiles": [],
+          "touches": [
+            "backend/service"
+          ],
+          "stateWrites": [],
+          "fileBudget": 3,
+          "splitRequired": false,
+          "sourceStoryId": "US-002"
+        },
+        {
+          "id": "US-002-ST-003",
+          "title": "Add popup composite settings drawer - Step 3",
+          "description": "Popup AI settings save and test flows still work and the legacy AI button remains available as a smaller-scope entry point",
+          "acceptanceCriteria": [
+            "Popup AI settings save and test flows still work and the legacy AI button remains available as a smaller-scope entry point",
+            "Typecheck passes",
+            "Verify in browser using available Codex browser tooling"
+          ],
+          "priority": 2,
+          "passes": false,
+          "notes": "Auto-split from oversized story US-002.",
+          "dependsOn": [],
+          "parallelSafe": false,
+          "estimatedFiles": [],
+          "touches": [
+            "ui/component"
+          ],
+          "stateWrites": [],
+          "fileBudget": 3,
+          "splitRequired": false,
+          "sourceStoryId": "US-002"
+        },
+        {
+          "id": "US-002-ST-004",
+          "title": "Add popup composite settings drawer - Step 4",
+          "description": "Popup uses the shared backup/import/export module for save, export, import preview, confirm import, and cancel import",
+          "acceptanceCriteria": [
+            "Popup uses the shared backup/import/export module for save, export, import preview, confirm import, and cancel import",
+            "Typecheck passes",
+            "Verify in browser using available Codex browser tooling"
+          ],
+          "priority": 2,
+          "passes": false,
+          "notes": "Auto-split from oversized story US-002.",
+          "dependsOn": [],
+          "parallelSafe": true,
+          "estimatedFiles": [],
+          "touches": [
+            "story/US-002"
+          ],
+          "stateWrites": [],
+          "fileBudget": 3,
+          "splitRequired": false,
+          "sourceStoryId": "US-002"
+        }
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Sync popup state live from extension storage",
+      "description": "As a user, I want popup settings, filters, and resume images to refresh immediately after save or import so I do not need to close and reopen the side panel.",
+      "acceptanceCriteria": [
+        "Popup listens to chrome.storage.onChanged for resumeImages, ui:filterState, sw:aiConfig, apiKey, and textResume",
+        "resumeImages refresh clears popup Store resumeImages before rebuilding thumbnails so images never duplicate after sync",
+        "ui:filterState refresh fully overwrites popup filter-related Store fields and rerenders cities, positions, industries, chips, and send-greeting toggle",
+        "sw:aiConfig, apiKey, and textResume refresh update popup AI/composite settings forms and AI button configured state",
+        "Importing a valid snapshot updates popup home filters, resume images, and settings drawer content immediately",
+        "Typecheck passes",
+        "Verify in browser using available Codex browser tooling"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "",
+      "subtasks": [
+        {
+          "id": "US-003-ST-001",
+          "title": "Sync popup state live from extension storage - Step 1",
+          "description": "Popup listens to chrome.storage.onChanged for resumeImages, ui:filterState, sw:aiConfig, apiKey, and textResume",
+          "acceptanceCriteria": [
+            "Popup listens to chrome.storage.onChanged for resumeImages, ui:filterState, sw:aiConfig, apiKey, and textResume",
+            "Typecheck passes",
+            "Verify in browser using available Codex browser tooling"
+          ],
+          "priority": 3,
+          "passes": false,
+          "notes": "Auto-split from oversized story US-003.",
+          "dependsOn": [],
+          "parallelSafe": true,
+          "estimatedFiles": [],
+          "touches": [
+            "backend/service"
+          ],
+          "stateWrites": [],
+          "fileBudget": 3,
+          "splitRequired": false,
+          "sourceStoryId": "US-003"
+        },
+        {
+          "id": "US-003-ST-002",
+          "title": "Sync popup state live from extension storage - Step 2",
+          "description": "resumeImages refresh clears popup Store resumeImages before rebuilding thumbnails so images never duplicate after sync",
+          "acceptanceCriteria": [
+            "resumeImages refresh clears popup Store resumeImages before rebuilding thumbnails so images never duplicate after sync",
+            "Typecheck passes",
+            "Verify in browser using available Codex browser tooling"
+          ],
+          "priority": 3,
+          "passes": false,
+          "notes": "Auto-split from oversized story US-003.",
+          "dependsOn": [],
+          "parallelSafe": false,
+          "estimatedFiles": [],
+          "touches": [
+            "ui/component"
+          ],
+          "stateWrites": [],
+          "fileBudget": 3,
+          "splitRequired": false,
+          "sourceStoryId": "US-003"
+        },
+        {
+          "id": "US-003-ST-003",
+          "title": "Sync popup state live from extension storage - Step 3",
+          "description": "ui:filterState refresh fully overwrites popup filter-related Store fields and rerenders cities, positions, industries, chips, and send-greeting toggle",
+          "acceptanceCriteria": [
+            "ui:filterState refresh fully overwrites popup filter-related Store fields and rerenders cities, positions, industries, chips, and send-greeting toggle",
+            "Typecheck passes",
+            "Verify in browser using available Codex browser tooling"
+          ],
+          "priority": 3,
+          "passes": false,
+          "notes": "Auto-split from oversized story US-003.",
+          "dependsOn": [
+            "US-003-ST-002"
+          ],
+          "parallelSafe": false,
+          "estimatedFiles": [],
+          "touches": [
+            "ui/component"
+          ],
+          "stateWrites": [],
+          "fileBudget": 3,
+          "splitRequired": false,
+          "sourceStoryId": "US-003"
+        },
+        {
+          "id": "US-003-ST-004",
+          "title": "Sync popup state live from extension storage - Step 4",
+          "description": "sw:aiConfig, apiKey, and textResume refresh update popup AI/composite settings forms and AI button configured state",
+          "acceptanceCriteria": [
+            "sw:aiConfig, apiKey, and textResume refresh update popup AI/composite settings forms and AI button configured state",
+            "Typecheck passes",
+            "Verify in browser using available Codex browser tooling"
+          ],
+          "priority": 3,
+          "passes": false,
+          "notes": "Auto-split from oversized story US-003.",
+          "dependsOn": [],
+          "parallelSafe": true,
+          "estimatedFiles": [],
+          "touches": [
+            "backend/service"
+          ],
+          "stateWrites": [],
+          "fileBudget": 3,
+          "splitRequired": false,
+          "sourceStoryId": "US-003"
+        },
+        {
+          "id": "US-003-ST-005",
+          "title": "Sync popup state live from extension storage - Step 5",
+          "description": "Importing a valid snapshot updates popup home filters, resume images, and settings drawer content immediately",
+          "acceptanceCriteria": [
+            "Importing a valid snapshot updates popup home filters, resume images, and settings drawer content immediately",
+            "Typecheck passes",
+            "Verify in browser using available Codex browser tooling"
+          ],
+          "priority": 3,
+          "passes": false,
+          "notes": "Auto-split from oversized story US-003.",
+          "dependsOn": [],
+          "parallelSafe": true,
+          "estimatedFiles": [],
+          "touches": [
+            "story/US-003"
+          ],
+          "stateWrites": [],
+          "fileBudget": 3,
+          "splitRequired": false,
+          "sourceStoryId": "US-003"
+        }
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Demote the legacy options page to a compatibility entry",
+      "description": "As an existing user, I want the options page to keep working while clearly telling me the main settings entry has moved into the popup.",
+      "acceptanceCriteria": [
+        "Options page shows a prominent migration notice that the main settings entry has moved to the popup composite settings drawer",
+        "Options page still saves and imports successfully through the shared helpers",
+        "Options page changes continue to propagate to an already-open popup through storage-backed sync",
+        "Typecheck passes",
+        "Verify in browser using available Codex browser tooling"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "",
+      "subtasks": [
+        {
+          "id": "US-004-ST-001",
+          "title": "Demote the legacy options page to a compatibility entry - Step 1",
+          "description": "Options page shows a prominent migration notice that the main settings entry has moved to the popup composite settings drawer",
+          "acceptanceCriteria": [
+            "Options page shows a prominent migration notice that the main settings entry has moved to the popup composite settings drawer",
+            "Typecheck passes",
+            "Verify in browser using available Codex browser tooling"
+          ],
+          "priority": 4,
+          "passes": false,
+          "notes": "Auto-split from oversized story US-004.",
+          "dependsOn": [],
+          "parallelSafe": false,
+          "estimatedFiles": [],
+          "touches": [
+            "db/schema"
+          ],
+          "stateWrites": [
+            "migration"
+          ],
+          "fileBudget": 2,
+          "splitRequired": false,
+          "sourceStoryId": "US-004"
+        },
+        {
+          "id": "US-004-ST-002",
+          "title": "Demote the legacy options page to a compatibility entry - Step 2",
+          "description": "Options page still saves and imports successfully through the shared helpers",
+          "acceptanceCriteria": [
+            "Options page still saves and imports successfully through the shared helpers",
+            "Typecheck passes",
+            "Verify in browser using available Codex browser tooling"
+          ],
+          "priority": 4,
+          "passes": false,
+          "notes": "Auto-split from oversized story US-004.",
+          "dependsOn": [
+            "US-004-ST-001"
+          ],
+          "parallelSafe": false,
+          "estimatedFiles": [],
+          "touches": [
+            "ui/component"
+          ],
+          "stateWrites": [],
+          "fileBudget": 3,
+          "splitRequired": false,
+          "sourceStoryId": "US-004"
+        },
+        {
+          "id": "US-004-ST-003",
+          "title": "Demote the legacy options page to a compatibility entry - Step 3",
+          "description": "Options page changes continue to propagate to an already-open popup through storage-backed sync",
+          "acceptanceCriteria": [
+            "Options page changes continue to propagate to an already-open popup through storage-backed sync",
+            "Typecheck passes",
+            "Verify in browser using available Codex browser tooling"
+          ],
+          "priority": 4,
+          "passes": false,
+          "notes": "Auto-split from oversized story US-004.",
+          "dependsOn": [
+            "US-004-ST-002"
+          ],
+          "parallelSafe": false,
+          "estimatedFiles": [],
+          "touches": [
+            "ui/component"
+          ],
+          "stateWrites": [],
+          "fileBudget": 3,
+          "splitRequired": false,
+          "sourceStoryId": "US-004"
+        }
+      ]
     }
-  ]
+  ],
+  "dirtyBaseline": "Dirty baseline continuation on branch ralph/options-backup-jd-refresh at 2026-06-17T11:17:27.7828276+08:00."
 }

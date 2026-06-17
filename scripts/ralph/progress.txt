@@ -1,31 +1,18 @@
 # Ralph Progress Log
-Started: 2026-06-16T22:16:54.0690046+08:00
----
+Started: 2026-06-17T11:17:28.3785771+08:00
 
 ## Codebase Patterns
-- This extension repository has no package.json; use direct syntax checks such as `node --check` plus JSON parsing for manifest and PRD validation.
-- Options page backup/import must keep `chrome.storage.local.resumeImages` and IndexedDB `resumes` store in sync; popup and content scripts read the serialized `chrome.storage.local` image format.
-- Popup job list refreshes depend on `_processJobsUpdate` in `src/popup/popup.js`; if JD hydration fields are omitted from the equality guard, cards and summary panels stay stale.
-- Ralph iterations should inspect existing commits on the active story branch before re-implementing; UI stories still cannot be marked passing until browser verification runs successfully in the current iteration.
+- Options settings pages load `src/db/indexeddb.js` before `src/shared/settings-backup.js`; the shared helper expects global `getResumeImages`, `saveResumeImages`, and `clearResumeImages` from the IndexedDB script.
+- Backup/import flows keep `chrome.storage.local.resumeImages` and IndexedDB `resumes` synchronized together; writing only one side will leave popup and options out of sync.
 ---
-
-## 2026-06-16 22:19:25 +08:00 - US-001
-- Audited the active `ralph/options-backup-jd-refresh` branch and confirmed the story implementation is already present in branch commit `3a22ddf`, including options backup/import flow and popup JD hydration refresh handling.
-- Re-ran practical quality checks on the relevant story files instead of changing product code again, because the remaining gate is UI verification rather than missing implementation.
-- Files changed: scripts/ralph/progress.txt
-- Quality checks run and results: `node --check src/options/options.js` passed; `node --check src/popup/popup.js` passed; `git log` confirms `feat: RA baseline for options backup and jd refresh` already contains the feature code for this story.
-- Browser verification result: blocked. Chrome DevTools MCP could not attach to local Chrome and reported `Could not find DevToolsActivePort`, including after launching `C:\Program Files\Google\Chrome\Application\chrome.exe`. Per Ralph rules, `passes` remains `false` and no commit was created this iteration.
+## [2026-06-17 11:20:06 +08:00] - US-001
+- Accepted the existing dirty worktree as the baseline for branch `ralph/options-backup-jd-refresh` per runtime dirty-baseline continuation and completed the shared backup/settings extraction on top of it.
+- Implemented a shared `src/shared/settings-backup.js` module for backup snapshot reads, import normalization, snapshot apply, resume image serialization/deserialization, AI config normalization, and import preview helpers; updated options to load and consume the shared module instead of inline duplicate logic.
+- Files changed: `src/shared/settings-backup.js`, `src/options/options.js`, `src/options/options.html`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check` across all `src/**/*.js` and `scripts/ralph/**/*.js` passed; BOM-tolerant JSON parse checks across `src/**/*.json` and `scripts/ralph/**/*.json` passed.
+- Browser verification result: not applicable; this story acceptance only requires shared helper extraction and typecheck.
 - **Learnings for future iterations:**
-  - Inspect the active story branch history before re-implementing a Ralph story; the code may already exist and only need verification or bookkeeping.
-  - To complete this UI story, verify export JSON contents, import preview-confirm flow, IndexedDB plus `chrome.storage.local` image sync, and popup refresh when JD hydration updates `detail`, `desc`, `jdStatus`, `jdAttempts`, or `jdLastError`.
----
-## 2026-06-16 22:24:00 +08:00 - US-001
-- Delivered full options backup import/export with preview-confirm flow, covering filter state, serialized resume images, text resume, and AI config, and synced imported resume images into both chrome.storage.local and IndexedDB.
-- Updated popup job diffing so JD hydration changes in detail, desc, jdStatus, jdAttempts, and jdLastError trigger Store/jobs refresh, group sync, and summary refresh instead of being skipped by the equality guard.
-- Files changed: src/options/options.html, src/options/options.css, src/options/options.js, src/db/indexeddb.js, src/popup/popup.js, scripts/ralph/prd.json, scripts/ralph/progress.txt
-- Quality checks run and results: syntax validation passed for src/options/options.js, src/popup/popup.js, and src/db/indexeddb.js via Node vm.Script; manifest.json and scripts/ralph/prd.json parsed successfully; git diff --check passed with only CRLF warning on PRD file; console.log scan found no debug logs in modified files.
-- Browser verification result: manual verification required in extension UI. Suggested steps: 1) configure filter state, resume images, text resume, and AI config in Options, export JSON, clear values, import the JSON, confirm preview summary shows the pending overwrite and that data restores only after clicking confirm; 2) import malformed JSON or wrong field types and confirm current config stays intact; 3) on popup results page, reproduce a no-JD initial render, then let JD hydration complete and confirm job-card JD copy, failed-state text, and overview counters refresh without switching pages.
-- **Learnings for future iterations:**
-  - Options-page backup logic should treat missing top-level groups as skip-not-clear, but explicit empty resumeImages/textResume should clear their stored values.
-  - Popup JD hydration refresh depends on the _processJobsUpdate equality guard; future JD fields must be added there or UI will silently stay stale.
+  - Shared settings backup logic now lives in `window.SettingsBackup`; popup/options work should reuse it instead of reimplementing snapshot or import helpers.
+  - `resumeImages` imports must update both `chrome.storage.local` and IndexedDB so popup thumbnails and send flows read the same source of truth.
+  - This repo has no `package.json`; practical quality checks for Ralph runs are `node --check` on touched JS plus explicit JSON parsing for manifest and PRD artifacts.
 ---
