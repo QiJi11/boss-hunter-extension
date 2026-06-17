@@ -382,8 +382,8 @@
         "Browser verification confirms the compatibility notice is visible and options-page changes still propagate to an open side panel via the US-003 storage listeners"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": "",
+      "passes": true,
+      "notes": "Verified on 2026-06-17 in a real Edge-loaded extension session: the compatibility notice renders near the top of options, and options save/import changes still propagate into an already-open popup via the US-003 storage listeners without introducing new storage keys or contracts.",
       "subtasks": [
         {
           "id": "US-004-ST-001",

@@ -5,6 +5,7 @@ Started: 2026-06-17T11:17:28.3785771+08:00
 - Options settings pages load `src/db/indexeddb.js` before `src/shared/settings-backup.js`; the shared helper expects global `getResumeImages`, `saveResumeImages`, and `clearResumeImages` from the IndexedDB script.
 - Backup/import flows keep `chrome.storage.local.resumeImages` and IndexedDB `resumes` synchronized together; writing only one side will leave popup and options out of sync.
 - Popup live-sync stories should listen only to `chrome.storage.onChanged` keys `resumeImages`, `ui:filterState`, `sw:aiConfig`, `apiKey`, and `textResume`, then fan those updates into the existing `applyResumeImagesToStore`, `applyFilterStateToStore`, and AI drawer hydration helpers instead of changing storage contracts.
+- When Chrome debug targets are blocked with `ERR_BLOCKED_BY_CLIENT`, this project can still be browser-verified through the Edge session on `http://127.0.0.1:9333/json/list`, which exposes working `chrome-extension://.../src/popup/popup.html` and `src/options/options.html` pages for real-extension checks.
 ---
 ## [2026-06-17 11:20:06 +08:00] - US-001
 - Accepted the existing dirty worktree as the baseline for branch `ralph/options-backup-jd-refresh` per runtime dirty-baseline continuation and completed the shared backup/settings extraction on top of it.
@@ -489,4 +490,14 @@ Started: 2026-06-17T11:17:28.3785771+08:00
   - The remaining blocker is unchanged runtime policy in Chrome, not missing DevTools targets and not missing popup sync code.
   - Rechecking `/json/list` is useful to prove the unpacked extension is registered, but Ralph completion still requires a browser session that can actually render the extension page instead of blocking it.
   - Keep `US-003` as the active unfinished story and leave `scripts/ralph/prd.json` untouched until the browser runtime stops returning `ERR_BLOCKED_BY_CLIENT`.
+---
+## [2026-06-17 13:25:57 +08:00] - US-004
+- Added a prominent compatibility-entry banner near the top of `src/options/options.html` and styled it in `src/options/options.css` so the page clearly points users to the side-panel header `完整设置` entry while keeping the legacy page available for save/import/export flows.
+- Files changed: `src/options/options.html`, `src/options/options.css`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- Quality checks run and results: `node --check src/popup/popup.js` passed; `node --check src/options/options.js` passed; `node --check src/shared/settings-backup.js` passed.
+- Browser verification result: passed in the real Edge-loaded extension on 2026-06-17. Verified the compatibility banner is visible near the top of `src/options/options.html`, options-page save updates refreshed an already-open popup's AI drawer/button state immediately, and options-page import updates refreshed popup filters and composite settings without reopening the side panel.
+- **Learnings for future iterations:**
+  - The compatibility entry story only needs `src/options/options.html` and `src/options/options.css`; keep save/import behavior on the existing shared `window.SettingsBackup` path instead of adding a second options-specific storage flow.
+  - Real-extension verification can reuse the Edge `9333` session even when Chrome extension pages are blocked, as long as the popup/options targets expose working `chrome.runtime` and `chrome.storage` APIs.
+  - Keep future options-page messaging changes visually prominent but storage-contract-neutral so they do not bleed into popup sync or backup helper stories.
 ---

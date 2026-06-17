@@ -32,6 +32,45 @@ body {
 
 .subtitle { color: #64748b; font-size: 14px; margin-top: 4px; }
 
+.migration-banner {
+  position: relative;
+  margin-bottom: 24px;
+  padding: 20px 22px;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(251, 191, 36, 0.24), transparent 34%),
+    linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(15, 23, 42, 0.92));
+  border: 1px solid rgba(251, 191, 36, 0.26);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.28);
+}
+
+.migration-banner-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.16);
+  color: #fcd34d;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.migration-banner-title {
+  font-size: 20px;
+  line-height: 1.35;
+  color: #f8fafc;
+  margin-bottom: 8px;
+}
+
+.migration-banner-text {
+  font-size: 14px;
+  line-height: 1.7;
+  color: #cbd5e1;
+}
+
 /* ── Card ── */
 .card {
   background: rgba(30, 41, 59, 0.65);
@@ -484,3 +523,28 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+@media (max-width: 640px) {
+  .container {
+    padding: 28px 16px 44px;
+  }
+
+  .migration-banner {
+    padding: 18px 16px;
+  }
+
+  .migration-banner-title {
+    font-size: 18px;
+  }
+
+  .backup-actions,
+  .import-preview-actions,
+  .save-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .save-bar {
+    gap: 10px;
+  }
+}
