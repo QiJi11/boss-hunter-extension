@@ -245,6 +245,7 @@
     lines.push('行业：' + summarizeList(filterState.selectedIndustries));
     lines.push('HR 活跃度：' + (filterState.hrActiveFilter || '不限'));
     lines.push('薪资：' + summarizeList(filterState.salaryRanges));
+    lines.push('AI 薪资范围：' + summarizeAiSalaryRange(filterState.aiSalaryRange));
     lines.push('打招呼：' + (filterState.sendGreeting === false ? '关闭' : '开启'));
     lines.push('排除：' + summarizeList(filterState.excludeKeywords));
     lines.push('历史跳过：' + (filterState.skipHistoryEnabled === false ? '关闭' : '同 HR'));
@@ -257,6 +258,9 @@
       return global.normalizeFilterStateDefaults(filterState);
     }
     const copy = Object.assign({}, filterState);
+    copy.aiSalaryRange = typeof global.normalizeAiSalaryRange === 'function'
+      ? global.normalizeAiSalaryRange(copy.aiSalaryRange)
+      : { minK: '', maxK: '', mode: 'loose' };
     copy.excludeKeywords = Array.isArray(copy.excludeKeywords) ? copy.excludeKeywords : [];
     copy.skipHistoryEnabled = copy.skipHistoryEnabled !== false;
     copy.skipHistoryScope = 'hr';
@@ -275,6 +279,14 @@
 
   function summarizeList(list) {
     return Array.isArray(list) && list.length ? list.join('、') : '不限';
+  }
+
+  function summarizeAiSalaryRange(range) {
+    const normalized = typeof global.normalizeAiSalaryRange === 'function'
+      ? global.normalizeAiSalaryRange(range)
+      : { minK: '', maxK: '', mode: 'loose' };
+    if (!normalized.minK && !normalized.maxK) return '不限';
+    return (normalized.minK || '不限') + '-' + (normalized.maxK || '不限') + 'K/月，' + (normalized.mode === 'strict' ? '严格' : '宽松');
   }
 
   function formatDateTime(value) {

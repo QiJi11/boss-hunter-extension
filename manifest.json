@@ -1,16 +1,16 @@
 {
   "manifest_version": 3,
   "default_locale": "zh_CN",
-  "name": "即投",
+  "name": "Boss Hunter",
   "version": "1.2.0",
-  "description": "BOSS 直聘 AI 自动投递助手 — 一键海投，智能招呼语",
+  "description": "BOSS 直聘 AI 岗位筛选与投递助手",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "即投"
+    "default_title": "Boss Hunter"
   },
   "side_panel": {
     "default_path": "src/popup/popup.html"

@@ -185,9 +185,26 @@ function uniqueStrings(list) {
   });
 }
 
+function normalizeAiSalaryRange(input) {
+  var raw = input && typeof input === 'object' ? input : {};
+  function clean(value) {
+    var text = String(value == null ? '' : value).trim();
+    if (!text) return '';
+    var num = Number(text);
+    return Number.isFinite(num) && num >= 0 ? String(num) : '';
+  }
+  var mode = raw.mode === 'strict' ? 'strict' : 'loose';
+  return {
+    minK: clean(raw.minK),
+    maxK: clean(raw.maxK),
+    mode: mode,
+  };
+}
+
 function normalizeFilterStateDefaults(filterState) {
   var raw = filterState && typeof filterState === 'object' ? filterState : {};
   return Object.assign({}, raw, {
+    aiSalaryRange: normalizeAiSalaryRange(raw.aiSalaryRange),
     excludeKeywords: uniqueStrings(
       Array.isArray(raw.excludeKeywords) ? raw.excludeKeywords : DEFAULT_EXCLUDE_KEYWORDS
     ),

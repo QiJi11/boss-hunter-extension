@@ -216,7 +216,7 @@ async function saveJobRecords(records) {
   var list = (Array.isArray(records) ? records : [records]).map(normalizeJobRecord).filter(Boolean);
   if (!list.length) return [];
   var saved = [];
-  await withTransaction('jobRecords', 'readwrite', function(store) {
+  await withTransaction('jobRecords', 'readwrite', function(store, tx) {
     var index = 0;
     function next() {
       if (index >= list.length) {
@@ -224,11 +224,15 @@ async function saveJobRecords(records) {
       }
       var incoming = list[index++];
       var getReq = store.get(incoming.jobKey);
-      getReq.onerror = () => {};
+      getReq.onerror = () => {
+        try { tx.abort(); } catch (_) {}
+      };
       getReq.onsuccess = () => {
         var merged = mergeJobRecord(getReq.result, incoming);
         var putReq = store.put(merged);
-        putReq.onerror = () => {};
+        putReq.onerror = () => {
+          try { tx.abort(); } catch (_) {}
+        };
         putReq.onsuccess = () => {
           saved.push(merged);
           next();

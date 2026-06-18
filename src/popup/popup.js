@@ -44,6 +44,7 @@ function initDomRefs(){
   E.expandIndustries=$('#expandIndustries');
   E.workAreaChips=$('#workAreaChips');E.jobTypeChips=$('#jobTypeChips');
   E.salaryChips=$('#salaryChips');E.expChips=$('#expChips');E.eduChips=$('#eduChips');
+  E.aiSalaryMinK=$('#aiSalaryMinK');E.aiSalaryMaxK=$('#aiSalaryMaxK');E.aiSalaryMode=$('#aiSalaryMode');
   E.sizeChips=$('#sizeChips');E.stageChips=$('#stageChips');
   E.excludeKeywordInput=$('#excludeKeywordInput');E.addExcludeKeywordBtn=$('#addExcludeKeywordBtn');E.excludeKeywordTags=$('#excludeKeywordTags');
   E.skipHistoryToggle=$('#skipHistoryToggle');
@@ -420,14 +421,30 @@ function syncJobAnalysisCustomRange(){
   if(endEl)endEl.classList.toggle('hidden',!custom);
 }
 
+function parseJobAnalysisDateInput(value){
+  var match=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!match)return null;
+  var date=new Date(Number(match[1]),Number(match[2])-1,Number(match[3]));
+  return Number.isNaN(date.getTime())?null:date;
+}
+
 function readJobAnalysisRangeOptions(){
   var rangeEl=document.getElementById('jobAnalysisRange');
   var startEl=document.getElementById('jobAnalysisStartDate');
   var endEl=document.getElementById('jobAnalysisEndDate');
+  var type=rangeEl?rangeEl.value:'last7';
+  var startDate=startEl?startEl.value:'';
+  var endDate=endEl?endEl.value:'';
+  if(type==='custom'){
+    var start=parseJobAnalysisDateInput(startDate);
+    var end=parseJobAnalysisDateInput(endDate);
+    if(!start||!end)throw new Error('请选择完整的自定义时间范围');
+    if(start.getTime()>end.getTime())throw new Error('开始日期不能晚于结束日期');
+  }
   return {
-    type:rangeEl?rangeEl.value:'last7',
-    startDate:startEl?startEl.value:'',
-    endDate:endEl?endEl.value:'',
+    type:type,
+    startDate:startDate,
+    endDate:endDate,
     aiBatchOverview:Store.get('aiBatchOverview')||null
   };
 }
@@ -635,6 +652,7 @@ function handleStateUpdate(state){
   if(state.selectedPositions&&state.selectedPositions.length)Store.set('selectedPositions',state.selectedPositions);
   if(state.customPositions)Store.set('customPositions',state.customPositions);
   if(Array.isArray(state.excludeKeywords))Store.set('excludeKeywords',state.excludeKeywords);
+  if(Object.prototype.hasOwnProperty.call(state,'aiSalaryRange'))Store.set('aiSalaryRange',normalizeAiSalaryRange(state.aiSalaryRange));
   if(Object.prototype.hasOwnProperty.call(state,'skipHistoryEnabled'))Store.set('skipHistoryEnabled',state.skipHistoryEnabled!==false);
   if(Object.prototype.hasOwnProperty.call(state,'skipHistoryScope'))Store.set('skipHistoryScope','hr');
   if(state.greetings)Store.set('greetings',state.greetings);
@@ -907,6 +925,7 @@ function wireCompositeDrawer(){
     hideCompositeImportPreview();
     setCompositeStatus('','');
     showCompositeImportStatus('','');
+    syncJobAnalysisCustomRange();
     loadAiDrawerConfig();
     E.compositeOverlay.classList.remove('hidden');
   }
@@ -1060,6 +1079,7 @@ function applyFilterStateToStore(filterState){
   Store.set('workAreas',filterState&&filterState.workAreas&&filterState.workAreas.length?filterState.workAreas:['不限']);
   Store.set('jobTypes',filterState&&filterState.jobTypes&&filterState.jobTypes.length?filterState.jobTypes:['不限']);
   Store.set('salaryRanges',filterState&&filterState.salaryRanges&&filterState.salaryRanges.length?filterState.salaryRanges:['不限']);
+  Store.set('aiSalaryRange',normalizeAiSalaryRange(filterState&&filterState.aiSalaryRange));
   Store.set('experience',filterState&&filterState.experience&&filterState.experience.length?filterState.experience:['不限']);
   Store.set('education',filterState&&filterState.education&&filterState.education.length?filterState.education:['不限']);
   Store.set('companySizes',filterState&&filterState.companySizes&&filterState.companySizes.length?filterState.companySizes:['不限']);

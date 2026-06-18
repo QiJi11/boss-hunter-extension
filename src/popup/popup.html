@@ -32,7 +32,7 @@
 
   <header class="header">
     <div class="header-left" id="headerLeft">
-      <span class="title" id="hdrTitle">即投</span>
+      <span class="title" id="hdrTitle">Boss Hunter</span>
       <button class="btn-back hidden" id="btnBack">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 3L5 8l5 5"/></svg>
       </button>
@@ -135,6 +135,18 @@
       <div class="chips-section">
         <div class="section-title">薪资待遇</div>
         <div class="chips-wrap" id="salaryChips"></div>
+      </div>
+      <div class="section">
+        <div class="section-title">AI 薪资范围</div>
+        <div class="ai-salary-range">
+          <input type="number" id="aiSalaryMinK" min="0" step="1" placeholder="最低 K/月">
+          <span class="ai-salary-separator">-</span>
+          <input type="number" id="aiSalaryMaxK" min="0" step="1" placeholder="最高 K/月">
+          <select id="aiSalaryMode" aria-label="AI 薪资范围模式">
+            <option value="loose">宽松</option>
+            <option value="strict">严格</option>
+          </select>
+        </div>
       </div>
       <div class="chips-section">
         <div class="section-title">工作经验</div>
@@ -253,32 +265,9 @@
         </button>
       </div>
       <div class="settings-body">
-        <!-- 模块一：用户沟通群 -->
-        <div class="settings-section">
-          <div class="settings-section-title">即投-产品用户沟通群</div>
-          <img class="settings-qr" src="group-qr.jpg" alt="产品用户沟通群">
-          <p class="settings-qr-hint">二维码过期请添加PM微信进群：13631515693</p>
-        </div>
-        <div class="settings-divider"></div>
-        <!-- 模块二：赞赏支持 -->
-        <div class="settings-section">
-          <div class="settings-section-title">如果产品有帮到你，欢迎给 PM 加个鸡腿🍗</div>
-          <div class="pay-row">
-            <div class="pay-item">
-              <img class="pay-qr" src="wechat-pay.jpg" alt="微信收款码">
-              <span class="pay-label">微信</span>
-            </div>
-            <div class="pay-item">
-              <img class="pay-qr" src="alipay-pay.jpg" alt="支付宝收款码">
-              <span class="pay-label">支付宝</span>
-            </div>
-          </div>
-        </div>
-        <div class="settings-divider"></div>
-        <!-- 模块三：问题反馈（诊断包） -->
         <div class="settings-section">
           <div class="settings-section-title">问题反馈</div>
-          <p class="diag-hint">遇到问题？把诊断文件发给产品负责人定位，隐私数据已脱敏。</p>
+          <p class="diag-hint">遇到问题时可导出诊断文件，隐私数据已脱敏。</p>
           <button class="btn btn-ghost diag-copy-btn" id="btnDiagCopy">复制诊断摘要</button>
           <button class="btn btn-ghost diag-download-btn" id="btnDiagDownload">下载文件</button>
         </div>
@@ -342,6 +331,24 @@
               <button class="btn btn-primary" id="compositeConfirmImportBtn" type="button">确认覆盖</button>
               <button class="btn btn-ghost" id="compositeCancelImportBtn" type="button">取消导入</button>
             </div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">岗位分析备份</div>
+          <div class="job-analysis-export-bar">
+            <select class="job-analysis-range" id="jobAnalysisRange" aria-label="岗位分析导出时间范围">
+              <option value="today">今天</option>
+              <option value="last7" selected>最近 7 天</option>
+              <option value="last30">最近 30 天</option>
+              <option value="all">全部</option>
+              <option value="custom">自定义</option>
+            </select>
+            <input class="job-analysis-date hidden" id="jobAnalysisStartDate" type="date" aria-label="开始日期">
+            <input class="job-analysis-date hidden" id="jobAnalysisEndDate" type="date" aria-label="结束日期">
+            <button class="btn btn-ghost job-analysis-export-btn" id="btnExportJobAnalysis" type="button">导出岗位分析</button>
+            <button class="btn btn-ghost job-analysis-export-btn" id="btnImportJobAnalysis" type="button">导入岗位分析</button>
+            <input id="jobAnalysisImportFileInput" type="file" accept=".json,application/json" hidden>
+            <span class="job-analysis-export-status" id="jobAnalysisExportStatus"></span>
           </div>
         </div>
         <div class="ai-actions composite-actions">

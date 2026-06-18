@@ -19,6 +19,7 @@
     workAreas: ['不限'],
     jobTypes: ['不限'],
     salaryRanges: ['不限'],
+    aiSalaryRange: { minK: '', maxK: '', mode: 'loose' },
     experience: ['不限'],
     education: ['不限'],
     companySizes: ['不限'],
@@ -75,13 +76,13 @@
 
     /** 恢复（popup 重开用），完全替换内部状态 */
     restore: function (snapshot) {
-      // 清空所有现有 key
+      var defaults = JSON.parse(JSON.stringify(_state));
+      var copy = Object.assign(defaults, JSON.parse(JSON.stringify(snapshot || {})));
+      copy.aiSalaryRange = typeof normalizeAiSalaryRange === 'function'
+        ? normalizeAiSalaryRange(copy.aiSalaryRange)
+        : (copy.aiSalaryRange || { minK: '', maxK: '', mode: 'loose' });
       var keys = Object.keys(_state);
-      for (var i = 0; i < keys.length; i++) {
-        delete _state[keys[i]];
-      }
-      // 从快照复制
-      var copy = JSON.parse(JSON.stringify(snapshot));
+      for (var i = 0; i < keys.length; i++) delete _state[keys[i]];
       var ckeys = Object.keys(copy);
       for (var i = 0; i < ckeys.length; i++) {
         _state[ckeys[i]] = copy[ckeys[i]];

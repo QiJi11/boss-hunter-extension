@@ -19,6 +19,7 @@ window.initEventsA=function(){
     { key: 'workAreas', label: '工作区域' },
     { key: 'jobTypes', label: '工作性质' },
     { key: 'salaryRanges', label: '薪资待遇' },
+    { key: 'aiSalaryRange', label: 'AI 薪资范围' },
     { key: 'experience', label: '工作经验' },
     { key: 'education', label: '学历要求' },
     { key: 'companySizes', label: '公司规模' },
@@ -44,6 +45,7 @@ window.initEventsA=function(){
       workAreas:[].concat(Store.get('workAreas')||[]),
       jobTypes:[].concat(Store.get('jobTypes')||[]),
       salaryRanges:[].concat(Store.get('salaryRanges')||[]),
+      aiSalaryRange:normalizeAiSalaryRange(Store.get('aiSalaryRange')),
       experience:[].concat(Store.get('experience')||[]),
       education:[].concat(Store.get('education')||[]),
       companySizes:[].concat(Store.get('companySizes')||[]),
@@ -88,6 +90,11 @@ window.initEventsA=function(){
   }
 
   function formatPreviewValue(key, value){
+    if(key==='aiSalaryRange'){
+      var range=normalizeAiSalaryRange(value);
+      if(!range.minK&&!range.maxK)return'不限';
+      return (range.minK||'不限')+'-'+(range.maxK||'不限')+'K/月，'+(range.mode==='strict'?'严格':'宽松');
+    }
     if(Array.isArray(value)){
       if(key==='selectedCities'){
         var names=uniqueStrings(value).map(function(code){ return cityNameMap()[code]||code; });
@@ -155,6 +162,10 @@ window.initEventsA=function(){
     applyArrayField('workAreas', changes.workAreas, (allowed.workAreas||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
     applyArrayField('jobTypes', changes.jobTypes, (allowed.jobTypes||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
     applyArrayField('salaryRanges', changes.salaryRanges, (allowed.salaryRanges||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
+    if('aiSalaryRange' in changes){
+      if(!changes.aiSalaryRange||typeof changes.aiSalaryRange!=='object'||Array.isArray(changes.aiSalaryRange))ignored.push('aiSalaryRange 格式错误');
+      else next.aiSalaryRange=normalizeAiSalaryRange(changes.aiSalaryRange);
+    }
     applyArrayField('experience', changes.experience, (allowed.experience||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
     applyArrayField('education', changes.education, (allowed.education||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
     applyArrayField('companySizes', changes.companySizes, (allowed.companySizes||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
@@ -201,6 +212,7 @@ window.initEventsA=function(){
     Store.set('workAreas', nextState.workAreas&&nextState.workAreas.length?nextState.workAreas:['不限']);
     Store.set('jobTypes', nextState.jobTypes&&nextState.jobTypes.length?nextState.jobTypes:['不限']);
     Store.set('salaryRanges', nextState.salaryRanges&&nextState.salaryRanges.length?nextState.salaryRanges:['不限']);
+    Store.set('aiSalaryRange', normalizeAiSalaryRange(nextState.aiSalaryRange));
     Store.set('experience', nextState.experience&&nextState.experience.length?nextState.experience:['不限']);
     Store.set('education', nextState.education&&nextState.education.length?nextState.education:['不限']);
     Store.set('companySizes', nextState.companySizes&&nextState.companySizes.length?nextState.companySizes:['不限']);
@@ -217,6 +229,22 @@ window.initEventsA=function(){
 
   function markConfigEdit(){
     if(window.dismissReviewForConfigEdit)window.dismissReviewForConfigEdit();
+  }
+
+  function readAiSalaryRangeFromInputs(){
+    return normalizeAiSalaryRange({
+      minK:E.aiSalaryMinK?E.aiSalaryMinK.value:'',
+      maxK:E.aiSalaryMaxK?E.aiSalaryMaxK.value:'',
+      mode:E.aiSalaryMode?E.aiSalaryMode.value:'loose'
+    });
+  }
+
+  function validateAiSalaryRange(range){
+    var r=normalizeAiSalaryRange(range);
+    var min=r.minK?Number(r.minK):null;
+    var max=r.maxK?Number(r.maxK):null;
+    if(min!=null&&max!=null&&min>max)return 'AI 薪资范围最低值不能大于最高值';
+    return '';
   }
 
   // ── City chips ──
@@ -566,6 +594,18 @@ window.initEventsA=function(){
     })
   });
 
+  [E.aiSalaryMinK,E.aiSalaryMaxK,E.aiSalaryMode].forEach(function(input){
+    if(!input)return;
+    input.addEventListener('change',function(){
+      markConfigEdit();
+      Store.set('aiSalaryRange',readAiSalaryRangeFromInputs());
+      persistFilterState();
+    });
+    input.addEventListener('input',function(){
+      Store.set('aiSalaryRange',readAiSalaryRangeFromInputs());
+    });
+  });
+
   // ── Reset & Collect buttons ──
   E.btnReset.addEventListener('click',function(){
     markConfigEdit();
@@ -577,6 +617,7 @@ window.initEventsA=function(){
     Store.set('workAreas',['不限']);
     Store.set('jobTypes',['不限']);
     Store.set('salaryRanges',['不限']);
+    Store.set('aiSalaryRange',{minK:'',maxK:'',mode:'loose'});
     Store.set('experience',['不限']);
     Store.set('education',['不限']);
     Store.set('companySizes',['不限']);
@@ -605,6 +646,11 @@ window.initEventsA=function(){
     var cities=Store.get('selectedCities')||[];
     var positions=Store.get('selectedPositions')||[];
     var customPos=Store.get('customPositions')||[];
+    var salaryError=validateAiSalaryRange(Store.get('aiSalaryRange'));
+    if(salaryError){
+      alert(salaryError);
+      return;
+    }
     if(!cities.length||(!positions.length&&!customPos.length)){
       alert('请至少选择目标城市和期望职位');
       return;
@@ -704,6 +750,7 @@ window.buildCollectParams=function(){
     customPositions:[].concat(state.customPositions||[]),
     selectedCities:selectedCities,
     excludeKeywords:uniqueStrings(state.excludeKeywords||[]),
+    aiSalaryRange:normalizeAiSalaryRange(state.aiSalaryRange),
     skipHistoryEnabled:state.skipHistoryEnabled!==false,
     skipHistoryScope:'hr'
   };
@@ -729,6 +776,7 @@ function persistFilterState() {
           workAreas: s.workAreas,
           jobTypes: s.jobTypes,
           salaryRanges: s.salaryRanges,
+          aiSalaryRange: normalizeAiSalaryRange(s.aiSalaryRange),
           experience: s.experience,
           education: s.education,
           companySizes: s.companySizes,

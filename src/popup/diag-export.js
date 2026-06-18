@@ -174,7 +174,7 @@
       try { manifest = chrome.runtime.getManifest(); } catch (e) {}
       return {
         env: {
-          extension: (manifest.name || '即投') + ' v' + (manifest.version || '?'),
+          extension: (manifest.name || 'Boss Hunter') + ' v' + (manifest.version || '?'),
           ua: (typeof navigator !== 'undefined' ? navigator.userAgent : ''),
           time: fmtTime(Date.now()),
         },
@@ -193,7 +193,7 @@
   // ── 精简文本（人能扫读 / AI 能解析） ──
   function buildText(b) {
     var L = [];
-    L.push('═══ 即投诊断信息 ═══');
+    L.push('═══ Boss Hunter 诊断信息 ═══');
     L.push('');
     L.push('【环境】');
     L.push('扩展: ' + b.env.extension);

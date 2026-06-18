@@ -27,7 +27,7 @@ window.renderReview=function(sendResults,duration,missedCount){
   }else if(failCount>0){
     titleText='部分成功';
     iconColor='var(--accent)';
-    iconBg='rgba(217,119,6,.1)';
+    iconBg='rgba(15,118,110,.1)';
   }
 
   var html='<div class="review-wrapper">'
@@ -45,7 +45,7 @@ window.renderReview=function(sendResults,duration,missedCount){
 
     // A1 漏发提示行：已建联（停止/中断前点过「立即沟通」）但未发 AI 招呼语+简历图的岗位 → 一键补发
     +(missed>0
-      ?'<div class="review-missed-hint" style="margin:0 16px 12px;padding:10px 12px;background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.25);border-radius:8px;font-size:12px;color:var(--accent);display:flex;align-items:center;gap:8px;">'
+      ?'<div class="review-missed-hint" style="margin:0 16px 12px;padding:10px 12px;background:rgba(15,118,110,.08);border:1px solid rgba(15,118,110,.24);border-radius:8px;font-size:12px;color:var(--accent);display:flex;align-items:center;gap:8px;">'
         +'<span style="flex:1;line-height:1.5">⚠️ '+missed+' 个岗位已建立沟通但未发送 AI 招呼语+简历图</span>'
         +'<button class="btn btn-primary" id="btnRepairMissed" style="flex:none;padding:5px 12px;font-size:12px;">一键补发</button>'
       +'</div>'

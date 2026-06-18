@@ -214,6 +214,17 @@ window.renderSkipHistoryToggle=function(){
   var el=document.getElementById('skipHistoryToggle');
   if(el)el.checked=Store.get('skipHistoryEnabled')!==false;
 };
+window.renderAiSalaryRange=function(){
+  var range=typeof normalizeAiSalaryRange==='function'
+    ? normalizeAiSalaryRange(Store.get('aiSalaryRange'))
+    : (Store.get('aiSalaryRange')||{minK:'',maxK:'',mode:'loose'});
+  var minEl=document.getElementById('aiSalaryMinK');
+  var maxEl=document.getElementById('aiSalaryMaxK');
+  var modeEl=document.getElementById('aiSalaryMode');
+  if(minEl)minEl.value=range.minK||'';
+  if(maxEl)maxEl.value=range.maxK||'';
+  if(modeEl)modeEl.value=range.mode==='strict'?'strict':'loose';
+};
 window.renderChipSecs=function(){
   var areas=getWorkAreas();
   var state=Store.get();
@@ -227,6 +238,7 @@ window.renderChipSecs=function(){
   window.renderHrActiveChips();
   window.renderExcludeKeywords();
   window.renderSkipHistoryToggle();
+  window.renderAiSalaryRange();
 };
 window.renderSettings=function(){window.renderPosBrowse();window.renderInd();window.renderChipSecs()};
 window.renderSendGreetingToggle=function(){
