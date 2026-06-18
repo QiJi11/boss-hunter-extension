@@ -639,6 +639,8 @@ function handleStateUpdate(state){
   if(Object.prototype.hasOwnProperty.call(state,'skipHistoryScope'))Store.set('skipHistoryScope','hr');
   if(state.greetings)Store.set('greetings',state.greetings);
   if(state.aiBatchOverview)Store.set('aiBatchOverview',state.aiBatchOverview);
+  if(state.aiOverviewSummary)Store.set('aiOverviewSummary',state.aiOverviewSummary);
+  if(state.collectionSummary)Store.set('collectionSummary',state.collectionSummary);
   if(state.jdHydrationProgress)Store.set('jdHydrationProgress',state.jdHydrationProgress);
   if(state.aiScreeningProgress)updateAiScreeningProgress(state.aiScreeningProgress);
 

@@ -158,6 +158,78 @@ function buildEmptyBatchOverview() {
   };
 }
 
+function buildEmptyCollectionSummary() {
+  return {
+    startedAt: 0,
+    updatedAt: 0,
+    cities: [],
+    keywords: [],
+    tasksTotal: 0,
+    tasksDone: 0,
+    rawJobs: 0,
+    matchedJobs: 0,
+    visibleJobs: 0,
+    checkedJobs: 0,
+    excludedJobs: 0,
+    historySkippedJobs: 0,
+    groups: 0,
+    taskSummaries: [],
+  };
+}
+
+function buildEmptyAiOverviewSummary(reason) {
+  return {
+    status: reason ? 'skipped' : 'idle',
+    reason: reason || '',
+    totalJobs: 0,
+    jobsWithJD: 0,
+    pendingJobs: 0,
+    failedJdJobs: 0,
+    completedBatches: 0,
+    updatedAt: 0,
+  };
+}
+
+function countCheckedJobs(jobs) {
+  return (Array.isArray(jobs) ? jobs : []).filter(function(job) { return !!job && job.checked !== false; }).length;
+}
+
+function countExcludedJobs(jobs) {
+  return (Array.isArray(jobs) ? jobs : []).filter(function(job) { return !!(job && job.excludeReason); }).length;
+}
+
+function countHistorySkippedJobs(jobs) {
+  return (Array.isArray(jobs) ? jobs : []).filter(function(job) { return !!(job && job.historySkipReason); }).length;
+}
+
+function countFailedJdJobs(jobs) {
+  return (Array.isArray(jobs) ? jobs : []).filter(function(job) { return job && job.jdStatus === 'failed'; }).length;
+}
+
+function hasBatchOverviewContent(overview) {
+  return !!(overview && (overview.headline || (overview.good || []).length || (overview.bad || []).length || (overview.nextFocus || []).length || (overview.pitfalls || []).length));
+}
+
+function summarizeGroups(clusters) {
+  return Object.keys(clusters || {}).filter(function(key) {
+    return Array.isArray(clusters[key]) && clusters[key].length > 0;
+  }).length;
+}
+
+function updateCollectionSummary(patch) {
+  state.collectionSummary = Object.assign({}, state.collectionSummary || buildEmptyCollectionSummary(), patch || {}, { updatedAt: Date.now() });
+  try {
+    DiagLogger.info('sw.collect.diag', 'summary raw=' + state.collectionSummary.rawJobs + ' matched=' + state.collectionSummary.matchedJobs + ' visible=' + state.collectionSummary.visibleJobs + ' checked=' + state.collectionSummary.checkedJobs + ' excluded=' + state.collectionSummary.excludedJobs + ' historySkipped=' + state.collectionSummary.historySkippedJobs);
+  } catch (_) {}
+}
+
+function updateAiOverviewSummary(patch) {
+  state.aiOverviewSummary = Object.assign({}, state.aiOverviewSummary || buildEmptyAiOverviewSummary(), patch || {}, { updatedAt: Date.now() });
+  try {
+    DiagLogger.info('sw.aiOverview.diag', 'status=' + state.aiOverviewSummary.status + ' reason=' + (state.aiOverviewSummary.reason || '') + ' jobs=' + state.aiOverviewSummary.totalJobs + ' jd=' + state.aiOverviewSummary.jobsWithJD + '/' + state.aiOverviewSummary.totalJobs);
+  } catch (_) {}
+}
+
 function createJobHydrationMeta(job) {
   if (!job) return null;
   if (!job.jdStatus) job.jdStatus = (job.detail || job.desc || job.description) ? 'success' : 'pending';
@@ -550,15 +622,60 @@ async function refreshBatchOverview(force) {
   var jobs = Array.isArray(state.jobs) ? state.jobs : [];
   if (!jobs.length) {
     state.aiBatchOverview = buildEmptyBatchOverview();
+    updateAiOverviewSummary(Object.assign(buildEmptyAiOverviewSummary('无岗位可分析'), {
+      status: 'skipped',
+    }));
     pushState();
     return;
   }
   try {
+    var cfg = await getAiConfig();
+    if (!cfg.apiKey || !cfg.model) {
+      state.aiBatchOverview = buildEmptyBatchOverview();
+      updateAiOverviewSummary({
+        status: 'skipped',
+        reason: '未配置 AI API Key 或模型',
+        totalJobs: jobs.length,
+        jobsWithJD: countJobsWithJD(jobs),
+        pendingJobs: countPendingJdJobs(jobs),
+        failedJdJobs: countFailedJdJobs(jobs),
+        completedBatches: state.jdHydrationProgress && state.jdHydrationProgress.completedBatches || 0,
+      });
+      pushState();
+      return;
+    }
+    updateAiOverviewSummary({
+      status: 'running',
+      reason: '',
+      totalJobs: jobs.length,
+      jobsWithJD: countJobsWithJD(jobs),
+      pendingJobs: countPendingJdJobs(jobs),
+      failedJdJobs: countFailedJdJobs(jobs),
+      completedBatches: state.jdHydrationProgress && state.jdHydrationProgress.completedBatches || 0,
+    });
     var overview = await generateBatchOverview(jobs, state.jdHydrationProgress && state.jdHydrationProgress.completedBatches || 0);
     state.aiBatchOverview = overview;
+    updateAiOverviewSummary({
+      status: hasBatchOverviewContent(overview) ? 'ready' : 'empty',
+      reason: hasBatchOverviewContent(overview) ? '' : 'AI 返回空总览',
+      totalJobs: jobs.length,
+      jobsWithJD: countJobsWithJD(jobs),
+      pendingJobs: countPendingJdJobs(jobs),
+      failedJdJobs: countFailedJdJobs(jobs),
+      completedBatches: state.jdHydrationProgress && state.jdHydrationProgress.completedBatches || 0,
+    });
     pushState();
   } catch (e) {
     ErrorLogger.logError(e.message || String(e), e?.stack, 'generate batch overview failed');
+    updateAiOverviewSummary({
+      status: 'failed',
+      reason: (e && e.message || String(e)).slice(0, 160),
+      totalJobs: jobs.length,
+      jobsWithJD: countJobsWithJD(jobs),
+      pendingJobs: countPendingJdJobs(jobs),
+      failedJdJobs: countFailedJdJobs(jobs),
+      completedBatches: state.jdHydrationProgress && state.jdHydrationProgress.completedBatches || 0,
+    });
     if (force || !state.aiBatchOverview) {
       state.aiBatchOverview = normalizeBatchOverview({}, jobs, state.jdHydrationProgress && state.jdHydrationProgress.completedBatches || 0);
       pushState();
@@ -611,6 +728,14 @@ async function scheduleJdHydration(options) {
   var completedBatches = state.jdHydrationProgress && state.jdHydrationProgress.completedBatches || 0;
   var stalledBatches = 0;
   state.jdHydrationProgress = buildJdHydrationProgress(jobs, true, completedBatches, stalledBatches);
+  updateAiOverviewSummary({
+    status: state.aiOverviewSummary && state.aiOverviewSummary.status || 'idle',
+    totalJobs: jobs.length,
+    jobsWithJD: countJobsWithJD(jobs),
+    pendingJobs: countPendingJdJobs(jobs),
+    failedJdJobs: countFailedJdJobs(jobs),
+    completedBatches: completedBatches,
+  });
   pushState();
 
   try {
@@ -626,6 +751,14 @@ async function scheduleJdHydration(options) {
       stalledBatches = newSuccess > 0 ? 0 : stalledBatches + 1;
       state.jdSamples = sampleJDs(clusterJobs(jobs, state.selectedPositions, state.customPositions), 5);
       state.jdHydrationProgress = buildJdHydrationProgress(jobs, true, completedBatches, stalledBatches);
+      updateAiOverviewSummary({
+        status: state.aiOverviewSummary && state.aiOverviewSummary.status || 'idle',
+        totalJobs: jobs.length,
+        jobsWithJD: countJobsWithJD(jobs),
+        pendingJobs: countPendingJdJobs(jobs),
+        failedJdJobs: countFailedJdJobs(jobs),
+        completedBatches: completedBatches,
+      });
       pushState();
       if (newSuccess > 0 || completedBatches === 1 || opts.forceOverviewRefresh) {
         await refreshBatchOverview(false);
@@ -635,6 +768,15 @@ async function scheduleJdHydration(options) {
   } finally {
     jdHydrationRunning = false;
     state.jdHydrationProgress = buildJdHydrationProgress(jobs, false, completedBatches, stalledBatches);
+    updateAiOverviewSummary({
+      status: state.aiOverviewSummary && state.aiOverviewSummary.status || 'idle',
+      reason: stalledBatches >= (CONFIG.JD_HYDRATION_STALL_LIMIT || 2) && countPendingJdJobs(jobs) ? 'JD 补拉连续无新增，已暂停' : (state.aiOverviewSummary && state.aiOverviewSummary.reason || ''),
+      totalJobs: jobs.length,
+      jobsWithJD: countJobsWithJD(jobs),
+      pendingJobs: countPendingJdJobs(jobs),
+      failedJdJobs: countFailedJdJobs(jobs),
+      completedBatches: completedBatches,
+    });
     pushState();
   }
 }
@@ -771,6 +913,8 @@ let state = {
   greetings: {},
   aiScreeningProgress: { done: 0, total: 0 },
   aiBatchOverview: buildEmptyBatchOverview(),
+  aiOverviewSummary: buildEmptyAiOverviewSummary(),
+  collectionSummary: buildEmptyCollectionSummary(),
   jdHydrationProgress: { running: false, done: 0, total: 0, success: 0, failed: 0, pending: 0, completedBatches: 0, stalledBatches: 0 },
   jobCustom: {},            // per-job 自定义（来自 ui:jobCustom）：{[jobId]:{customGreeting,images,...}}，发送前从 storage 灌入；buildSendQueueV6 按 jobId 取 customGreeting 覆盖组级招呼语
   greetingProgress: { done: 0, total: 0 },
@@ -965,6 +1109,8 @@ function buildSnapshotSummary() {
       workerTabs: (state._v6WorkerTabIds || []).length,
       missedJobs: (state._v6MissedJobs || []).length,
       sendResultsCount: (state.sendResults || []).length,
+      collectionSummary: state.collectionSummary || buildEmptyCollectionSummary(),
+      aiOverviewSummary: state.aiOverviewSummary || buildEmptyAiOverviewSummary(),
     };
     var g = state.greetings || {};
     snap.greetings = {};
@@ -1594,6 +1740,9 @@ async function startCollect(params) {
   state.phase = 'collecting';
   state.jobs = [];
   state.greetings = {};
+  state.collectionSummary = buildEmptyCollectionSummary();
+  state.aiOverviewSummary = buildEmptyAiOverviewSummary('等待采集完成');
+  state.aiBatchOverview = buildEmptyBatchOverview();
   // 新批次开始，清空已发送记录
   sentJobIds.clear();
   state.sendResults = [];
@@ -1631,6 +1780,20 @@ async function startCollect(params) {
         tasks.push({ keyword: keywordList[tk], cityCode: cityList[tc] });
       }
     }
+    updateCollectionSummary({
+      startedAt: Date.now(),
+      cities: cityList,
+      keywords: keywordList,
+      tasksTotal: tasks.length,
+      rawJobs: 0,
+      matchedJobs: 0,
+      visibleJobs: 0,
+      checkedJobs: 0,
+      excludedJobs: 0,
+      historySkippedJobs: 0,
+      groups: 0,
+      taskSummaries: [],
+    });
 
     for (let i = 0; i < tasks.length; i += MAX_PARALLEL) {
       const batch = tasks.slice(i, i + MAX_PARALLEL);
@@ -1638,11 +1801,35 @@ async function startCollect(params) {
         batch.map(task => collectOnTab(task.cityCode, buildKeywordCollectParams(params, task.keyword)))
       );
 
-      for (const result of batchResults) {
+      for (let br = 0; br < batchResults.length; br++) {
+        const taskInfo = batch[br] || {};
+        const result = batchResults[br];
         if (result.status === 'fulfilled' && result.value) {
           if (Array.isArray(result.value)) allJobs.push(...result.value);
+          var taskCount = Array.isArray(result.value) ? result.value.length : 0;
+          state.collectionSummary.taskSummaries.push({
+            city: taskInfo.cityCode || '',
+            keyword: taskInfo.keyword || '',
+            rawJobs: taskCount,
+            status: 'ok',
+          });
+          try { DiagLogger.info('sw.collect.diag', 'task ok city=' + (taskInfo.cityCode || '') + ' keyword=' + (taskInfo.keyword || '') + ' raw=' + taskCount); } catch (_) {}
+        } else {
+          var errMsg = result && result.reason ? (result.reason.message || String(result.reason)) : 'collect failed';
+          state.collectionSummary.taskSummaries.push({
+            city: taskInfo.cityCode || '',
+            keyword: taskInfo.keyword || '',
+            rawJobs: 0,
+            status: 'failed',
+            error: String(errMsg).slice(0, 120),
+          });
+          try { DiagLogger.warn('sw.collect.diag', 'task failed city=' + (taskInfo.cityCode || '') + ' keyword=' + (taskInfo.keyword || '') + ' error=' + errMsg); } catch (_) {}
         }
       }
+      updateCollectionSummary({
+        tasksDone: Math.min(i + MAX_PARALLEL, tasks.length),
+        rawJobs: allJobs.length,
+      });
 
       // 【并行优化】第一批岗位收集完后立即异步启动招呼语生成，不等待后续批次
       if (i === 0 && allJobs.length > 0 && !earlyGreetingStarted) {
@@ -1683,11 +1870,23 @@ async function startCollect(params) {
         }
       } catch (e) { /* 静默：storage 读失败保持原值 */ }
     }
-    allJobs = mergeCollectedJobsById(filterJobsByExpected(allJobs, state.selectedPositions, state.customPositions));
+    var rawJobCount = allJobs.length;
+    var matchedJobs = filterJobsByExpected(allJobs, state.selectedPositions, state.customPositions);
+    var matchedJobCount = matchedJobs.length;
+    allJobs = mergeCollectedJobsById(matchedJobs);
     state.jobs = await applyPostCollectRules(allJobs, state);
     ensureJobHydrationMeta(state.jobs);
     state.clusters = clusterJobs(state.jobs, state.selectedPositions, state.customPositions);
     state.jdSamples = sampleJDs(state.clusters, 5);
+    updateCollectionSummary({
+      rawJobs: rawJobCount,
+      matchedJobs: matchedJobCount,
+      visibleJobs: state.jobs.length,
+      checkedJobs: countCheckedJobs(state.jobs),
+      excludedJobs: countExcludedJobs(state.jobs),
+      historySkippedJobs: countHistorySkippedJobs(state.jobs),
+      groups: summarizeGroups(state.clusters),
+    });
     state.phase = 'ready';
     saveCollectedJobRecords(state.jobs, 'collect');
     pushState();
@@ -1701,6 +1900,13 @@ async function startCollect(params) {
       state.jobs = await applyPostCollectRules(screenedJobs, state);
       state.clusters = clusterJobs(state.jobs, state.selectedPositions, state.customPositions);
       state.jdSamples = sampleJDs(state.clusters, 5);
+      updateCollectionSummary({
+        visibleJobs: state.jobs.length,
+        checkedJobs: countCheckedJobs(state.jobs),
+        excludedJobs: countExcludedJobs(state.jobs),
+        historySkippedJobs: countHistorySkippedJobs(state.jobs),
+        groups: summarizeGroups(state.clusters),
+      });
       saveCollectedJobRecords(state.jobs, 'ai-screen');
       pushState();
       return refreshBatchOverview(true);
