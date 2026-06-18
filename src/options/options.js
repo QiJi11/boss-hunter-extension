@@ -1,4 +1,17 @@
-// ── DOM refs ──
+const {
+  FILTER_STATE_KEY,
+  AI_CONFIG_KEY,
+  DEFAULT_AI_CONFIG,
+  readBackupSnapshot,
+  normalizeImportPayload,
+  applySnapshotToStorage,
+  serializeCurrentResumeImages,
+  deserializeResumeImages,
+  normalizeAiConfig,
+  buildImportPreviewMeta,
+  buildImportPreviewItems,
+} = window.SettingsBackup;
+
 const uploadZone = document.getElementById('uploadZone');
 const fileInput = document.getElementById('fileInput');
 const previewGrid = document.getElementById('previewGrid');
@@ -13,38 +26,28 @@ const apiSectionBody = document.getElementById('apiSectionBody');
 const testAiBtn = document.getElementById('testAiBtn');
 const saveBtn = document.getElementById('saveBtn');
 const saveStatus = document.getElementById('saveStatus');
+const exportBtn = document.getElementById('exportBtn');
+const importBtn = document.getElementById('importBtn');
+const importFileInput = document.getElementById('importFileInput');
+const importStatus = document.getElementById('importStatus');
+const importPreviewCard = document.getElementById('importPreviewCard');
+const importPreviewMeta = document.getElementById('importPreviewMeta');
+const importPreviewSummary = document.getElementById('importPreviewSummary');
+const confirmImportBtn = document.getElementById('confirmImportBtn');
+const cancelImportBtn = document.getElementById('cancelImportBtn');
 
-// ── State ──
 let resumeImages = [];
-let aiConfig = {};
+let aiConfig = { ...DEFAULT_AI_CONFIG };
 let textResume = '';
+let pendingImportDraft = null;
 
-// ── Init ──
+/**
+ * 初始化设置页。
+ */
 (async function init() {
   try {
-    const [storedImages, storedData, storedApi] = await Promise.all([
-      getResumeImages().catch(() => []),
-      chrome.storage.local.get(['resumeImages']).catch(() => ({})),
-      chrome.storage.local.get(['apiKey', 'textResume', 'sw:aiConfig']).catch(() => ({})),
-    ]);
+    await hydratePageFromStorage();
 
-    aiConfig = Object.assign({
-      provider: 'openai-compatible',
-      baseUrl: 'https://api.openai.com/v1',
-      apiKey: '',
-      model: 'gpt-4.1-mini',
-      scoreThreshold: 60,
-    }, storedApi['sw:aiConfig'] || {});
-    if (storedApi.apiKey && !aiConfig.apiKey) aiConfig.apiKey = storedApi.apiKey;
-    textResume = storedApi.textResume || '';
-    if (providerInput) providerInput.value = aiConfig.provider || 'openai-compatible';
-    if (baseUrlInput) baseUrlInput.value = aiConfig.baseUrl || '';
-    if (apiKeyInput) apiKeyInput.value = aiConfig.apiKey || '';
-    if (modelInput) modelInput.value = aiConfig.model || '';
-    if (scoreThresholdInput) scoreThresholdInput.value = aiConfig.scoreThreshold || 60;
-    if (textResumeInput) textResumeInput.value = textResume;
-
-    // Collapsible toggle
     if (apiSectionToggle) {
       apiSectionToggle.addEventListener('click', () => {
         apiSectionBody.classList.toggle('open');
@@ -52,39 +55,175 @@ let textResume = '';
       });
     }
 
-    // 优先从 chrome.storage 读取（序列化格式）
-    if (storedData.resumeImages?.length) {
-      resumeImages = storedData.resumeImages.map((s) => ({
-        name: s.name,
-        blob: new Blob([new Uint8Array(s.data)], { type: s.type }),
-      }));
-    } else if (storedImages?.length) {
-      resumeImages = storedImages;
-    }
-    renderPreviews();
+    bindEvents();
   } catch (e) {
     console.warn('Options init error:', e);
   }
 })();
 
-// ── Image Upload ──
-uploadZone.addEventListener('click', () => fileInput.click());
+function bindEvents() {
+  uploadZone.addEventListener('click', () => fileInput.click());
 
-uploadZone.addEventListener('dragover', (e) => {
-  e.preventDefault();
-  uploadZone.classList.add('drag-over');
-});
-uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
-uploadZone.addEventListener('drop', (e) => {
-  e.preventDefault();
-  uploadZone.classList.remove('drag-over');
-  addFiles(e.dataTransfer.files);
-});
+  uploadZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadZone.classList.add('drag-over');
+  });
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+  uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    addFiles(e.dataTransfer.files);
+  });
 
-fileInput.addEventListener('change', () => {
-  addFiles(fileInput.files);
-  fileInput.value = '';
-});
+  fileInput.addEventListener('change', () => {
+    addFiles(fileInput.files);
+    fileInput.value = '';
+  });
+
+  if (testAiBtn) {
+    testAiBtn.addEventListener('click', () => {
+      testAiBtn.disabled = true;
+      setStatus('正在测试 AI 连接...', '');
+      chrome.runtime.sendMessage({ type: 'TEST_AI_CONFIG', config: readAiConfigFromForm() }, (resp) => {
+        testAiBtn.disabled = false;
+        if (chrome.runtime.lastError || !resp || !resp.success) {
+          setStatus('AI 连接失败: ' + ((resp && resp.error) || chrome.runtime.lastError?.message || '未知错误'), 'error');
+          return;
+        }
+        setStatus('AI 连接成功', 'success');
+      });
+    });
+  }
+
+  saveBtn.addEventListener('click', async () => {
+    saveBtn.disabled = true;
+    setStatus('保存中...', '');
+
+    try {
+      const newAiConfig = readAiConfigFromForm();
+      const newTextResume = textResumeInput ? textResumeInput.value.trim() : '';
+      await applySnapshotToStorage({
+        resumeImages: await serializeCurrentResumeImages(resumeImages),
+        textResume: newTextResume,
+        aiConfig: newAiConfig,
+      });
+
+      aiConfig = newAiConfig;
+      textResume = newTextResume;
+      await hydratePageFromStorage();
+      setStatus('已保存', 'success');
+    } catch (e) {
+      console.error('Save error:', e);
+      setStatus('保存失败: ' + e.message, 'error');
+    } finally {
+      saveBtn.disabled = false;
+      setTimeout(() => setStatus('', ''), 2500);
+    }
+  });
+
+  if (exportBtn) {
+    exportBtn.addEventListener('click', async () => {
+      exportBtn.disabled = true;
+      showImportStatus('正在导出配置...', '');
+      try {
+        const snapshot = await readBackupSnapshot();
+        downloadBackup(snapshot);
+        showImportStatus('配置已导出', 'success');
+      } catch (e) {
+        showImportStatus('导出失败: ' + e.message, 'error');
+      } finally {
+        exportBtn.disabled = false;
+      }
+    });
+  }
+
+  if (importBtn) {
+    importBtn.addEventListener('click', () => importFileInput.click());
+  }
+
+  if (importFileInput) {
+    importFileInput.addEventListener('change', async () => {
+      const file = importFileInput.files && importFileInput.files[0];
+      importFileInput.value = '';
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        pendingImportDraft = normalizeImportPayload(parsed);
+        renderImportPreview(pendingImportDraft);
+        showImportStatus('导入文件解析成功，请确认覆盖。', 'success');
+      } catch (e) {
+        pendingImportDraft = null;
+        hideImportPreview();
+        showImportStatus('导入失败: ' + e.message, 'error');
+      }
+    });
+  }
+
+  if (confirmImportBtn) {
+    confirmImportBtn.addEventListener('click', async () => {
+      if (!pendingImportDraft) return;
+      confirmImportBtn.disabled = true;
+      cancelImportBtn.disabled = true;
+      showImportStatus('正在写入导入配置...', '');
+      try {
+        await applySnapshotToStorage(pendingImportDraft);
+        pendingImportDraft = null;
+        hideImportPreview();
+        await hydratePageFromStorage();
+        showImportStatus('导入完成，当前页面已刷新为最新配置。', 'success');
+      } catch (e) {
+        showImportStatus('导入失败: ' + e.message, 'error');
+      } finally {
+        confirmImportBtn.disabled = false;
+        cancelImportBtn.disabled = false;
+      }
+    });
+  }
+
+  if (cancelImportBtn) {
+    cancelImportBtn.addEventListener('click', () => {
+      pendingImportDraft = null;
+      hideImportPreview();
+      showImportStatus('已取消导入。', '');
+    });
+  }
+}
+
+/**
+ * 从本地存储读取并刷新页面状态。
+ */
+async function hydratePageFromStorage() {
+  const [storedImages, storedResumeData, storedConfig] = await Promise.all([
+    getResumeImages().catch(() => []),
+    chrome.storage.local.get(['resumeImages', 'apiKey', 'textResume', AI_CONFIG_KEY, FILTER_STATE_KEY]).catch(() => ({})),
+    chrome.storage.local.get(['apiKey', 'textResume', AI_CONFIG_KEY]).catch(() => ({})),
+  ]);
+
+  aiConfig = normalizeAiConfig(storedConfig[AI_CONFIG_KEY] || {});
+  if (storedConfig.apiKey && !aiConfig.apiKey) aiConfig.apiKey = storedConfig.apiKey;
+  textResume = storedConfig.textResume || '';
+
+  if (providerInput) providerInput.value = aiConfig.provider || DEFAULT_AI_CONFIG.provider;
+  if (baseUrlInput) baseUrlInput.value = aiConfig.baseUrl || '';
+  if (apiKeyInput) apiKeyInput.value = aiConfig.apiKey || '';
+  if (modelInput) modelInput.value = aiConfig.model || '';
+  if (scoreThresholdInput) scoreThresholdInput.value = aiConfig.scoreThreshold || DEFAULT_AI_CONFIG.scoreThreshold;
+  if (textResumeInput) textResumeInput.value = textResume;
+
+  if (storedResumeData.resumeImages?.length) {
+    resumeImages = deserializeResumeImages(storedResumeData.resumeImages);
+  } else if (storedImages?.length) {
+    resumeImages = storedImages.map((item) => ({
+      name: item.name,
+      blob: item.blob || item.file || item,
+    }));
+  } else {
+    resumeImages = [];
+  }
+
+  renderPreviews();
+}
 
 function addFiles(files) {
   const valid = Array.from(files).filter((f) => f.type.startsWith('image/'));
@@ -101,7 +240,7 @@ function removeImage(index) {
 function renderPreviews() {
   previewGrid.innerHTML = '';
   resumeImages.forEach((img, i) => {
-    const file = img.blob ? new File([img.blob], img.name || 'resume.jpg', { type: img.blob.type }) : img;
+    const file = toFileLike(img);
     const url = URL.createObjectURL(file.blob || file);
     const item = document.createElement('div');
     item.className = 'preview-item';
@@ -120,67 +259,67 @@ function renderPreviews() {
 
 function readAiConfigFromForm() {
   return {
-    provider: providerInput ? providerInput.value.trim() : 'openai-compatible',
+    provider: providerInput ? providerInput.value.trim() : DEFAULT_AI_CONFIG.provider,
     baseUrl: baseUrlInput ? baseUrlInput.value.trim() : '',
     apiKey: apiKeyInput ? apiKeyInput.value.trim() : '',
     model: modelInput ? modelInput.value.trim() : '',
-    scoreThreshold: scoreThresholdInput ? Number(scoreThresholdInput.value || 60) : 60,
+    scoreThreshold: scoreThresholdInput ? Number(scoreThresholdInput.value || DEFAULT_AI_CONFIG.scoreThreshold) : DEFAULT_AI_CONFIG.scoreThreshold,
   };
 }
-
-if (testAiBtn) {
-  testAiBtn.addEventListener('click', () => {
-    testAiBtn.disabled = true;
-    setStatus('正在测试 AI 连接...', '');
-    chrome.runtime.sendMessage({ type: 'TEST_AI_CONFIG', config: readAiConfigFromForm() }, (resp) => {
-      testAiBtn.disabled = false;
-      if (chrome.runtime.lastError || !resp || !resp.success) {
-        setStatus('AI 连接失败: ' + ((resp && resp.error) || chrome.runtime.lastError?.message || '未知错误'), 'error');
-        return;
-      }
-      setStatus('AI 连接成功', 'success');
-    });
-  });
-}
-
-// ── Save ──
-saveBtn.addEventListener('click', async () => {
-  saveBtn.disabled = true;
-  setStatus('保存中...', '');
-
-  try {
-    // 序列化图片到 chrome.storage（content script 需要）
-    const imageData = await Promise.all(
-      resumeImages.map(async (img) => {
-        const file = img.blob ? new File([img.blob], img.name || 'resume.jpg', { type: img.blob.type }) : img;
-        const buf = await file.arrayBuffer();
-        return { name: file.name, type: file.type, data: Array.from(new Uint8Array(buf)) };
-      })
-    );
-
-    const newAiConfig = readAiConfigFromForm();
-    const newTextResume = textResumeInput ? textResumeInput.value.trim() : '';
-
-    await Promise.all([
-      saveResumeImages(resumeImages),
-      chrome.storage.local.set({ resumeImages: imageData }),
-      chrome.storage.local.set({ apiKey: newAiConfig.apiKey, 'sw:aiConfig': newAiConfig, textResume: newTextResume }),
-    ]);
-
-    aiConfig = newAiConfig;
-    textResume = newTextResume;
-
-    setStatus('已保存', 'success');
-  } catch (e) {
-    console.error('Save error:', e);
-    setStatus('保存失败: ' + e.message, 'error');
-  } finally {
-    saveBtn.disabled = false;
-    setTimeout(() => setStatus('', ''), 2500);
-  }
-});
 
 function setStatus(text, cls) {
   saveStatus.textContent = text;
   saveStatus.className = 'save-status ' + cls;
+}
+
+function showImportStatus(text, cls) {
+  if (!importStatus) return;
+  importStatus.textContent = text || '';
+  importStatus.className = 'import-status' + (cls ? ' ' + cls : '');
+  importStatus.classList.toggle('hidden', !text);
+}
+
+function hideImportPreview() {
+  if (!importPreviewCard) return;
+  importPreviewCard.classList.add('hidden');
+  importPreviewMeta.textContent = '';
+  importPreviewSummary.innerHTML = '';
+}
+
+function renderImportPreview(draft) {
+  if (!draft || !importPreviewCard) return;
+  importPreviewCard.classList.remove('hidden');
+  importPreviewMeta.textContent = buildImportPreviewMeta(draft);
+  importPreviewSummary.innerHTML = '';
+
+  buildImportPreviewItems(draft).forEach((item) => {
+    const node = document.createElement('div');
+    node.className = 'import-preview-item';
+    node.innerHTML = `
+      <div class="import-preview-label">${item.label}</div>
+      <div class="import-preview-value">${item.value}</div>
+    `;
+    importPreviewSummary.appendChild(node);
+  });
+}
+
+function downloadBackup(snapshot) {
+  const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  link.href = url;
+  link.download = `boss-hunter-backup-${stamp}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function toFileLike(file) {
+  if (file instanceof File) return file;
+  if (file && file.blob) {
+    return new File([file.blob], file.name || 'resume.jpg', { type: file.blob.type || 'image/jpeg' });
+  }
+  return file;
 }

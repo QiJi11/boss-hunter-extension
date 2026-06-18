@@ -38,6 +38,16 @@
       </button>
     </div>
     <div class="header-right">
+      <button class="gear-btn composite-btn" id="compositeBtn" title="完整设置">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 7h16"/>
+          <path d="M4 12h16"/>
+          <path d="M4 17h16"/>
+          <circle cx="9" cy="7" r="2"/>
+          <circle cx="15" cy="12" r="2"/>
+          <circle cx="11" cy="17" r="2"/>
+        </svg>
+      </button>
       <button class="gear-btn" id="gearBtn" title="设置">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/>
@@ -116,6 +126,13 @@
         <div class="chips-wrap" id="hrActiveChips"></div>
       </div>
       <div class="chips-section">
+        <div class="section-title">投递设置</div>
+        <label class="send-greeting-toggle">
+          <input type="checkbox" id="sendGreetingToggle" checked>
+          <span>发送招呼语</span>
+        </label>
+      </div>
+      <div class="chips-section">
         <div class="section-title">薪资待遇</div>
         <div class="chips-wrap" id="salaryChips"></div>
       </div>
@@ -134,6 +151,41 @@
       <div class="chips-section">
         <div class="section-title">融资阶段</div>
         <div class="chips-wrap" id="stageChips"></div>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <div class="section">
+        <div class="section-title">排除条件</div>
+        <div class="exclude-input-row">
+          <input type="text" id="excludeKeywordInput" placeholder="添加排除词，如 外包、驻场、主播" autocomplete="off">
+          <button class="btn btn-ghost" id="addExcludeKeywordBtn" type="button">添加</button>
+        </div>
+        <div class="selected-tags exclude-tags" id="excludeKeywordTags"></div>
+      </div>
+
+      <div class="chips-section">
+        <div class="section-title">历史跳过</div>
+        <label class="send-greeting-toggle">
+          <input type="checkbox" id="skipHistoryToggle" checked>
+          <span>跳过已投过的同 HR</span>
+        </label>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <div class="section">
+        <div class="section-title">AI 改筛选条件</div>
+        <div class="ai-filter-box" id="aiFilterBox">
+          <textarea id="aiFilterPrompt" class="ai-filter-textarea" rows="4" placeholder="例如：减少销售岗，多加深圳南山/福田的 AI 产品和增长运营岗位，薪资至少 15K。"></textarea>
+          <div class="ai-filter-actions">
+            <button class="btn btn-ghost" id="aiFilterGenerateBtn">生成建议</button>
+            <button class="btn btn-primary hidden" id="aiFilterApplyBtn">一键应用</button>
+            <button class="btn btn-ghost hidden" id="aiFilterDiscardBtn">放弃</button>
+          </div>
+          <div class="ai-filter-status" id="aiFilterStatus"></div>
+          <div class="ai-filter-preview hidden" id="aiFilterPreview"></div>
+        </div>
       </div>
 
       <!-- BOSS 直聘提示 -->
@@ -161,6 +213,7 @@
       </div>
 
       <div id="resultsContent" class="hidden fade-in">
+        <div id="summaryPanelHost"></div>
         <div id="groupedContent"></div>
       </div>
 
@@ -233,10 +286,79 @@
   </div>
   <!-- ═══════ /Settings Overlay Panel ═══════ -->
 
+  <div class="settings-overlay hidden" id="compositeOverlay">
+    <div class="settings-drawer composite-drawer" id="compositeDrawer">
+      <div class="settings-header">
+        <div class="ai-drawer-header-main">
+          <div class="ai-drawer-title">完整设置</div>
+          <button class="ai-drawer-link" id="compositeOpenOptionsBtn" type="button">打开兼容页</button>
+        </div>
+        <button class="settings-close" id="compositeClose" title="关闭">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l8 8M11 3l-8 8"/></svg>
+        </button>
+      </div>
+      <div class="settings-body">
+        <div class="ai-drawer-hint">这里可直接保存 AI 设置、文字简历，并导入或导出完整快照。</div>
+        <div class="settings-section">
+          <div class="settings-section-title">OpenAI-compatible 接口</div>
+          <div class="ai-field">
+            <label for="compositeAiProvider">Provider</label>
+            <input id="compositeAiProvider" type="text" placeholder="openai-compatible" autocomplete="off">
+          </div>
+          <div class="ai-field">
+            <label for="compositeAiBaseUrl">Base URL</label>
+            <input id="compositeAiBaseUrl" type="url" placeholder="https://api.openai.com/v1" autocomplete="off">
+          </div>
+          <div class="ai-field">
+            <label for="compositeAiApiKey">API Key</label>
+            <input id="compositeAiApiKey" type="password" placeholder="sk-..." autocomplete="off">
+          </div>
+          <div class="ai-field">
+            <label for="compositeAiModel">Model</label>
+            <input id="compositeAiModel" type="text" placeholder="gpt-4.1-mini" autocomplete="off">
+          </div>
+          <div class="ai-field">
+            <label for="compositeAiScoreThreshold">AI 筛选阈值</label>
+            <input id="compositeAiScoreThreshold" type="number" min="0" max="100" step="1" placeholder="60">
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">文字简历</div>
+          <textarea id="compositeTextResume" class="ai-textarea" rows="7" placeholder="粘贴你的文字简历，AI 会用它判断岗位是否符合。"></textarea>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">完整备份</div>
+          <div class="composite-import-actions">
+            <button class="btn btn-ghost" id="compositeExportBtn" type="button">导出配置</button>
+            <button class="btn btn-ghost" id="compositeImportBtn" type="button">导入配置</button>
+            <input type="file" id="compositeImportFileInput" accept=".json,application/json" hidden>
+          </div>
+          <div class="composite-status hidden" id="compositeImportStatus"></div>
+          <div class="composite-preview hidden" id="compositeImportPreviewCard">
+            <div class="composite-preview-meta" id="compositeImportPreviewMeta"></div>
+            <div class="composite-preview-summary" id="compositeImportPreviewSummary"></div>
+            <div class="composite-preview-actions">
+              <button class="btn btn-primary" id="compositeConfirmImportBtn" type="button">确认覆盖</button>
+              <button class="btn btn-ghost" id="compositeCancelImportBtn" type="button">取消导入</button>
+            </div>
+          </div>
+        </div>
+        <div class="ai-actions composite-actions">
+          <button class="btn btn-ghost" id="compositeTestBtn">测试连接</button>
+          <button class="btn btn-primary" id="compositeSaveBtn">保存设置</button>
+        </div>
+        <div class="ai-status" id="compositeStatus"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- shared -->
 <script src="../shared/constants.js"></script>
 <script src="../shared/diag-logger.js"></script>
 <script src="../shared/device-id.js"></script>
+<script src="../db/indexeddb.js"></script>
+<script src="../shared/settings-backup.js"></script>
+<script src="../shared/job-analysis-export.js"></script>
 <!-- data -->
 <script src="../content/tag-data.js"></script>
 <!-- foundation -->

@@ -9,6 +9,78 @@
 // ── Internal: track rendered job count per group ──
 var _jobsRendered={};
 
+function getSummaryHost(){
+  return document.getElementById('summaryPanelHost');
+}
+
+function renderOverviewItems(items, emptyText){
+  var list=Array.isArray(items)?items.filter(Boolean):[];
+  if(!list.length)return '<div class="summary-panel-empty">'+esc(emptyText||'暂无内容')+'</div>';
+  return '<div class="summary-overview-list">'+list.map(function(item){
+    return '<div class="summary-overview-item">'+esc(item)+'</div>';
+  }).join('')+'</div>';
+}
+
+window.renderSummaryPanel=function(){
+  var host=getSummaryHost();
+  if(!host)return;
+  var jobs=Store.get('jobs')||[];
+  var overview=Store.get('aiBatchOverview');
+  var progress=Store.get('jdHydrationProgress');
+  if(!overview||(!overview.headline&&!((overview.good||[]).length)&&!((overview.bad||[]).length)&&!((overview.nextFocus||[]).length)&&!((overview.pitfalls||[]).length))){
+    host.innerHTML='';
+    return;
+  }
+  var coverage=overview.coverage||{};
+  var running=!!(progress&&progress.running);
+  var btnText=running?'JD补拉中...':'继续补拉 JD';
+  host.innerHTML='<div class="summary-panel">'
+    +'<div class="summary-panel-header"><div><div class="summary-panel-title">整批岗位 AI 总览</div><div class="summary-panel-sub">'+esc(overview.headline||'已结合当前岗位信息生成总览')+'</div></div>'
+    +'<div class="summary-panel-actions"><button class="btn btn-ghost summary-retry-btn" id="btnCopyBatchOverview" type="button">复制总览</button><button class="btn btn-ghost summary-retry-btn" id="btnApplyOverviewToFilter" type="button">生成筛选方案</button><button class="btn btn-ghost summary-retry-btn" id="btnRetryJobDetails" '+(running?'disabled':'')+'>'+btnText+'</button></div></div>'
+    +'<div class="job-analysis-export-bar">'
+    +'<select class="job-analysis-range" id="jobAnalysisRange" aria-label="岗位分析导出时间范围">'
+    +'<option value="today">今天</option>'
+    +'<option value="last7" selected>最近 7 天</option>'
+    +'<option value="last30">最近 30 天</option>'
+    +'<option value="all">全部</option>'
+    +'<option value="custom">自定义</option>'
+    +'</select>'
+    +'<input class="job-analysis-date hidden" id="jobAnalysisStartDate" type="date" aria-label="开始日期">'
+    +'<input class="job-analysis-date hidden" id="jobAnalysisEndDate" type="date" aria-label="结束日期">'
+    +'<button class="btn btn-ghost job-analysis-export-btn" id="btnExportJobAnalysis" type="button">导出岗位分析</button>'
+    +'<button class="btn btn-ghost job-analysis-export-btn" id="btnImportJobAnalysis" type="button">导入岗位分析</button>'
+    +'<input id="jobAnalysisImportFileInput" type="file" accept=".json,application/json" hidden>'
+    +'<span class="job-analysis-export-status" id="jobAnalysisExportStatus"></span>'
+    +'</div>'
+    +'<div class="summary-panel-meta">已结合 '+Number(coverage.jobsWithJD||0)+'/'+Number(coverage.totalJobs||jobs.length)+' 条 JD，剩余 '+Number(coverage.pendingJobs||0)+' 条，已完成 '+Number(coverage.completedBatches||0)+' 批</div>'
+    +'<div class="summary-section"><div class="summary-section-title">优点</div>'+renderOverviewItems(overview.good,'暂无明显共性优点')+'</div>'
+    +'<div class="summary-section"><div class="summary-section-title">缺点</div>'+renderOverviewItems(overview.bad,'暂无明显共性缺点')+'</div>'
+    +'<div class="summary-section"><div class="summary-section-title">下次方向</div>'+renderOverviewItems(overview.nextFocus,'暂无新的筛选方向建议')+'</div>'
+    +'<div class="summary-section"><div class="summary-section-title">避坑提醒</div>'+renderOverviewItems(overview.pitfalls,'暂无额外避坑提醒')+'</div>'
+    +'</div>';
+};
+
+window.renderFilterSuggestionPreview=function(preview){
+  if(!E.aiFilterPreview)return;
+  if(!preview){
+    E.aiFilterPreview.classList.add('hidden');
+    E.aiFilterPreview.innerHTML='';
+    return;
+  }
+  var rows=(preview.diffRows||[]).map(function(row){
+    return '<div class="ai-filter-preview-row"><span class="ai-filter-preview-label">'+esc(row.label)+'：</span>'
+      + esc(row.before) + ' -> ' + esc(row.after) + '</div>';
+  }).join('');
+  var ignored=(preview.ignored||[]).length
+    ? '<div class="ai-filter-preview-ignored">未应用：' + esc(preview.ignored.join('、')) + '</div>'
+    : '';
+  E.aiFilterPreview.innerHTML='<div class="ai-filter-preview-title">建议预览</div>'
+    +'<div class="ai-filter-preview-summary">'+esc(preview.summary||'AI 已生成建议，请确认后应用')+'</div>'
+    +(rows||'<div class="ai-filter-preview-empty">本次没有可应用的变更</div>')
+    +ignored;
+  E.aiFilterPreview.classList.remove('hidden');
+};
+
 // ── State preparation helpers ──
 
 // ── 组图片初始默认：A 页全局 resumeImages 深拷贝（每组独立数组，不共享引用）──
@@ -227,6 +299,7 @@ window.renderGroupsStable=function(){
   }
 
   window.updResCnt();
+  window.renderSummaryPanel();
 };
 
 // ── Level 2: Job item HTML ──
@@ -249,7 +322,21 @@ function renderJobAiHTML(job){
     +'</div>';
 }
 
+function renderJobSkipReasonHTML(job){
+  var parts=[];
+  if(job&&job.excludeReason)parts.push(job.excludeReason);
+  if(job&&job.historySkipReason)parts.push(job.historySkipReason);
+  if(job&&job.searchKeyword)parts.push('来源：'+job.searchKeyword);
+  return parts.length?'<div class="job-skip-reason">'+esc(parts.join(' · '))+'</div>':'';
+}
+
 function renderJobItemHTML(job){
+  var jdText=String(job.detail||job.desc||job.description||'').trim();
+  var jdEmptyText='暂无JD详情，后台补拉中';
+  if(job&&job.jdStatus==='failed')jdEmptyText='暂无JD详情，自动补拉已暂停';
+  var jdHtml=jdText
+    ? '<div class="job-jd-preview">'+esc(jdText.slice(0,120))+(jdText.length>120?'...':'')+'</div>'
+    : '<div class="job-jd-empty">'+esc(jdEmptyText)+'</div>';
   return '<div class="job-item" data-job-id="'+job.id+'"><div class="job-top-row">'
     +'<div class="job-checkbox'+(job.checked?' checked':'')+'" data-job-id="'+job.id+'"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2.5 6l2.5 3 4.5-5"/></svg></div>'
     +'<div class="job-info">'
@@ -257,6 +344,8 @@ function renderJobItemHTML(job){
     +'<div class="job-company">'+esc(job.company)+'</div>'
     +'<div class="job-salary">'+esc(job.salary||'')+'</div>'
     +'<div class="job-tags">'+(job.tags||[]).map(function(t){return'<span class="job-tag">'+esc(t)+'</span>'}).join('')+'</div>'
+    +renderJobSkipReasonHTML(job)
+    +jdHtml
     +renderJobAiHTML(job)
     +'<div class="job-custom-toggle" data-job-id="'+job.id+'" style="margin-top:10px">&#9654; 自定义消息</div>'
     +'</div></div></div>';
@@ -269,8 +358,28 @@ function syncRenderedJobItem(job){
   if(cb)cb.classList.toggle('checked',!!job.checked);
   var info=el.querySelector('.job-info');
   if(!info)return;
+  var oldJd=info.querySelector('.job-jd-preview,.job-jd-empty');
+  if(oldJd&&oldJd.parentNode)oldJd.parentNode.removeChild(oldJd);
   var oldAi=info.querySelector('.job-ai');
   if(oldAi&&oldAi.parentNode)oldAi.parentNode.removeChild(oldAi);
+  var oldSkip=info.querySelector('.job-skip-reason');
+  if(oldSkip&&oldSkip.parentNode)oldSkip.parentNode.removeChild(oldSkip);
+  var skipHtml=renderJobSkipReasonHTML(job);
+  if(skipHtml){
+    var skipWrap=document.createElement('div');
+    skipWrap.innerHTML=skipHtml;
+    var beforeSkip=info.querySelector('.job-jd-preview,.job-jd-empty,.job-custom-toggle');
+    info.insertBefore(skipWrap.firstElementChild,beforeSkip||null);
+  }
+  var jdWrap=document.createElement('div');
+  var jdText=String(job.detail||job.desc||job.description||'').trim();
+  var jdEmptyText='暂无JD详情，后台补拉中';
+  if(job&&job.jdStatus==='failed')jdEmptyText='暂无JD详情，自动补拉已暂停';
+  jdWrap.innerHTML=jdText
+    ? '<div class="job-jd-preview">'+esc(jdText.slice(0,120))+(jdText.length>120?'...':'')+'</div>'
+    : '<div class="job-jd-empty">'+esc(jdEmptyText)+'</div>';
+  var beforeJd=info.querySelector('.job-custom-toggle');
+  info.insertBefore(jdWrap.firstElementChild,beforeJd||null);
   var aiHtml=renderJobAiHTML(job);
   if(!aiHtml)return;
   var wrapper=document.createElement('div');
@@ -333,6 +442,7 @@ window.toggleJobCheck=function(jobId){
   Store.set('jobs',jobs);
   window.updResCnt();
   window.recalcGroupMaster(window.giOfJob(jobId));
+  window.renderSummaryPanel();
 };
 
 // ── Master checkbox (derived tri-state per group) ──
@@ -392,6 +502,7 @@ window.toggleGroupMaster=function(gi){
   }
   window.updResCnt();
   window.recalcGroupMaster(gi);
+  window.renderSummaryPanel();
 };
 
 window.renderJobThumbnailsHTML=function(jobId){
@@ -630,6 +741,7 @@ window.syncGroupsWithJobs=function(){
     window.recalcGroupMaster(tgi);
   }
   window.updResCnt();
+  window.renderSummaryPanel();
   // 同步后断言：DOM 渲染卡 id 集合 ⊆ Store.jobs id 集合
   var domItems=document.querySelectorAll('#groupedContent .job-item[data-job-id]');
   for(var d=0;d<domItems.length;d++){

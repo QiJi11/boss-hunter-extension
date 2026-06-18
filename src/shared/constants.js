@@ -19,6 +19,8 @@ const MSG = {
   GET_AI_CONFIG: 'GET_AI_CONFIG',
   SAVE_AI_CONFIG: 'SAVE_AI_CONFIG',
   TEST_AI_CONFIG: 'TEST_AI_CONFIG',
+  GENERATE_FILTER_SUGGESTION: 'GENERATE_FILTER_SUGGESTION',
+  RETRY_JOB_DETAILS: 'RETRY_JOB_DETAILS',
   REPAIR_MISSED: 'REPAIR_MISSED',   // A1：review 页「一键补发」漏发岗位（popup→SW 专用，CS 不用，无需镜像 selectors.js）
 
   // SW → Popup
@@ -35,6 +37,7 @@ const MSG = {
   CHAT_DETECTED: 'CHAT_DETECTED',
   AUTO_REPLY_SENT: 'AUTO_REPLY_SENT',
   JD_FETCHED: 'JD_FETCHED',
+  FETCH_JOB_DETAIL: 'FETCH_JOB_DETAIL',
   PONG: 'PONG',
 
   // SW → Content
@@ -119,6 +122,12 @@ const CONFIG = {
   GREETING_TIMEOUT_MS: 8000,
   // AI 招呼语并发数
   GREETING_CONCURRENCY: 3,
+  // JD 自动补拉单批岗位数
+  JD_HYDRATION_BATCH_SIZE: 12,
+  // JD 自动补拉并发数
+  JD_HYDRATION_CONCURRENCY: 2,
+  // 连续无新增成功的批次数，达到后自动暂停补拉
+  JD_HYDRATION_STALL_LIMIT: 2,
   // 采集/发送批处理大小
   BATCH_SIZE: 50,
   // 发送间隔下限（ms）
@@ -149,6 +158,69 @@ const CONFIG = {
   DAILY_SEND_LIMIT: 150,   // 日累积上限（本地自然日）：当天成功投递岗位数超过即硬拦
   SOFT_BATCH_LIMIT: 75,    // 单批软提示阈值：单批选中 > 75 时提示但允许继续
 };
+
+const DEFAULT_EXCLUDE_KEYWORDS = [
+  '外包',
+  '驻场',
+  '培训',
+  '推广',
+  '销售',
+  '主播',
+  '客服',
+  '讲师',
+  '剪辑',
+  '游戏前端',
+  '伪AI',
+  '包装AI应用开发',
+];
+
+function uniqueStrings(list) {
+  var seen = {};
+  return (Array.isArray(list) ? list : []).map(function(item) {
+    return String(item || '').trim();
+  }).filter(function(item) {
+    if (!item || seen[item]) return false;
+    seen[item] = true;
+    return true;
+  });
+}
+
+function normalizeFilterStateDefaults(filterState) {
+  var raw = filterState && typeof filterState === 'object' ? filterState : {};
+  return Object.assign({}, raw, {
+    excludeKeywords: uniqueStrings(
+      Array.isArray(raw.excludeKeywords) ? raw.excludeKeywords : DEFAULT_EXCLUDE_KEYWORDS
+    ),
+    skipHistoryEnabled: raw.skipHistoryEnabled !== false,
+    skipHistoryScope: 'hr',
+  });
+}
+
+function findExcludeKeywordHit(job, excludeKeywords) {
+  var keywords = uniqueStrings(excludeKeywords);
+  if (!keywords.length || !job) return '';
+  var haystack = [
+    job.name,
+    job.title,
+    job.positionName,
+    job.company,
+    job.companyName,
+    job.salary,
+    Array.isArray(job.tags) ? job.tags.join(' ') : '',
+    job.detail,
+    job.desc,
+    job.description,
+    job.aiScreen && job.aiScreen.reason,
+    job.aiScreen && Array.isArray(job.aiScreen.risks) ? job.aiScreen.risks.join(' ') : '',
+  ].map(function(part) {
+    return String(part || '').toLowerCase();
+  }).join(' ');
+  for (var i = 0; i < keywords.length; i++) {
+    var kw = keywords[i];
+    if (kw && haystack.indexOf(kw.toLowerCase()) >= 0) return kw;
+  }
+  return '';
+}
 
 // ── 岗位归类：单一真相源（分来源打分） ──
 // 一个 job 该归到哪个期望词组的唯一判定。SW（采集过滤 / 发送分组 / cluster）

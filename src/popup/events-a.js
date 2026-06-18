@@ -10,6 +10,211 @@ window.initEventsA=function(){
   if(window._eventsAInitialized)return;
   window._eventsAInitialized=true;
 
+  var FILTER_FIELDS = [
+    { key: 'selectedCities', label: '目标城市' },
+    { key: 'selectedPositions', label: '期望职位' },
+    { key: 'customPositions', label: '自定义岗位' },
+    { key: 'hrActiveFilter', label: 'HR 活跃度' },
+    { key: 'selectedIndustries', label: '公司行业' },
+    { key: 'workAreas', label: '工作区域' },
+    { key: 'jobTypes', label: '工作性质' },
+    { key: 'salaryRanges', label: '薪资待遇' },
+    { key: 'experience', label: '工作经验' },
+    { key: 'education', label: '学历要求' },
+    { key: 'companySizes', label: '公司规模' },
+    { key: 'fundingStages', label: '融资阶段' },
+    { key: 'excludeKeywords', label: '排除词' },
+    { key: 'skipHistoryEnabled', label: '历史跳过' }
+  ];
+
+  function setFilterSuggestionStatus(text, cls){
+    if(!E.aiFilterStatus)return;
+    E.aiFilterStatus.textContent=text||'';
+    E.aiFilterStatus.className='ai-filter-status'+(cls?' '+cls:'');
+  }
+
+  /** 返回当前筛选快照，供 AI 建议和差异预览复用。 */
+  function getCurrentFilterState(){
+    return {
+      selectedCities:[].concat(Store.get('selectedCities')||[]),
+      selectedPositions:[].concat(Store.get('selectedPositions')||[]),
+      customPositions:[].concat(Store.get('customPositions')||[]),
+      hrActiveFilter:Store.get('hrActiveFilter')||'不限',
+      selectedIndustries:[].concat(Store.get('selectedIndustries')||[]),
+      workAreas:[].concat(Store.get('workAreas')||[]),
+      jobTypes:[].concat(Store.get('jobTypes')||[]),
+      salaryRanges:[].concat(Store.get('salaryRanges')||[]),
+      experience:[].concat(Store.get('experience')||[]),
+      education:[].concat(Store.get('education')||[]),
+      companySizes:[].concat(Store.get('companySizes')||[]),
+      fundingStages:[].concat(Store.get('fundingStages')||[]),
+      excludeKeywords:[].concat(Store.get('excludeKeywords')||[]),
+      skipHistoryEnabled:Store.get('skipHistoryEnabled')!==false,
+      skipHistoryScope:'hr',
+    };
+  }
+
+  function cityNameMap(){
+    var map={'000000':'全国'};
+    (TAG_DATA.cities||[]).forEach(function(city){ map[city.code]=city.name; });
+    return map;
+  }
+
+  function getAllowedFilterValues(){
+    return {
+      citiesByName:(TAG_DATA.cities||[]).concat([{name:'全国',code:'000000'}]).reduce(function(acc, city){ acc[city.name]=city.code; return acc; }, {}),
+      positionsByName:allPos().reduce(function(acc, item){ acc[item.name]=true; return acc; }, {}),
+      industriesByName:allInd().reduce(function(acc, item){ acc[item.name]=true; return acc; }, {}),
+      hrActive:['不限','只投在线','3日内活跃','本周内活跃','本月内活跃'],
+      workAreas:getWorkAreas(),
+      jobTypes:TAG_DATA.jobTypes||['不限','全职','兼职'],
+      salaryRanges:TAG_DATA.salaryRanges||['不限','3K以下','3-5K','5-10K','10-20K','20-50K','50K以上'],
+      experience:TAG_DATA.experience||['不限','在校生(实习)','应届生(校招)','经验不限','1年以内','1-3年','3-5年','5-10年','10年以上'],
+      education:TAG_DATA.education||['不限','初中及以下','中专/中技','高中','大专','本科','硕士','博士'],
+      companySizes:TAG_DATA.companySizes||['不限','0-20人','20-99人','100-499人','500-999人','1000-9999人','10000人以上'],
+      fundingStages:TAG_DATA.fundingStages||['不限','未融资','天使轮','A轮','B轮','C轮','D轮及以上','已上市','不需要融资']
+    };
+  }
+
+  function uniqueStrings(list){
+    var out=[], seen={};
+    (Array.isArray(list)?list:[]).forEach(function(item){
+      var text=String(item||'').trim();
+      if(!text||seen[text])return;
+      seen[text]=true;
+      out.push(text);
+    });
+    return out;
+  }
+
+  function formatPreviewValue(key, value){
+    if(Array.isArray(value)){
+      if(key==='selectedCities'){
+        var names=uniqueStrings(value).map(function(code){ return cityNameMap()[code]||code; });
+        return names.length?names.join('、'):'不限';
+      }
+      return value.length?value.join('、'):'不限';
+    }
+    return value?String(value):'不限';
+  }
+
+  /** 归一化 AI 建议，过滤非法值并产出差异预览。 */
+  function normalizeFilterSuggestion(raw){
+    var base=getCurrentFilterState();
+    var allowed=getAllowedFilterValues();
+    var ignored=uniqueStrings((raw&&raw.ignored)||[]);
+    var next=JSON.parse(JSON.stringify(base));
+    var changes=(raw&&raw.changes&&typeof raw.changes==='object')?raw.changes:{};
+
+    function applyArrayField(key, values, allowMap, options){
+      if(!(key in changes))return;
+      var opts=options||{};
+      if(!Array.isArray(values)){ignored.push(key+' 格式错误');return;}
+      if(values.length===0){next[key]=opts.emptyValue||['不限'];return;}
+      var valid=[], unknown=[];
+      uniqueStrings(values).forEach(function(item){
+        if(allowMap[item])valid.push(opts.transform?opts.transform(item):item);
+        else unknown.push(item);
+      });
+      if(opts.collectUnknownAsCustom){
+        next.customPositions=uniqueStrings((next.customPositions||[]).concat(unknown));
+      }else{
+        ignored=ignored.concat(unknown);
+      }
+      next[key]=valid.length?valid:(opts.emptyValue||['不限']);
+    }
+
+    if('selectedCities' in changes){
+      var rawCities=changes.selectedCities;
+      if(!Array.isArray(rawCities)){ignored.push('selectedCities 格式错误');}
+      else if(!rawCities.length){next.selectedCities=[];}
+      else{
+        var cityCodes=[], cityUnknown=[];
+        uniqueStrings(rawCities).forEach(function(name){
+          var code=allowed.citiesByName[name];
+          if(code)cityCodes.push(code); else cityUnknown.push(name);
+        });
+        ignored=ignored.concat(cityUnknown);
+        next.selectedCities=cityCodes;
+      }
+    }
+
+    if('selectedPositions' in changes){
+      applyArrayField('selectedPositions', changes.selectedPositions, allowed.positionsByName, { emptyValue: [], collectUnknownAsCustom: true });
+    }
+    if('customPositions' in changes){
+      if(!Array.isArray(changes.customPositions))ignored.push('customPositions 格式错误');
+      else next.customPositions=uniqueStrings(changes.customPositions);
+    }
+    if('hrActiveFilter' in changes){
+      if(changes.hrActiveFilter===''){next.hrActiveFilter='不限';}
+      else if(allowed.hrActive.indexOf(changes.hrActiveFilter)>=0){next.hrActiveFilter=changes.hrActiveFilter;}
+      else ignored.push(String(changes.hrActiveFilter));
+    }
+    applyArrayField('selectedIndustries', changes.selectedIndustries, allowed.industriesByName, { emptyValue: [] });
+    applyArrayField('workAreas', changes.workAreas, (allowed.workAreas||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
+    applyArrayField('jobTypes', changes.jobTypes, (allowed.jobTypes||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
+    applyArrayField('salaryRanges', changes.salaryRanges, (allowed.salaryRanges||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
+    applyArrayField('experience', changes.experience, (allowed.experience||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
+    applyArrayField('education', changes.education, (allowed.education||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
+    applyArrayField('companySizes', changes.companySizes, (allowed.companySizes||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
+    applyArrayField('fundingStages', changes.fundingStages, (allowed.fundingStages||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
+    if('excludeKeywords' in changes){
+      if(!Array.isArray(changes.excludeKeywords))ignored.push('excludeKeywords 格式错误');
+      else next.excludeKeywords=uniqueStrings(changes.excludeKeywords);
+    }
+    if('skipHistoryEnabled' in changes){
+      next.skipHistoryEnabled=changes.skipHistoryEnabled!==false;
+      next.skipHistoryScope='hr';
+    }
+
+    var rows=FILTER_FIELDS.map(function(field){
+      var before=formatPreviewValue(field.key, base[field.key]);
+      var after=formatPreviewValue(field.key, next[field.key]);
+      if(before===after)return null;
+      return { label: field.label, before: before, after: after };
+    }).filter(Boolean);
+
+    return {
+      summary:String(raw&&raw.summary||'').trim(),
+      nextState:next,
+      ignored:uniqueStrings(ignored),
+      diffRows:rows
+    };
+  }
+
+  function renderStoredSuggestion(){
+    var draft=Store.get('filterSuggestionDraft');
+    if(E.aiFilterApplyBtn)E.aiFilterApplyBtn.classList.toggle('hidden',!draft);
+    if(E.aiFilterDiscardBtn)E.aiFilterDiscardBtn.classList.toggle('hidden',!draft);
+    if(window.renderFilterSuggestionPreview)window.renderFilterSuggestionPreview(draft);
+  }
+
+  /** 应用 AI 建议到现有 Store，并刷新当前设置页所有已选状态。 */
+  function applyFilterState(nextState){
+    markConfigEdit();
+    Store.set('selectedCities', nextState.selectedCities||[]);
+    Store.set('selectedPositions', nextState.selectedPositions||[]);
+    Store.set('customPositions', nextState.customPositions||[]);
+    Store.set('hrActiveFilter', nextState.hrActiveFilter||'不限');
+    Store.set('selectedIndustries', nextState.selectedIndustries||[]);
+    Store.set('workAreas', nextState.workAreas&&nextState.workAreas.length?nextState.workAreas:['不限']);
+    Store.set('jobTypes', nextState.jobTypes&&nextState.jobTypes.length?nextState.jobTypes:['不限']);
+    Store.set('salaryRanges', nextState.salaryRanges&&nextState.salaryRanges.length?nextState.salaryRanges:['不限']);
+    Store.set('experience', nextState.experience&&nextState.experience.length?nextState.experience:['不限']);
+    Store.set('education', nextState.education&&nextState.education.length?nextState.education:['不限']);
+    Store.set('companySizes', nextState.companySizes&&nextState.companySizes.length?nextState.companySizes:['不限']);
+    Store.set('fundingStages', nextState.fundingStages&&nextState.fundingStages.length?nextState.fundingStages:['不限']);
+    Store.set('excludeKeywords', uniqueStrings(nextState.excludeKeywords||[]));
+    Store.set('skipHistoryEnabled', nextState.skipHistoryEnabled!==false);
+    Store.set('skipHistoryScope','hr');
+    window.renderCityChips(E.cityInput.value||'');
+    window.renderChipSecs();
+    window.renderSettings();
+    window.renderSendGreetingToggle&&window.renderSendGreetingToggle();
+    persistFilterState();
+  }
+
   function markConfigEdit(){
     if(window.dismissReviewForConfigEdit)window.dismissReviewForConfigEdit();
   }
@@ -234,6 +439,50 @@ window.initEventsA=function(){
     window.renderPosBrowse();
     E.posSearch.focus()
   });
+  if(E.sendGreetingToggle){
+    E.sendGreetingToggle.addEventListener('change',function(){
+      markConfigEdit();
+      Store.set('sendGreeting',!!E.sendGreetingToggle.checked);
+      persistFilterState();
+    });
+  }
+  if(E.skipHistoryToggle){
+    E.skipHistoryToggle.addEventListener('change',function(){
+      markConfigEdit();
+      Store.set('skipHistoryEnabled',!!E.skipHistoryToggle.checked);
+      Store.set('skipHistoryScope','hr');
+      persistFilterState();
+    });
+  }
+  function addExcludeKeyword(){
+    var input=E.excludeKeywordInput;
+    var value=input?input.value.trim():'';
+    if(!value)return;
+    markConfigEdit();
+    var list=uniqueStrings((Store.get('excludeKeywords')||[]).concat([value]));
+    Store.set('excludeKeywords',list);
+    if(input)input.value='';
+    window.renderExcludeKeywords&&window.renderExcludeKeywords();
+    persistFilterState();
+  }
+  if(E.addExcludeKeywordBtn)E.addExcludeKeywordBtn.addEventListener('click',addExcludeKeyword);
+  if(E.excludeKeywordInput)E.excludeKeywordInput.addEventListener('keydown',function(e){
+    if(e.key==='Enter'){
+      e.preventDefault();
+      addExcludeKeyword();
+    }
+  });
+  if(E.excludeKeywordTags)E.excludeKeywordTags.addEventListener('click',function(e){
+    var tag=e.target.closest('.selected-tag[data-exclude-keyword]');
+    if(!tag)return;
+    markConfigEdit();
+    var list=Store.get('excludeKeywords')||[];
+    var idx=list.indexOf(tag.dataset.excludeKeyword);
+    if(idx>=0)list.splice(idx,1);
+    Store.set('excludeKeywords',uniqueStrings(list));
+    window.renderExcludeKeywords&&window.renderExcludeKeywords();
+    persistFilterState();
+  });
 
   // ── Industry search ──
   E.indArea.addEventListener('click',function(e){
@@ -332,6 +581,9 @@ window.initEventsA=function(){
     Store.set('education',['不限']);
     Store.set('companySizes',['不限']);
     Store.set('fundingStages',['不限']);
+    Store.set('excludeKeywords',typeof DEFAULT_EXCLUDE_KEYWORDS!=='undefined'?DEFAULT_EXCLUDE_KEYWORDS.slice():[]);
+    Store.set('skipHistoryEnabled',true);
+    Store.set('skipHistoryScope','hr');
     Store.set('posSearchQuery','');
     Store.set('indSearchQuery','');
     E.posSearch.value='';
@@ -360,6 +612,54 @@ window.initEventsA=function(){
     window.toResults();
   });
   E.btnBack.addEventListener('click',window.toSettings);
+
+  if(E.aiFilterGenerateBtn){
+    E.aiFilterGenerateBtn.addEventListener('click',function(){
+      var prompt=(E.aiFilterPrompt&&E.aiFilterPrompt.value||'').trim();
+      if(!prompt){setFilterSuggestionStatus('请先输入你想怎么改筛选条件','error');return;}
+      E.aiFilterGenerateBtn.disabled=true;
+      setFilterSuggestionStatus('正在生成建议...','');
+      try{
+        chrome.runtime.sendMessage({
+          type:MSG.GENERATE_FILTER_SUGGESTION,
+          prompt:prompt,
+          filterState:getCurrentFilterState()
+        },function(resp){
+          E.aiFilterGenerateBtn.disabled=false;
+          if(chrome.runtime.lastError||!resp||!resp.success){
+            setFilterSuggestionStatus('生成失败：'+((resp&&resp.error)||chrome.runtime.lastError?.message||'未知错误'),'error');
+            return;
+          }
+          var normalized=normalizeFilterSuggestion(resp.result||{});
+          Store.set('filterSuggestionDraft',normalized);
+          renderStoredSuggestion();
+          setFilterSuggestionStatus('建议已生成，请确认差异后再应用','success');
+        });
+      }catch(ex){
+        E.aiFilterGenerateBtn.disabled=false;
+        setFilterSuggestionStatus('生成失败：'+ex.message,'error');
+      }
+    });
+  }
+
+  if(E.aiFilterApplyBtn){
+    E.aiFilterApplyBtn.addEventListener('click',function(){
+      var draft=Store.get('filterSuggestionDraft');
+      if(!draft||!draft.nextState){setFilterSuggestionStatus('当前没有可应用的建议','error');return;}
+      applyFilterState(draft.nextState);
+      Store.set('filterSuggestionDraft',null);
+      renderStoredSuggestion();
+      setFilterSuggestionStatus('筛选条件已应用，未自动开始采集','success');
+    });
+  }
+
+  if(E.aiFilterDiscardBtn){
+    E.aiFilterDiscardBtn.addEventListener('click',function(){
+      Store.set('filterSuggestionDraft',null);
+      renderStoredSuggestion();
+      setFilterSuggestionStatus('已放弃本次建议','');
+    });
+  }
 };
 
 // ── Collect params builder ──
@@ -369,7 +669,6 @@ window.buildCollectParams=function(){
   var selectedCities=state.selectedCities||[];
   if(selectedCities.length>0)urlParams.city=selectedCities[0];
   var _allPos=(state.selectedPositions||[]).concat(state.customPositions||[]);
-  if(_allPos.length>0)urlParams.query=_allPos.join(',');
   if(state.jobTypes&&state.jobTypes.length>0){var jtMap={'全职':'1','兼职':'2'};var mapped=state.jobTypes.map(function(t){return jtMap[t]}).filter(Boolean);if(mapped.length)urlParams.jobType=mapped.join(',')}
   if(state.experience&&state.experience.length>0){var expMap={'在校生(实习)':'108','应届生(校招)':'102','经验不限':'101','1年以内':'103','1-3年':'104','3-5年':'105','5-10年':'106','10年以上':'107'};var mapped=state.experience.map(function(e){return expMap[e]}).filter(Boolean);if(mapped.length)urlParams.experience=mapped.join(',')}
   if(state.education&&state.education.length>0){var degMap={'初中及以下':'209','中专/中技':'208','高中':'206','大专':'202','本科':'203','硕士':'204','博士':'205'};var mapped=state.education.map(function(d){return degMap[d]}).filter(Boolean);if(mapped.length)urlParams.degree=mapped.join(',')}
@@ -397,7 +696,17 @@ window.buildCollectParams=function(){
   if(state.selectedIndustries&&state.selectedIndustries.length>0)selectedFilters.industries=[].concat(state.selectedIndustries);
   if(state.companySizes&&state.companySizes.length>0)selectedFilters.companySizes=[].concat(state.companySizes);
   if(state.fundingStages&&state.fundingStages.length>0)selectedFilters.fundingStages=[].concat(state.fundingStages);
-  return {urlParams:urlParams,tags:tags,filters:selectedFilters,selectedPositions:[].concat(state.selectedPositions||[]),customPositions:[].concat(state.customPositions||[]),selectedCities:selectedCities};
+  return {
+    urlParams:urlParams,
+    tags:tags,
+    filters:selectedFilters,
+    selectedPositions:[].concat(state.selectedPositions||[]),
+    customPositions:[].concat(state.customPositions||[]),
+    selectedCities:selectedCities,
+    excludeKeywords:uniqueStrings(state.excludeKeywords||[]),
+    skipHistoryEnabled:state.skipHistoryEnabled!==false,
+    skipHistoryScope:'hr'
+  };
 };
 
 // ── A 页筛选条件持久化 ──
@@ -414,6 +723,7 @@ function persistFilterState() {
           selectedCities: s.selectedCities,
           selectedPositions: s.selectedPositions,
           customPositions: s.customPositions,
+          sendGreeting: s.sendGreeting !== false,
           hrActiveFilter: s.hrActiveFilter,
           selectedIndustries: s.selectedIndustries,
           workAreas: s.workAreas,
@@ -423,6 +733,9 @@ function persistFilterState() {
           education: s.education,
           companySizes: s.companySizes,
           fundingStages: s.fundingStages,
+          excludeKeywords: uniqueStrings(s.excludeKeywords || []),
+          skipHistoryEnabled: s.skipHistoryEnabled !== false,
+          skipHistoryScope: 'hr',
         }
       });
     } catch (e) {}

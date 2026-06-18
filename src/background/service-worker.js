@@ -1,5 +1,6 @@
 ﻿// Service Worker — 消息中枢 + OpenAI-compatible AI 代理
 importScripts('/src/shared/constants.js');
+importScripts('/src/db/indexeddb.js');
 importScripts('/src/shared/error-logger.js');
 importScripts('/src/shared/diag-logger.js');
 importScripts('/src/shared/device-id.js');
@@ -115,7 +116,8 @@ function extractJsonObject(text) {
 }
 
 function buildJobScreenPrompt(job, resumeText, expected) {
-  return `请判断这个岗位是否适合投递，并生成招呼语。只返回 JSON，不要 Markdown。\n\n[简历]\n${resumeText || '未提供文字简历'}\n\n[用户期望方向]\n${expected || ''}\n\n[岗位]\n标题：${job.name || ''}\n公司：${job.company || ''}\n薪资：${job.salary || ''}\n标签：${(job.tags || []).join(' / ')}\nJD：${String(job.desc || job.description || job.detail || '').slice(0, 1500)}\n\n返回格式：{\"score\":0,\"reason\":\"\",\"greeting\":\"\",\"risks\":[]}\nscore 为 0-100 的匹配分；reason 不超过 40 字；greeting 为 80-120 字招呼语；risks 是字符串数组。`;
+  var excludeKeywords = uniqueStrings(state.excludeKeywords || []);
+  return `请判断这个岗位是否适合投递，并生成招呼语。只返回 JSON，不要 Markdown。\n\n[简历]\n${resumeText || '未提供文字简历'}\n\n[用户期望方向]\n${expected || ''}\n\n[排除规则]\n排除关键词：${excludeKeywords.join(' / ') || '无'}\n重点识别并降低评分：外包、驻场、培训推广、销售/主播/客服、讲师岗、剪辑/视频制作、游戏前端、把销售/运营包装成 AI 应用开发的岗位、非真实开发岗。\n\n[岗位]\n标题：${job.name || ''}\n公司：${job.company || ''}\n薪资：${job.salary || ''}\n标签：${(job.tags || []).join(' / ')}\nJD：${String(job.desc || job.description || job.detail || '').slice(0, 1500)}\n\n返回格式：{\"score\":0,\"reason\":\"\",\"greeting\":\"\",\"risks\":[]}\nscore 为 0-100 的匹配分；reason 不超过 40 字；greeting 为 80-120 字招呼语；risks 是字符串数组，命中排除规则时写明具体风险。`;
 }
 
 async function screenSingleJob(cfg, job, resumeText, expected) {
@@ -136,6 +138,332 @@ async function screenSingleJob(cfg, job, resumeText, expected) {
     reason: String(parsed.reason || '').slice(0, 160),
     greeting: String(parsed.greeting || '').trim(),
     risks: Array.isArray(parsed.risks) ? parsed.risks.map(String).slice(0, 5) : [],
+  };
+}
+
+function buildEmptyBatchOverview() {
+  return {
+    headline: '',
+    good: [],
+    bad: [],
+    nextFocus: [],
+    pitfalls: [],
+    coverage: {
+      totalJobs: 0,
+      jobsWithJD: 0,
+      pendingJobs: 0,
+      completedBatches: 0,
+    },
+    updatedAt: 0,
+  };
+}
+
+function createJobHydrationMeta(job) {
+  if (!job) return null;
+  if (!job.jdStatus) job.jdStatus = (job.detail || job.desc || job.description) ? 'success' : 'pending';
+  if (typeof job.jdAttempts !== 'number') job.jdAttempts = 0;
+  if (typeof job.jdLastError !== 'string') job.jdLastError = '';
+  return job;
+}
+
+function ensureJobHydrationMeta(jobs) {
+  (Array.isArray(jobs) ? jobs : []).forEach(createJobHydrationMeta);
+}
+
+function findStateJobById(jobId) {
+  var jobs = Array.isArray(state.jobs) ? state.jobs : [];
+  for (var i = 0; i < jobs.length; i++) {
+    var job = jobs[i];
+    if (job && String(job.jobId || job.id || '') === String(jobId || '')) return job;
+  }
+  return null;
+}
+
+function mapJobToRecord(job, status, source, patch) {
+  var extra = patch || {};
+  return {
+    jobKey: extra.jobKey || (job && (job.jobKey || job.jobId || job.id || job.link || job.jobLink)),
+    jobId: extra.jobId || (job && (job.jobId || job.id)) || '',
+    jobLink: extra.jobLink || (job && (job.jobLink || job.link || job.url)) || '',
+    positionName: extra.positionName || (job && (job.positionName || job.name || job.title)) || '',
+    companyName: extra.companyName || (job && (job.companyName || job.company)) || '',
+    hrName: extra.hrName || (job && (job.hrName || job.bossName)) || '',
+    city: extra.city || (job && (job.city || job.location)) || '',
+    salary: extra.salary || (job && job.salary) || '',
+    status: status || 'collected',
+    source: source || '',
+    error: extra.error || '',
+    firstCollectedAt: extra.firstCollectedAt || undefined,
+    lastSeenAt: extra.lastSeenAt || undefined,
+    lastHandledAt: extra.lastHandledAt || undefined,
+  };
+}
+
+/**
+ * 将采集到的岗位异步写入 IndexedDB，用于后续查重、回溯和备份。
+ */
+function saveCollectedJobRecords(jobs, source) {
+  if (typeof saveJobRecords !== 'function') return Promise.resolve([]);
+  var records = (Array.isArray(jobs) ? jobs : []).map(function(job) {
+    return mapJobToRecord(job, 'collected', source || 'collect');
+  });
+  if (!records.length) return Promise.resolve([]);
+  return saveJobRecords(records).catch(function(e) {
+    try { DiagLogger.warn('sw.jobRecords', '保存采集岗位记录失败: ' + (e && e.message || e)); } catch (_) {}
+    return [];
+  });
+}
+
+function mapSendResultStatus(result) {
+  if (!result) return 'failed';
+  if (result.alreadyChatted) return 'alreadyChatted';
+  if (result.success) return 'sent';
+  var error = String(result.error || '');
+  if (result.missed || /未投递/.test(error)) return 'unsent';
+  if (result.skipped) return 'skipped';
+  return 'failed';
+}
+
+function normalizeJobIdentityText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+async function buildHandledHrSet() {
+  var set = {};
+  if (typeof getJobRecords !== 'function') return set;
+  try {
+    var records = await getJobRecords();
+    (Array.isArray(records) ? records : []).forEach(function(record) {
+      var status = String(record && record.status || '');
+      if (status !== 'sent' && status !== 'alreadyChatted') return;
+      var hr = normalizeJobIdentityText(record.hrName);
+      var company = normalizeJobIdentityText(record.companyName || record.company);
+      if (hr && company) set[company + '|' + hr] = status;
+    });
+  } catch (e) {
+    try { DiagLogger.warn('sw.jobRecords', '读取历史 HR 记录失败: ' + (e && e.message || e)); } catch (_) {}
+  }
+  return set;
+}
+
+async function applyPostCollectRules(jobs, options) {
+  var opts = options || {};
+  var excludeKeywords = uniqueStrings(opts.excludeKeywords || state.excludeKeywords || []);
+  var skipHistoryEnabled = opts.skipHistoryEnabled !== false;
+  var handledHrSet = skipHistoryEnabled ? await buildHandledHrSet() : {};
+  return (Array.isArray(jobs) ? jobs : []).map(function(job) {
+    var excludeHit = findExcludeKeywordHit(job, excludeKeywords);
+    if (excludeHit) {
+      job.checked = false;
+      job.excludeReason = '命中排除词：' + excludeHit;
+    } else {
+      job.excludeReason = '';
+    }
+    var hr = normalizeJobIdentityText(job && (job.hrName || job.bossName));
+    var company = normalizeJobIdentityText(job && (job.companyName || job.company));
+    var historyStatus = hr && company ? handledHrSet[company + '|' + hr] : '';
+    if (historyStatus) {
+      job.checked = false;
+      job.historySkipReason = historyStatus === 'alreadyChatted' ? '已沟通过同 HR' : '已投过同 HR';
+    } else {
+      job.historySkipReason = '';
+    }
+    return job;
+  });
+}
+
+function mergeCollectedJobsById(jobs) {
+  var byId = {};
+  var out = [];
+  (Array.isArray(jobs) ? jobs : []).forEach(function(job) {
+    if (!job) return;
+    var id = String(job.jobId || job.id || job.jobLink || job.link || '').trim();
+    if (!id) return;
+    if (!byId[id]) {
+      byId[id] = job;
+      job.matchedKeywords = uniqueStrings(job.matchedKeywords || (job.searchKeyword ? [job.searchKeyword] : []));
+      out.push(job);
+      return;
+    }
+    var existing = byId[id];
+    existing.matchedKeywords = uniqueStrings((existing.matchedKeywords || []).concat(job.matchedKeywords || [], job.searchKeyword || []));
+    if (!existing.searchKeyword && job.searchKeyword) existing.searchKeyword = job.searchKeyword;
+    if (!existing.detail && job.detail) existing.detail = job.detail;
+    if (!existing.desc && job.desc) existing.desc = job.desc;
+    if (!existing.description && job.description) existing.description = job.description;
+  });
+  return out;
+}
+
+/**
+ * 将投递结果异步回写岗位记录，更新为最终处理状态。
+ */
+function saveHandledJobRecords(results, source) {
+  if (typeof saveJobRecords !== 'function') return Promise.resolve([]);
+  var records = (Array.isArray(results) ? results : []).map(function(result) {
+    var job = findStateJobById(result && result.jobId);
+    return mapJobToRecord(job, mapSendResultStatus(result), source || 'send', {
+      jobId: result && result.jobId,
+      positionName: result && result.positionName,
+      companyName: result && result.companyName,
+      hrName: result && result.hrName,
+      error: result && result.error,
+      lastHandledAt: result && result.time ? new Date(result.time).toISOString() : new Date().toISOString(),
+    });
+  });
+  if (!records.length) return Promise.resolve([]);
+  return saveJobRecords(records).catch(function(e) {
+    try { DiagLogger.warn('sw.jobRecords', '保存投递岗位记录失败: ' + (e && e.message || e)); } catch (_) {}
+    return [];
+  });
+}
+
+function countJobsWithJD(jobs) {
+  return (Array.isArray(jobs) ? jobs : []).filter(function(job) {
+    return !!String(job && (job.detail || job.desc || job.description) || '').trim();
+  }).length;
+}
+
+function countPendingJdJobs(jobs) {
+  return (Array.isArray(jobs) ? jobs : []).filter(function(job) {
+    return job && job.jdStatus !== 'success';
+  }).length;
+}
+
+function buildBatchOverviewPrompt(jobs, expected) {
+  var compactJobs = (Array.isArray(jobs) ? jobs : []).map(function(job) {
+    return {
+      title: String(job && job.name || ''),
+      company: String(job && job.company || ''),
+      salary: String(job && job.salary || ''),
+      tags: Array.isArray(job && job.tags) ? job.tags.slice(0, 6) : [],
+      score: Number(job && job.aiScreen && job.aiScreen.score || 0),
+      reason: String(job && job.aiScreen && job.aiScreen.reason || ''),
+      checked: !!(job && job.checked),
+      jdSnippet: String(job && (job.detail || job.desc || job.description) || '').trim().slice(0, 180),
+    };
+  });
+  return [
+    '请对这一整批岗位做一次整体认知筛选，只返回 JSON，不要 Markdown。',
+    '',
+    '[用户期望方向]',
+    expected || '未提供',
+    '',
+    '[岗位列表]',
+    JSON.stringify(compactJobs, null, 2),
+    '',
+    '返回格式：{"headline":"","good":[],"bad":[],"nextFocus":[],"pitfalls":[]}',
+    'good 和 bad 分别写整批岗位的优点和缺点；nextFocus 写下次筛选应调整的方向；pitfalls 写应该避开的坑。每个数组 2-4 条。'
+  ].join('\n');
+}
+
+function normalizeBatchOverview(raw, jobs, completedBatches) {
+  var parsed = raw && typeof raw === 'object' ? raw : {};
+  function cleanList(value) {
+    return Array.isArray(value) ? value.map(String).map(function(item) {
+      return item.trim();
+    }).filter(Boolean).slice(0, 4) : [];
+  }
+  return {
+    headline: String(parsed.headline || '').trim().slice(0, 120),
+    good: cleanList(parsed.good),
+    bad: cleanList(parsed.bad),
+    nextFocus: cleanList(parsed.nextFocus),
+    pitfalls: cleanList(parsed.pitfalls),
+    coverage: {
+      totalJobs: Array.isArray(jobs) ? jobs.length : 0,
+      jobsWithJD: countJobsWithJD(jobs),
+      pendingJobs: countPendingJdJobs(jobs),
+      completedBatches: Number(completedBatches || 0),
+    },
+    updatedAt: Date.now(),
+  };
+}
+
+async function generateBatchOverview(jobs, completedBatches) {
+  var cfg = await getAiConfig();
+  if (!cfg.apiKey || !cfg.model || !Array.isArray(jobs) || !jobs.length) {
+    return buildEmptyBatchOverview();
+  }
+  var expected = allExpectedPositions(state).join(' / ');
+  var messages = [
+    { role: 'system', content: '你是求职批量筛选分析助手。严格输出一个 JSON 对象，字段为 headline、good、bad、nextFocus、pitfalls。' },
+    { role: 'user', content: buildBatchOverviewPrompt(jobs, expected) }
+  ];
+  var text;
+  try {
+    text = await callOpenAICompatible(cfg, messages, 1200, 60000, 'batch-overview', { type: 'json_object' });
+  } catch (err) {
+    if (!/response_format|json_object|400/i.test(String(err.message || ''))) throw err;
+    text = await callOpenAICompatible(cfg, messages, 1200, 60000, 'batch-overview');
+  }
+  return normalizeBatchOverview(extractJsonObject(text), jobs, completedBatches);
+}
+
+/**
+ * 规范化岗位摘要样本，作为“AI 改筛选条件”额外上下文。
+ */
+function buildRecentJobSamples(jobs, limit) {
+  return (Array.isArray(jobs) ? jobs : []).slice(0, Math.max(0, Number(limit || 0))).map(function(job) {
+    return {
+      title: String(job && job.name || ''),
+      company: String(job && job.company || ''),
+      salary: String(job && job.salary || ''),
+      tags: Array.isArray(job && job.tags) ? job.tags.slice(0, 6) : [],
+      score: Number(job && job.aiScreen && job.aiScreen.score || 0),
+      reason: String(job && job.aiScreen && job.aiScreen.reason || ''),
+      excludeReason: String(job && job.excludeReason || ''),
+      historySkipReason: String(job && job.historySkipReason || ''),
+      searchKeyword: String(job && job.searchKeyword || ''),
+    };
+  });
+}
+
+/**
+ * 生成筛选条件修改建议，只返回标准 JSON。
+ */
+async function generateFilterSuggestion(input) {
+  var cfg = await getAiConfig();
+  if (!cfg.apiKey || !cfg.model) throw new Error('请先在 AI 设置中保存 API Key 和模型');
+  var payload = input && typeof input === 'object' ? input : {};
+  var messages = [
+    {
+      role: 'system',
+      content: '你是招聘筛选条件助手。只输出 JSON。字段缺失表示保持当前值不变；空数组或空字符串表示重置为不限；城市、行业、筛选项全部使用页面展示文案，不要 code；未识别项放到 ignored；未识别岗位词放到 customPositions。可用 excludeKeywords 表达应排除的岗位关键词，skipHistoryEnabled 控制是否跳过已投过的同 HR。'
+    },
+    {
+      role: 'user',
+      content: [
+        '请根据用户说明修改求职筛选条件，只返回 JSON，不要解释。',
+        '',
+        '[用户说明]',
+        String(payload.prompt || ''),
+        '',
+        '[当前筛选条件]',
+        JSON.stringify(payload.filterState || {}, null, 2),
+        '',
+        '[文字简历]',
+        String(payload.resumeText || '未提供'),
+        '',
+        '[最近岗位摘要样本]',
+        JSON.stringify(payload.jobSamples || [], null, 2),
+        '',
+        '返回格式：{"summary":"","changes":{"selectedCities":[],"selectedPositions":[],"customPositions":[],"hrActiveFilter":"","selectedIndustries":[],"workAreas":[],"jobTypes":[],"salaryRanges":[],"experience":[],"education":[],"companySizes":[],"fundingStages":[],"excludeKeywords":[],"skipHistoryEnabled":true,"skipHistoryScope":"hr"},"ignored":[]}'
+      ].join('\n')
+    }
+  ];
+  var text;
+  try {
+    text = await callOpenAICompatible(cfg, messages, 1200, 60000, 'filter-suggestion', { type: 'json_object' });
+  } catch (err) {
+    if (!/response_format|json_object|400/i.test(String(err.message || ''))) throw err;
+    text = await callOpenAICompatible(cfg, messages, 1200, 60000, 'filter-suggestion');
+  }
+  var parsed = extractJsonObject(text);
+  return {
+    summary: String(parsed.summary || '').trim(),
+    changes: parsed.changes && typeof parsed.changes === 'object' ? parsed.changes : {},
+    ignored: Array.isArray(parsed.ignored) ? parsed.ignored.map(String).filter(Boolean).slice(0, 20) : [],
   };
 }
 
@@ -160,7 +488,13 @@ async function applyAiScreeningToJobs(jobs) {
         current.checked = screening.score >= threshold;
         if (screening.greeting) current.aiGreeting = screening.greeting;
       } catch (err) {
-        current.aiScreen = { score: 0, reason: 'AI筛选失败，请人工确认', greeting: '', risks: [err.message || 'AI error'], failed: true };
+        current.aiScreen = {
+          score: 0,
+          reason: 'AI筛选失败，请人工确认',
+          greeting: '',
+          risks: [err.message || 'AI error'],
+          failed: true,
+        };
         current.checked = false;
         ErrorLogger.logError(err.message || String(err), err?.stack, 'AI screening failed');
       }
@@ -175,6 +509,134 @@ async function applyAiScreeningToJobs(jobs) {
   state.aiScreeningProgress = { done: jobs.length, total: jobs.length };
   pushState();
   return jobs;
+}
+
+async function fetchJobDetailText(jobLink) {
+  if (!jobLink) return '';
+  const tab = await chrome.tabs.create({ url: jobLink, active: false });
+  const tabId = tab.id;
+  try {
+    await waitForTabLoad(tabId);
+    await waitForContentScript(tabId);
+    const resp = await chrome.tabs.sendMessage(tabId, { type: 'FETCH_JOB_DETAIL' });
+    return (resp && resp.success && resp.detail) ? String(resp.detail).trim() : '';
+  } catch (_) {
+    return '';
+  } finally {
+    try { await chrome.tabs.remove(tabId); } catch (_) {}
+  }
+}
+
+let jdHydrationRunning = false;
+
+function buildJdHydrationProgress(jobs, running, completedBatches, stalledBatches) {
+  var list = Array.isArray(jobs) ? jobs : [];
+  var success = list.filter(function(job) { return job && job.jdStatus === 'success'; }).length;
+  var pending = list.filter(function(job) { return job && job.jdStatus !== 'success'; }).length;
+  var failed = list.filter(function(job) { return job && job.jdStatus === 'failed'; }).length;
+  return {
+    running: !!running,
+    done: success,
+    total: list.length,
+    success: success,
+    failed: failed,
+    pending: pending,
+    completedBatches: Number(completedBatches || 0),
+    stalledBatches: Number(stalledBatches || 0),
+  };
+}
+
+async function refreshBatchOverview(force) {
+  var jobs = Array.isArray(state.jobs) ? state.jobs : [];
+  if (!jobs.length) {
+    state.aiBatchOverview = buildEmptyBatchOverview();
+    pushState();
+    return;
+  }
+  try {
+    var overview = await generateBatchOverview(jobs, state.jdHydrationProgress && state.jdHydrationProgress.completedBatches || 0);
+    state.aiBatchOverview = overview;
+    pushState();
+  } catch (e) {
+    ErrorLogger.logError(e.message || String(e), e?.stack, 'generate batch overview failed');
+    if (force || !state.aiBatchOverview) {
+      state.aiBatchOverview = normalizeBatchOverview({}, jobs, state.jdHydrationProgress && state.jdHydrationProgress.completedBatches || 0);
+      pushState();
+    }
+  }
+}
+
+async function runSingleJdHydrationBatch(jobs, batchJobs) {
+  var queue = Array.isArray(batchJobs) ? batchJobs : [];
+  var idx = 0;
+  var successCount = 0;
+  async function worker() {
+    while (idx < queue.length) {
+      var job = queue[idx++];
+      createJobHydrationMeta(job);
+      job.jdStatus = 'pending';
+      job.jdAttempts += 1;
+      var detail = '';
+      try {
+        detail = await fetchJobDetailText(job.link);
+      } catch (e) {
+        job.jdLastError = e.message || String(e);
+      }
+      if (detail) {
+        job.detail = detail;
+        job.desc = detail;
+        job.jdStatus = 'success';
+        job.jdLastError = '';
+        successCount += 1;
+      } else {
+        job.jdStatus = 'failed';
+        if (!job.jdLastError) job.jdLastError = 'JD 详情为空';
+      }
+      state.jobs = jobs;
+      pushState();
+    }
+  }
+  await Promise.all(Array.from({
+    length: Math.min(CONFIG.JD_HYDRATION_CONCURRENCY || 2, Math.max(queue.length, 1))
+  }, function() { return worker(); }));
+  return successCount;
+}
+
+async function scheduleJdHydration(options) {
+  if (jdHydrationRunning) return;
+  var opts = options || {};
+  var jobs = Array.isArray(state.jobs) ? state.jobs : [];
+  ensureJobHydrationMeta(jobs);
+  jdHydrationRunning = true;
+  var completedBatches = state.jdHydrationProgress && state.jdHydrationProgress.completedBatches || 0;
+  var stalledBatches = 0;
+  state.jdHydrationProgress = buildJdHydrationProgress(jobs, true, completedBatches, stalledBatches);
+  pushState();
+
+  try {
+    while (true) {
+      var pending = jobs.filter(function(job) {
+        createJobHydrationMeta(job);
+        return job && job.link && job.jdStatus !== 'success';
+      });
+      if (!pending.length) break;
+      var currentBatch = pending.slice(0, CONFIG.JD_HYDRATION_BATCH_SIZE || 12);
+      var newSuccess = await runSingleJdHydrationBatch(jobs, currentBatch);
+      completedBatches += 1;
+      stalledBatches = newSuccess > 0 ? 0 : stalledBatches + 1;
+      state.jdSamples = sampleJDs(clusterJobs(jobs, state.selectedPositions, state.customPositions), 5);
+      state.jdHydrationProgress = buildJdHydrationProgress(jobs, true, completedBatches, stalledBatches);
+      pushState();
+      if (newSuccess > 0 || completedBatches === 1 || opts.forceOverviewRefresh) {
+        await refreshBatchOverview(false);
+      }
+      if (stalledBatches >= (CONFIG.JD_HYDRATION_STALL_LIMIT || 2)) break;
+    }
+  } finally {
+    jdHydrationRunning = false;
+    state.jdHydrationProgress = buildJdHydrationProgress(jobs, false, completedBatches, stalledBatches);
+    pushState();
+  }
 }
 
 async function generateGreeting(apiKey, resumeImages, jdSamples, category) {
@@ -308,6 +770,8 @@ let state = {
   jobs: [],
   greetings: {},
   aiScreeningProgress: { done: 0, total: 0 },
+  aiBatchOverview: buildEmptyBatchOverview(),
+  jdHydrationProgress: { running: false, done: 0, total: 0, success: 0, failed: 0, pending: 0, completedBatches: 0, stalledBatches: 0 },
   jobCustom: {},            // per-job 自定义（来自 ui:jobCustom）：{[jobId]:{customGreeting,images,...}}，发送前从 storage 灌入；buildSendQueueV6 按 jobId 取 customGreeting 覆盖组级招呼语
   greetingProgress: { done: 0, total: 0 },
   sendProgress: { sent: 0, total: 0 },
@@ -319,6 +783,7 @@ let state = {
   sendQueue: [],        // [{jobId, positionName, companyName, jobLink, greeting}]
   sendIndex: 0,
   searchTabId: null,
+  sendGreeting: true,
   sendPhase: '',            // '' | 'stage1' | 'stage2'
   sendQueueV6: [],          // [{jobId, hrName, hrCompany, greeting, positionName, companyName}]
   _v6CurrentBatchQueue: [],  // 本批原始队列快照：终态补齐已取走但未落账的岗位
@@ -374,11 +839,11 @@ function buildSendQueueV6(state, jobIds) {
       var job = state.jobs.find(function(j) { return (j.jobId || j.id) === id; });
       if (!job) { console.warn('[即投] buildSendQueueV6: 未找到 job id=' + id); }
       var category = job ? matchJobToPosition(job, picker, custom) : '其他';
-      var greeting = (job && job.aiGreeting) || state.greetings[category] || '';
+      var greeting = state.sendGreeting === false ? '' : ((job && job.aiGreeting) || state.greetings[category] || '');
       // per-job 自定义招呼语优先：该岗设了非空 customGreeting → 覆盖组级招呼语；为空/未设则保持组级 fallback（行为不变）
       var jcEntry = state.jobCustom && state.jobCustom[id];
       var jcGreeting = jcEntry && typeof jcEntry.customGreeting === 'string' ? jcEntry.customGreeting.trim() : '';
-      if (jcGreeting) {
+      if (state.sendGreeting !== false && jcGreeting) {
         greeting = jcGreeting;
         try { DiagLogger.info('sw.send', 'buildSendQueueV6：jobId=' + id + ' 用 per-job 自定义招呼语 len=' + jcGreeting.length); } catch (_) {}
       }
@@ -406,6 +871,16 @@ async function loadJobCustomIntoState() {
   }
 }
 
+async function loadSendGreetingPreference() {
+  try {
+    const r = await chrome.storage.local.get(STORAGE_KEYS.UI.FILTER_STATE);
+    const fs = r[STORAGE_KEYS.UI.FILTER_STATE] || {};
+    state.sendGreeting = fs.sendGreeting !== false;
+  } catch (_) {
+    state.sendGreeting = true;
+  }
+}
+
 // ── 空/占位招呼语保险丝 ──
 // greeting 为空或等于生成失败占位串的岗位发出去就是空消息（且 repair 阶段无从核对），
 // 一律不入队，记一条失败 sendResults（结构对齐 stage1 提取失败的 skipped 记录）。
@@ -415,6 +890,7 @@ function isGreetingMissing(g) {
   return !t || GREETING_PLACEHOLDERS.indexOf(t) >= 0;
 }
 function dropMissingGreetingJobs() {
+  if (state.sendGreeting === false) return;
   var dropped = state.sendQueueV6.filter(function(item) { return isGreetingMissing(item.greeting); });
   if (!dropped.length) return;
   state.sendQueueV6 = state.sendQueueV6.filter(function(item) { return !isGreetingMissing(item.greeting); });
@@ -684,16 +1160,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           : (msg.clusters || {});
       }
       state.jdSamples = msg.jdSamples;
-      applyAiScreeningToJobs(state.jobs).then(function(screenedJobs) {
-        state.jobs = screenedJobs;
+      ensureJobHydrationMeta(state.jobs);
+      saveCollectedJobRecords(state.jobs, 'collect');
+      applyAiScreeningToJobs(state.jobs).then(async function(screenedJobs) {
+        state.jobs = await applyPostCollectRules(screenedJobs, state);
         const _allPosScreened = allExpectedPositions(state);
         state.clusters = _allPosScreened.length
-          ? clusterJobs(screenedJobs, state.selectedPositions, state.customPositions)
+          ? clusterJobs(state.jobs, state.selectedPositions, state.customPositions)
           : (state.clusters || {});
+        saveCollectedJobRecords(state.jobs, 'ai-screen');
         pushState();
+        return refreshBatchOverview(true);
       }).catch(function(e) {
         chrome.runtime.sendMessage({ type: 'ERROR', message: 'AI 筛选失败，请人工确认岗位' }).catch(() => {});
         ErrorLogger.logError(e.message || String(e), e?.stack, 'AI screening batch failed');
+      });
+      scheduleJdHydration({ forceOverviewRefresh: false }).catch(function(e) {
+        ErrorLogger.logError(e.message || String(e), e?.stack, 'JD hydrate schedule failed');
       });
       state.phase = 'ready';
       pushState();
@@ -889,6 +1372,34 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       callOpenAICompatible(normalizeAiConfig(msg.config), [
         { role: 'user', content: 'Reply with OK only.' },
       ], 8, 20000, 'test').then((text) => sendResponse({ success: true, message: text })).catch((e) => sendResponse({ success: false, error: e.message }));
+      return true;
+
+    case MSG.GENERATE_FILTER_SUGGESTION:
+      Promise.all([
+        chrome.storage.local.get([STORAGE_KEYS.UI.FILTER_STATE, STORAGE_KEYS.SW.JOBS]),
+        getTextResume(),
+      ]).then(function(results) {
+        var storageItems = results[0] || {};
+        var resumeText = results[1] || '';
+        return generateFilterSuggestion({
+          prompt: msg.prompt || '',
+          filterState: msg.filterState || storageItems[STORAGE_KEYS.UI.FILTER_STATE] || {},
+          resumeText: resumeText,
+          jobSamples: buildRecentJobSamples(msg.jobs || storageItems[STORAGE_KEYS.SW.JOBS] || [], 12),
+        });
+      }).then(function(result) {
+        sendResponse({ success: true, result: result });
+      }).catch(function(e) {
+        sendResponse({ success: false, error: e.message });
+      });
+      return true;
+
+    case MSG.RETRY_JOB_DETAILS:
+      scheduleJdHydration({ forceOverviewRefresh: true }).then(function() {
+        sendResponse({ success: true });
+      }).catch(function(e) {
+        sendResponse({ success: false, error: e.message });
+      });
       return true;
 
     case 'CLEAR_SENT_JOB_IDS':
@@ -1091,6 +1602,9 @@ async function startCollect(params) {
   state.sendProgress = { sent: 0, total: 0 };
   if(params&&params.selectedPositions) state.selectedPositions = params.selectedPositions;
   state.customPositions = (params && Array.isArray(params.customPositions)) ? params.customPositions : (state.customPositions||[]);
+  state.excludeKeywords = uniqueStrings(params && params.excludeKeywords || state.excludeKeywords || DEFAULT_EXCLUDE_KEYWORDS);
+  state.skipHistoryEnabled = !params || params.skipHistoryEnabled !== false;
+  state.skipHistoryScope = 'hr';
   if(params && params.urlParams) state.searchUrlParams = params.urlParams;
   else state.searchUrlParams = null;
   pushState();
@@ -1101,24 +1615,27 @@ async function startCollect(params) {
   }
   try {
     const cities = params.selectedCities || [];
+    const searchKeywords = allExpectedPositions({ selectedPositions: state.selectedPositions, customPositions: state.customPositions });
 
-    // Single city (or 000000 national) → original single-tab collection
-    if (cities.length <= 1) {
-      const singleCity = cities.length === 1 ? cities[0] : (params.urlParams?.city || '');
-      if (params.urlParams) params.urlParams.city = singleCity;
-      return await singleCityCollect(params);
-    }
-
-    // Multi-city batch collection
+    // 所有岗位词逐词独立搜索，最后统一去重和筛选。
     state._multiCityCollect = true;
     const MAX_PARALLEL = CONFIG.MAX_COLLECT_TABS || 2;
     let allJobs = [];
     let earlyGreetingStarted = false;
 
-    for (let i = 0; i < cities.length; i += MAX_PARALLEL) {
-      const batch = cities.slice(i, i + MAX_PARALLEL);
+    var tasks = [];
+    var cityList = cities.length ? cities : [params.urlParams && params.urlParams.city || ''];
+    var keywordList = searchKeywords.length ? searchKeywords : [''];
+    for (var tk = 0; tk < keywordList.length; tk++) {
+      for (var tc = 0; tc < cityList.length; tc++) {
+        tasks.push({ keyword: keywordList[tk], cityCode: cityList[tc] });
+      }
+    }
+
+    for (let i = 0; i < tasks.length; i += MAX_PARALLEL) {
+      const batch = tasks.slice(i, i + MAX_PARALLEL);
       const batchResults = await Promise.allSettled(
-        batch.map(cityCode => collectOnTab(cityCode, params))
+        batch.map(task => collectOnTab(task.cityCode, buildKeywordCollectParams(params, task.keyword)))
       );
 
       for (const result of batchResults) {
@@ -1147,10 +1664,10 @@ async function startCollect(params) {
       }
 
       // City-level progress
-      const completed = Math.min(i + MAX_PARALLEL, cities.length);
+      const completed = Math.min(i + MAX_PARALLEL, tasks.length);
       chrome.runtime.sendMessage({
         type: 'COLLECT_CITY_PROGRESS',
-        progress: { completed, total: cities.length, jobsCollected: allJobs.length }
+        progress: { completed, total: tasks.length, jobsCollected: allJobs.length }
       }).catch(() => {});
     }
 
@@ -1166,20 +1683,34 @@ async function startCollect(params) {
         }
       } catch (e) { /* 静默：storage 读失败保持原值 */ }
     }
-    allJobs = filterJobsByExpected(allJobs, state.selectedPositions, state.customPositions);
-    state.jobs = allJobs;
-    state.clusters = clusterJobs(allJobs, state.selectedPositions, state.customPositions);
+    allJobs = mergeCollectedJobsById(filterJobsByExpected(allJobs, state.selectedPositions, state.customPositions));
+    state.jobs = await applyPostCollectRules(allJobs, state);
+    ensureJobHydrationMeta(state.jobs);
+    state.clusters = clusterJobs(state.jobs, state.selectedPositions, state.customPositions);
     state.jdSamples = sampleJDs(state.clusters, 5);
-    allJobs = await applyAiScreeningToJobs(allJobs);
-    state.jobs = allJobs;
-    state.clusters = clusterJobs(allJobs, state.selectedPositions, state.customPositions);
     state.phase = 'ready';
+    saveCollectedJobRecords(state.jobs, 'collect');
     pushState();
 
     if (allJobs.length === 0) {
       chrome.runtime.sendMessage({ type: 'ERROR', message: '未找到匹配岗位，请调整筛选条件' }).catch(() => {});
       return;
     }
+
+    applyAiScreeningToJobs(allJobs).then(async function(screenedJobs) {
+      state.jobs = await applyPostCollectRules(screenedJobs, state);
+      state.clusters = clusterJobs(state.jobs, state.selectedPositions, state.customPositions);
+      state.jdSamples = sampleJDs(state.clusters, 5);
+      saveCollectedJobRecords(state.jobs, 'ai-screen');
+      pushState();
+      return refreshBatchOverview(true);
+    }).catch(function(e) {
+      chrome.runtime.sendMessage({ type: 'ERROR', message: 'AI 筛选失败，请人工确认岗位' }).catch(() => {});
+      ErrorLogger.logError(e.message || String(e), e?.stack, 'AI screening batch failed');
+    });
+    scheduleJdHydration({ forceOverviewRefresh: false }).catch(function(e) {
+      ErrorLogger.logError(e.message || String(e), e?.stack, 'JD hydrate schedule failed');
+    });
 
     // 如果已提前启动招呼语生成，等待完成后补充新增分类
     if (earlyGreetingStarted) {
@@ -1243,7 +1774,28 @@ async function singleCityCollect(params) {
   } else {
     const tabs = await chrome.tabs.query({ url: '*://*.zhipin.com/web/geek/jobs*' });
     if (!tabs.length) throw new Error('请先打开 BOSS 直聘岗位搜索页');
+    assertCollectableBossTab(tabs[0]);
     await chrome.tabs.sendMessage(tabs[0].id, { type: 'DO_COLLECT', params });
+  }
+}
+
+function buildKeywordCollectParams(params, keyword) {
+  var next = Object.assign({}, params || {});
+  next.urlParams = Object.assign({}, params && params.urlParams || {});
+  var kw = String(keyword || '').trim();
+  if (kw) next.urlParams.query = kw;
+  else delete next.urlParams.query;
+  next.searchKeyword = kw;
+  return next;
+}
+
+function assertCollectableBossTab(tab) {
+  var url = (tab && tab.url) || '';
+  if (!url || url.indexOf('zhipin.com') < 0 || url.indexOf('/web/geek/jobs') < 0) {
+    throw new Error('请先打开 BOSS 直聘岗位搜索页');
+  }
+  if (url.indexOf('_security_check') >= 0) {
+    throw new Error('请先完成 BOSS 安全验证后再收集');
   }
 }
 
@@ -1258,12 +1810,17 @@ async function collectOnTab(cityCode, params) {
     await waitForContentScript(tabId);
     const response = await chrome.tabs.sendMessage(tabId, { type: 'DO_COLLECT', params: { ...params, urlParams } });
     if (response && response.success && response.jobs) {
-      return response.jobs;
+      return response.jobs.map(function(job) {
+        job.searchKeyword = params.searchKeyword || urlParams.query || '';
+        job.matchedKeywords = uniqueStrings((job.matchedKeywords || []).concat(job.searchKeyword || []));
+        return job;
+      });
     }
     return [];
   } catch (e) {
-    chrome.tabs.remove(tabId).catch(() => {});
     throw e;
+  } finally {
+    chrome.tabs.remove(tabId).catch(() => {});
   }
 }
 
@@ -1329,7 +1886,7 @@ function sampleJDs(clusters, perCluster = 5) {
     samples[tag] = tagJobs.slice(0, perCluster).map(j => ({
       title: j.name || j.title,
       tags: j.tags,
-      desc: j.name || j.title,
+      desc: j.detail || j.desc || j.description || j.name || j.title,
     }));
   }
   return samples;
@@ -1344,7 +1901,7 @@ async function stopCollect() {
 }
 
 // ── 发送完成（切换到 review 或 fallback）──
-function finishSend() {
+async function finishSend() {
   try {
     var _dOk = 0, _dFail = 0, _dSkip = 0;
     for (var _di = 0; _di < state.sendResults.length; _di++) {
@@ -1356,6 +1913,7 @@ function finishSend() {
   state.phase = 'review';
   state.sendDuration = Date.now() - sendStartTime;
   state.sendProgress = { sent: state.sendProgress.sent, total: state.sendProgress.total };
+  await saveHandledJobRecords(state.sendResults, 'send');
   pushState();
   chrome.runtime.sendMessage({
     type: MSG.SEND_COMPLETE,
@@ -1482,7 +2040,7 @@ async function finalizeTask(reason) {
   await persistState();
   // 诊断滚动归档：把本轮完整诊断摘要存进 diag:recentRuns（最近 5 次），开新任务清内存也不丢
   try { await archiveRecentRun(reason); } catch (_) {}
-  finishSend();
+  await finishSend();
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1624,7 +2182,7 @@ async function startSendV5(jobIds) {
   state.sendIndex = 0;
   pushState();
 
-  if (state.phase === 'sending') finishSend();
+  if (state.phase === 'sending') await finishSend();
 }
 
 async function recordV5Success(item) {
@@ -1773,7 +2331,7 @@ async function resumeSendV5() {
     for (const item of state.sendQueue) {
       await recordV5Failure(item, '搜索页未就绪(恢复)');
     }
-    finishSend();
+    await finishSend();
     return;
   }
 
@@ -1839,7 +2397,7 @@ async function resumeSendV5() {
   state.sendQueue = [];
   state.sendIndex = 0;
   pushState();
-  if (state.phase === 'sending') finishSend();
+  if (state.phase === 'sending') await finishSend();
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2068,6 +2626,7 @@ async function startSendV6(jobIds) {
   try { DiagLogger.userEvent('sw.send', '任务启动：开始投递 jobs=' + ((jobIds && jobIds.length) || 0) + ' hrActiveFilter=' + (state.hrActiveFilter || '不限')); } catch (_) {}
   sendAborted = false;        // 新批次开始，清掉上一轮的停止标记
   sendStartTime = Date.now(); // v6 也记录开始时间，finishSend/finalizeTask 计算耗时用
+  await loadSendGreetingPreference();
   await loadJobCustomIntoState(); // per-job 自定义招呼语：建队前灌入 state.jobCustom，buildSendQueueV6 据此覆盖组级招呼语
   state.sendQueueV6 = buildSendQueueV6(state, jobIds);
   state._v6CurrentBatchQueue = state.sendQueueV6.slice();
@@ -2095,7 +2654,7 @@ async function startSendV6(jobIds) {
 
   // pre-flight：BOSS「自动打招呼」开关必须开启（陷阱 #31：关着时点立即沟通整页跳转，stage1 卡死）
   // 读失败放行（unknown）；确认 false 则自动开启（API 主路径 + 设置页 DOM 降级）；都失败才中止。
-  var greetPre = await ensureGreetingEnabled(searchTabs[0].id);
+  var greetPre = state.sendGreeting === false ? { ok: true, skipped: true } : await ensureGreetingEnabled(searchTabs[0].id);
   if (!greetPre.ok) {
     state.phase = 'idle'; state.sendPhase = '';
     await persistState();

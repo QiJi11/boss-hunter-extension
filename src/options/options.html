@@ -13,6 +13,12 @@
       <p class="subtitle">配置 AI 接口和简历信息</p>
     </header>
 
+    <section class="migration-banner" aria-label="设置入口迁移提示">
+      <div class="migration-banner-badge">兼容入口</div>
+      <h2 class="migration-banner-title">主设置入口已迁移到侧边面板头部的“完整设置”</h2>
+      <p class="migration-banner-text">建议优先在 BOSS 直聘侧边面板中完成日常配置。本页继续保留保存、导入、导出能力，便于兼容旧使用习惯。</p>
+    </section>
+
     <!-- 简历图片 -->
     <section class="card">
       <h2 class="card-title">
@@ -69,6 +75,33 @@
       </div>
     </section>
 
+    <section class="card">
+      <h2 class="card-title">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        完整资料备份
+      </h2>
+      <p class="card-desc">导出或导入筛选配置、简历图片、文字简历与 AI 设置。导入会先预览，再确认覆盖。</p>
+      <div class="backup-actions">
+        <button type="button" id="exportBtn" class="btn-secondary">导出配置</button>
+        <button type="button" id="importBtn" class="btn-secondary">导入配置</button>
+        <input type="file" id="importFileInput" accept="application/json,.json" hidden>
+      </div>
+      <div id="importStatus" class="import-status hidden"></div>
+      <div id="importPreviewCard" class="import-preview hidden">
+        <div class="import-preview-header">
+          <div>
+            <div class="import-preview-title">导入预览</div>
+            <div id="importPreviewMeta" class="import-preview-meta"></div>
+          </div>
+          <div class="import-preview-actions">
+            <button type="button" id="confirmImportBtn" class="btn-save">确认导入</button>
+            <button type="button" id="cancelImportBtn" class="btn-ghost">取消</button>
+          </div>
+        </div>
+        <div id="importPreviewSummary" class="import-preview-summary"></div>
+      </div>
+    </section>
+
     <!-- 保存 -->
     <div class="save-bar">
       <button type="button" id="saveBtn" class="btn-save">
@@ -80,6 +113,7 @@
   </div>
 
   <script src="../db/indexeddb.js"></script>
+  <script src="../shared/settings-backup.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

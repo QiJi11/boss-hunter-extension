@@ -23,6 +23,9 @@
     education: ['不限'],
     companySizes: ['不限'],
     fundingStages: ['不限'],
+    excludeKeywords: typeof DEFAULT_EXCLUDE_KEYWORDS !== 'undefined' ? DEFAULT_EXCLUDE_KEYWORDS.slice() : [],
+    skipHistoryEnabled: true,
+    skipHistoryScope: 'hr',
     cityOpen: false,
     progressDone: false,
     collecting: false,
@@ -32,6 +35,19 @@
     greetings: {},
     jobCustom: {},
     groupExpanded: {},
+    sendGreeting: true,
+    filterSuggestionDraft: null,
+    aiBatchOverview: null,
+    jdHydrationProgress: {
+      running: false,
+      done: 0,
+      total: 0,
+      success: 0,
+      failed: 0,
+      pending: 0,
+      completedBatches: 0,
+      stalledBatches: 0,
+    },
   };
 
   // Backward-compatible alias (existing code uses S.xxx directly)

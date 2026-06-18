@@ -510,10 +510,12 @@ const JobSender = {
     // 硬中止：停止后绝不再发文本/图片
     if (this.stopped) return { success: false, stopped: true, error: 'stopped' };
     // 1. 发送文字
-    var textResult;
-    try { textResult = await this.sendText(greeting, textOpts); }
-    catch(e) { textResult = { success: false, error: 'sendText异常: ' + e.message }; }
-    if (!textResult.success) return textResult;
+    var textResult = { success: true, skippedText: true };
+    if (greeting && greeting.trim()) {
+      try { textResult = await this.sendText(greeting, textOpts); }
+      catch(e) { textResult = { success: false, error: 'sendText异常: ' + e.message }; }
+      if (!textResult.success) return textResult;
+    }
     if (this.stopped) return { success: false, stopped: true, error: 'stopped' };
     await sleep(500);
 

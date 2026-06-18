@@ -23,6 +23,18 @@ window.arrayBufferToDataUrl=function(arr,mimeType){
 var E={};
 var _debounceJobsTimer=null;
 let p1dPollHandle = null;
+var pendingCompositeImportDraft=null;
+var popupStorageListenerBound=false;
+var SettingsBackupApi=window.SettingsBackup||{};
+var FILTER_STATE_KEY=SettingsBackupApi.FILTER_STATE_KEY||'ui:filterState';
+var AI_CONFIG_KEY=SettingsBackupApi.AI_CONFIG_KEY||'sw:aiConfig';
+var DEFAULT_AI_CONFIG=SettingsBackupApi.DEFAULT_AI_CONFIG||{
+  provider:'openai-compatible',
+  baseUrl:'https://api.openai.com/v1',
+  apiKey:'',
+  model:'gpt-4.1-mini',
+  scoreThreshold:60
+};
 function initDomRefs(){
   E.headerLeft=$('#headerLeft');E.hdrTitle=$('#hdrTitle');E.btnBack=$('#btnBack');
   E.settingsPanel=$('#settingsPanel');E.resultsPanel=$('#resultsPanel');
@@ -33,6 +45,12 @@ function initDomRefs(){
   E.workAreaChips=$('#workAreaChips');E.jobTypeChips=$('#jobTypeChips');
   E.salaryChips=$('#salaryChips');E.expChips=$('#expChips');E.eduChips=$('#eduChips');
   E.sizeChips=$('#sizeChips');E.stageChips=$('#stageChips');
+  E.excludeKeywordInput=$('#excludeKeywordInput');E.addExcludeKeywordBtn=$('#addExcludeKeywordBtn');E.excludeKeywordTags=$('#excludeKeywordTags');
+  E.skipHistoryToggle=$('#skipHistoryToggle');
+  E.aiFilterBox=$('#aiFilterBox');E.aiFilterPrompt=$('#aiFilterPrompt');
+  E.aiFilterGenerateBtn=$('#aiFilterGenerateBtn');E.aiFilterApplyBtn=$('#aiFilterApplyBtn');
+  E.aiFilterDiscardBtn=$('#aiFilterDiscardBtn');E.aiFilterStatus=$('#aiFilterStatus');E.aiFilterPreview=$('#aiFilterPreview');
+  E.sendGreetingToggle=$('#sendGreetingToggle');
   E.bottomSettings=$('#bottomSettings');E.bottomResults=$('#bottomResults');
   E.btnReset=$('#btnReset');E.btnCollect=$('#btnCollect');E.btnSend=$('#btnSend');
   E.btnViewLastReview=$('#btnViewLastReview');
@@ -41,6 +59,15 @@ function initDomRefs(){
   E.progressSection=$('#progressSection');E.progressFill=$('#progressFill');
   E.progressText=$('#progressText');E.progressSub=$('#progressSub');
   E.resultsContent=$('#resultsContent');E.groupedContent=$('#groupedContent');
+  E.compositeBtn=$('#compositeBtn');E.compositeOverlay=$('#compositeOverlay');E.compositeClose=$('#compositeClose');
+  E.compositeOpenOptionsBtn=$('#compositeOpenOptionsBtn');
+  E.compositeAiProvider=$('#compositeAiProvider');E.compositeAiBaseUrl=$('#compositeAiBaseUrl');E.compositeAiApiKey=$('#compositeAiApiKey');
+  E.compositeAiModel=$('#compositeAiModel');E.compositeAiScoreThreshold=$('#compositeAiScoreThreshold');E.compositeTextResume=$('#compositeTextResume');
+  E.compositeTestBtn=$('#compositeTestBtn');E.compositeSaveBtn=$('#compositeSaveBtn');E.compositeStatus=$('#compositeStatus');
+  E.compositeExportBtn=$('#compositeExportBtn');E.compositeImportBtn=$('#compositeImportBtn');E.compositeImportFileInput=$('#compositeImportFileInput');
+  E.compositeImportStatus=$('#compositeImportStatus');E.compositeImportPreviewCard=$('#compositeImportPreviewCard');
+  E.compositeImportPreviewMeta=$('#compositeImportPreviewMeta');E.compositeImportPreviewSummary=$('#compositeImportPreviewSummary');
+  E.compositeConfirmImportBtn=$('#compositeConfirmImportBtn');E.compositeCancelImportBtn=$('#compositeCancelImportBtn');
   E.gearBtn=$('#gearBtn');E.settingsOverlay=$('#settingsOverlay');
   E.settingsClose=$('#settingsClose');
 }
@@ -290,8 +317,47 @@ function completeCollection(){
   E.progressSection.classList.add('hidden');
   E.resultsContent.classList.remove('hidden');
   E.bottomResults.classList.remove('hidden');
+  updateAiNotConfiguredHint();
+  if(window.renderSummaryPanel)window.renderSummaryPanel();
   window.updResCnt();
   window.syncResumeFileNames&&window.syncResumeFileNames();
+}
+
+function updateAiFilterAssistantState(){
+  if(!E.aiFilterGenerateBtn||!E.aiFilterPrompt)return;
+  var hasAi=!!(E.compositeBtn&&E.compositeBtn.classList.contains('configured'));
+  E.aiFilterGenerateBtn.disabled=!hasAi;
+  E.aiFilterPrompt.disabled=!hasAi;
+  if(!hasAi){
+    if(E.aiFilterStatus){
+      E.aiFilterStatus.textContent='未配置 AI，暂时不能生成筛选建议';
+      E.aiFilterStatus.className='ai-filter-status';
+    }
+    return;
+  }
+  if(E.aiFilterStatus&&/未配置 AI/.test(E.aiFilterStatus.textContent||'')){
+    E.aiFilterStatus.textContent='';
+    E.aiFilterStatus.className='ai-filter-status';
+  }
+}
+
+function updateAiNotConfiguredHint(){
+  if(!E.groupedContent)return;
+  var jobs=Store.get('jobs')||[];
+  var hasJobs=jobs.length>0;
+  var hasAi=jobs.some(function(job){return !!(job&&job.aiScreen)});
+  var el=document.getElementById('aiNotConfiguredHint');
+  if(!hasJobs||hasAi){
+    if(el)el.remove();
+    return;
+  }
+  if(!el){
+    el=document.createElement('div');
+    el.id='aiNotConfiguredHint';
+    el.style.cssText='font-size:12px;color:var(--text-weak);padding:8px 16px;text-align:center;background:#f9fafb;border-bottom:1px solid var(--border-light)';
+    E.groupedContent.insertBefore(el,E.groupedContent.firstChild);
+  }
+  el.textContent='未配置 AI，当前仅展示普通岗位列表；点击顶部完整设置可开启岗位匹配判断';
 }
 
 function updateGreetingProgress(progress){
@@ -314,6 +380,8 @@ function updateGreetingProgress(progress){
 }
 
 function updateAiScreeningProgress(progress){
+  var hint=document.getElementById('aiNotConfiguredHint');
+  if(hint)hint.remove();
   var el=document.getElementById('aiScreeningProgress');
   if(!el){
     el=document.createElement('div');
@@ -336,6 +404,135 @@ function updateAiScreeningProgress(progress){
   }
 }
 
+function setJobAnalysisExportStatus(text,cls){
+  var el=document.getElementById('jobAnalysisExportStatus');
+  if(!el)return;
+  el.textContent=text||'';
+  el.className='job-analysis-export-status '+(cls||'');
+}
+
+function syncJobAnalysisCustomRange(){
+  var rangeEl=document.getElementById('jobAnalysisRange');
+  var startEl=document.getElementById('jobAnalysisStartDate');
+  var endEl=document.getElementById('jobAnalysisEndDate');
+  var custom=rangeEl&&rangeEl.value==='custom';
+  if(startEl)startEl.classList.toggle('hidden',!custom);
+  if(endEl)endEl.classList.toggle('hidden',!custom);
+}
+
+function readJobAnalysisRangeOptions(){
+  var rangeEl=document.getElementById('jobAnalysisRange');
+  var startEl=document.getElementById('jobAnalysisStartDate');
+  var endEl=document.getElementById('jobAnalysisEndDate');
+  return {
+    type:rangeEl?rangeEl.value:'last7',
+    startDate:startEl?startEl.value:'',
+    endDate:endEl?endEl.value:'',
+    aiBatchOverview:Store.get('aiBatchOverview')||null
+  };
+}
+
+async function exportJobAnalysis(){
+  var btn=document.getElementById('btnExportJobAnalysis');
+  if(!window.JobAnalysisExport||typeof getJobRecords!=='function'){
+    setJobAnalysisExportStatus('岗位分析导出不可用','error');
+    return;
+  }
+  if(btn)btn.disabled=true;
+  setJobAnalysisExportStatus('正在导出...','');
+  try{
+    var records=await getJobRecords();
+    var payload=window.JobAnalysisExport.buildJobAnalysisExport(records,readJobAnalysisRangeOptions());
+    window.JobAnalysisExport.downloadJobAnalysisExport(payload);
+    setJobAnalysisExportStatus('已导出 '+payload.summary.total+' 条','success');
+  }catch(e){
+    setJobAnalysisExportStatus('导出失败: '+(e&&e.message||e),'error');
+  }finally{
+    if(btn)btn.disabled=false;
+  }
+}
+
+function openJobAnalysisImportPicker(){
+  var input=document.getElementById('jobAnalysisImportFileInput');
+  if(!input){
+    setJobAnalysisExportStatus('岗位分析导入入口不可用','error');
+    return;
+  }
+  input.click();
+}
+
+async function importJobAnalysisFile(file){
+  var btn=document.getElementById('btnImportJobAnalysis');
+  if(!window.JobAnalysisExport||typeof saveJobRecords!=='function'){
+    setJobAnalysisExportStatus('岗位分析导入不可用','error');
+    return;
+  }
+  if(!file)return;
+  if(btn)btn.disabled=true;
+  setJobAnalysisExportStatus('正在导入...','');
+  try{
+    var text=await file.text();
+    var parsed=JSON.parse(text);
+    var records=window.JobAnalysisExport.normalizeJobAnalysisImportPayload(parsed);
+    var saved=await saveJobRecords(records);
+    setJobAnalysisExportStatus('已导入 '+saved.length+' 条岗位记录','success');
+  }catch(e){
+    setJobAnalysisExportStatus('导入失败: '+(e&&e.message||e),'error');
+  }finally{
+    if(btn)btn.disabled=false;
+  }
+}
+
+function buildBatchOverviewText(){
+  var overview=Store.get('aiBatchOverview')||{};
+  var coverage=overview.coverage||{};
+  function section(title,list){
+    var items=Array.isArray(list)?list.filter(Boolean):[];
+    return title+'\\n'+(items.length?items.map(function(item){return '- '+item}).join('\\n'):'- 暂无');
+  }
+  return [
+    '整批岗位 AI 总览',
+    overview.headline||'',
+    '覆盖：已结合 '+Number(coverage.jobsWithJD||0)+'/'+Number(coverage.totalJobs||0)+' 条 JD，剩余 '+Number(coverage.pendingJobs||0)+' 条，已完成 '+Number(coverage.completedBatches||0)+' 批',
+    section('优点',overview.good),
+    section('缺点',overview.bad),
+    section('下次方向',overview.nextFocus),
+    section('避坑提醒',overview.pitfalls)
+  ].filter(Boolean).join('\\n\\n');
+}
+
+async function copyBatchOverview(){
+  var text=buildBatchOverviewText();
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText)await navigator.clipboard.writeText(text);
+    else{
+      var ta=document.createElement('textarea');
+      ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    }
+    setJobAnalysisExportStatus('总览已复制','success');
+  }catch(e){
+    setJobAnalysisExportStatus('复制失败: '+(e&&e.message||e),'error');
+  }
+}
+
+function generateFilterFromOverview(){
+  var overview=Store.get('aiBatchOverview');
+  if(!overview){
+    setJobAnalysisExportStatus('暂无 AI 总览可生成筛选方案','error');
+    return;
+  }
+  if(E.aiFilterPrompt){
+    E.aiFilterPrompt.value=[
+      '根据这批岗位总览优化首页筛选：',
+      buildBatchOverviewText(),
+      '',
+      '请减少外包、驻场、培训推广、销售/主播/客服、伪装成开发岗的岗位；保留真正的 AI 应用开发、Agent、RAG、工作流、API 集成、后端落地方向。'
+    ].join('\\n');
+  }
+  if(typeof window.toSettings==='function')window.toSettings();
+  if(E.aiFilterGenerateBtn)E.aiFilterGenerateBtn.click();
+}
+
 // ════════════════════════════════════════════════════════════
 // STATE UPDATE HANDLER
 // ════════════════════════════════════════════════════════════
@@ -347,11 +544,8 @@ function _processJobsUpdate(jobsData){
   var curJobs=Store.get('jobs');
   if(curJobs&&curJobs.length===jobsData.length){
     var same=true;
-    for(var _i=0;_i<Math.min(curJobs.length,5);_i++){
-      if(curJobs[_i].id!==jobsData[_i].id){same=false;break}
-      var curAi=curJobs[_i].aiScreen&&curJobs[_i].aiScreen.score;
-      var newAi=jobsData[_i].aiScreen&&jobsData[_i].aiScreen.score;
-      if(curAi!==newAi||curJobs[_i].checked!==jobsData[_i].checked){same=false;break}
+    for(var _i=0;_i<curJobs.length;_i++){
+      if(!isSameJobSnapshot(curJobs[_i],jobsData[_i])){same=false;break}
     }
     if(same){
       // Jobs unchanged, but greetings may have been updated (async generation completes)
@@ -440,7 +634,12 @@ function handleStateUpdate(state){
   // Update Store from incoming state
   if(state.selectedPositions&&state.selectedPositions.length)Store.set('selectedPositions',state.selectedPositions);
   if(state.customPositions)Store.set('customPositions',state.customPositions);
+  if(Array.isArray(state.excludeKeywords))Store.set('excludeKeywords',state.excludeKeywords);
+  if(Object.prototype.hasOwnProperty.call(state,'skipHistoryEnabled'))Store.set('skipHistoryEnabled',state.skipHistoryEnabled!==false);
+  if(Object.prototype.hasOwnProperty.call(state,'skipHistoryScope'))Store.set('skipHistoryScope','hr');
   if(state.greetings)Store.set('greetings',state.greetings);
+  if(state.aiBatchOverview)Store.set('aiBatchOverview',state.aiBatchOverview);
+  if(state.jdHydrationProgress)Store.set('jdHydrationProgress',state.jdHydrationProgress);
   if(state.aiScreeningProgress)updateAiScreeningProgress(state.aiScreeningProgress);
 
   // 排除 'review'：投完的旧批 state.jobs 不该重渲 B 页岗位列表/底部计数（这是 18→3 残留的根）
@@ -456,6 +655,7 @@ function handleStateUpdate(state){
   }else if(state.greetings&&Store.get('groups')&&Store.get('groups').length&&Store.get('mode')==='results'){
     if(window.applyGreetingsToGroups())window.updateAllGreetings();
   }
+  if(Store.get('mode')==='results'&&window.renderSummaryPanel)window.renderSummaryPanel();
 
   if(state.phase==='ready'&&Store.get('mode')==='results'&&!Store.get('progressDone')){completeCollection()}
 
@@ -553,6 +753,387 @@ function showCaptchaWarning(){
 // INIT
 // ════════════════════════════════════════════════════════════
 
+function setCompositeStatus(text,cls){
+  if(!E.compositeStatus)return;
+  E.compositeStatus.textContent=text||'';
+  E.compositeStatus.className='ai-status '+(cls||'');
+}
+
+function showCompositeImportStatus(text,cls){
+  if(!E.compositeImportStatus)return;
+  E.compositeImportStatus.textContent=text||'';
+  E.compositeImportStatus.className='composite-status'+(cls?' '+cls:'');
+  E.compositeImportStatus.classList.toggle('hidden',!text);
+}
+
+function hideCompositeImportPreview(){
+  if(!E.compositeImportPreviewCard)return;
+  E.compositeImportPreviewCard.classList.add('hidden');
+  if(E.compositeImportPreviewMeta)E.compositeImportPreviewMeta.textContent='';
+  if(E.compositeImportPreviewSummary)E.compositeImportPreviewSummary.innerHTML='';
+}
+
+function renderCompositeImportPreview(draft){
+  if(!draft||!E.compositeImportPreviewCard||!SettingsBackupApi.buildImportPreviewItems)return;
+  E.compositeImportPreviewCard.classList.remove('hidden');
+  if(E.compositeImportPreviewMeta){
+    E.compositeImportPreviewMeta.textContent=SettingsBackupApi.buildImportPreviewMeta(draft);
+  }
+  if(E.compositeImportPreviewSummary){
+    E.compositeImportPreviewSummary.innerHTML='';
+    SettingsBackupApi.buildImportPreviewItems(draft).forEach(function(item){
+      var node=document.createElement('div');
+      node.className='composite-preview-item';
+      node.innerHTML='<div class="composite-preview-label">'+item.label+'</div><div class="composite-preview-value">'+item.value+'</div>';
+      E.compositeImportPreviewSummary.appendChild(node);
+    });
+  }
+}
+
+function readAiConfigFromElements(providerEl,baseUrlEl,apiKeyEl,modelEl,scoreEl){
+  return {
+    provider:providerEl?providerEl.value.trim():'openai-compatible',
+    baseUrl:baseUrlEl?baseUrlEl.value.trim():'',
+    apiKey:apiKeyEl?apiKeyEl.value.trim():'',
+    model:modelEl?modelEl.value.trim():'',
+    scoreThreshold:scoreEl?Number(scoreEl.value||60):60
+  };
+}
+
+function readCompositeConfig(){
+  return readAiConfigFromElements(E.compositeAiProvider,E.compositeAiBaseUrl,E.compositeAiApiKey,E.compositeAiModel,E.compositeAiScoreThreshold);
+}
+
+function fillAiFields(target,cfg,textResume){
+  if(target.provider)target.provider.value=cfg.provider||'openai-compatible';
+  if(target.baseUrl)target.baseUrl.value=cfg.baseUrl||'';
+  if(target.apiKey)target.apiKey.value=cfg.apiKey||'';
+  if(target.model)target.model.value=cfg.model||'';
+  if(target.scoreThreshold)target.scoreThreshold.value=cfg.scoreThreshold||60;
+  if(target.textResume)target.textResume.value=textResume||'';
+}
+
+function fillAiDrawer(config,textResume){
+  var cfg=Object.assign({},DEFAULT_AI_CONFIG,config||{});
+  fillAiFields({
+    provider:E.compositeAiProvider,
+    baseUrl:E.compositeAiBaseUrl,
+    apiKey:E.compositeAiApiKey,
+    model:E.compositeAiModel,
+    scoreThreshold:E.compositeAiScoreThreshold,
+    textResume:E.compositeTextResume
+  },cfg,textResume);
+  if(E.compositeBtn)E.compositeBtn.classList.toggle('configured',!!cfg.apiKey);
+  updateAiFilterAssistantState();
+}
+
+function loadAiDrawerConfig(done){
+  try{
+    chrome.storage.local.get(['apiKey','textResume',AI_CONFIG_KEY],function(items){
+      var cfg=Object.assign({},DEFAULT_AI_CONFIG,items[AI_CONFIG_KEY]||{});
+      if(items.apiKey&&!cfg.apiKey)cfg.apiKey=items.apiKey;
+      fillAiDrawer(cfg,items.textResume||'');
+      if(done)done(cfg);
+    });
+  }catch(e){
+    setCompositeStatus('读取 AI 设置失败: '+e.message,'error');
+  }
+}
+
+function isSameJobSnapshot(curJob,newJob){
+  if(!curJob||!newJob)return false;
+  if(curJob.id!==newJob.id)return false;
+  var curAi=curJob.aiScreen&&curJob.aiScreen.score;
+  var newAi=newJob.aiScreen&&newJob.aiScreen.score;
+  if(curAi!==newAi)return false;
+  if(curJob.checked!==newJob.checked)return false;
+  if((curJob.detail||'')!==(newJob.detail||''))return false;
+  if((curJob.desc||'')!==(newJob.desc||''))return false;
+  if((curJob.jdStatus||'')!==(newJob.jdStatus||''))return false;
+  if((curJob.jdAttempts||0)!==(newJob.jdAttempts||0))return false;
+  if((curJob.jdLastError||'')!==(newJob.jdLastError||''))return false;
+  if((curJob.excludeReason||'')!==(newJob.excludeReason||''))return false;
+  if((curJob.historySkipReason||'')!==(newJob.historySkipReason||''))return false;
+  if((curJob.searchKeyword||'')!==(newJob.searchKeyword||''))return false;
+  return true;
+}
+
+function saveCompositeConfig(callback){
+  var cfg=readCompositeConfig();
+  var textResume=E.compositeTextResume?E.compositeTextResume.value.trim():'';
+  saveAiConfig(cfg,textResume,setCompositeStatus,callback);
+}
+
+function saveAiConfig(cfg,textResume,statusSetter,callback){
+  try{
+    chrome.runtime.sendMessage({type:MSG.SAVE_AI_CONFIG,config:cfg},function(resp){
+      if(chrome.runtime.lastError||!resp||!resp.success){
+        var err=(resp&&resp.error)||chrome.runtime.lastError?.message||'未知错误';
+        statusSetter('保存失败: '+err,'error');
+        if(callback)callback(false);
+        return;
+      }
+      chrome.storage.local.set({apiKey:cfg.apiKey},function(){
+        if(chrome.runtime.lastError){
+          statusSetter('保存失败: '+chrome.runtime.lastError.message,'error');
+          if(callback)callback(false);
+          return;
+        }
+        SettingsBackupApi.applySnapshotToStorage({
+          textResume:textResume,
+          aiConfig:cfg
+        }).then(function(){
+        fillAiDrawer(cfg,textResume);
+        statusSetter('AI 设置已保存','success');
+        if(callback)callback(true);
+        }).catch(function(errApply){
+          statusSetter('保存失败: '+errApply.message,'error');
+          if(callback)callback(false);
+        });
+      });
+    });
+  }catch(e){
+    statusSetter('保存失败: '+e.message,'error');
+    if(callback)callback(false);
+  }
+}
+
+function wireCompositeDrawer(){
+  if(!E.compositeBtn||!E.compositeOverlay)return;
+  function showComposite(){
+    pendingCompositeImportDraft=null;
+    hideCompositeImportPreview();
+    setCompositeStatus('','');
+    showCompositeImportStatus('','');
+    loadAiDrawerConfig();
+    E.compositeOverlay.classList.remove('hidden');
+  }
+  function hideComposite(){E.compositeOverlay.classList.add('hidden')}
+  E.compositeBtn.addEventListener('click',showComposite);
+  if(E.compositeClose)E.compositeClose.addEventListener('click',hideComposite);
+  E.compositeOverlay.addEventListener('click',function(e){
+    if(e.target===E.compositeOverlay)hideComposite();
+  });
+  if(E.compositeOpenOptionsBtn)E.compositeOpenOptionsBtn.addEventListener('click',function(){
+    openFullOptionsPage();
+  });
+  if(E.compositeSaveBtn)E.compositeSaveBtn.addEventListener('click',function(){
+    E.compositeSaveBtn.disabled=true;
+    setCompositeStatus('正在保存...','');
+    saveCompositeConfig(function(){
+      E.compositeSaveBtn.disabled=false;
+    });
+  });
+  if(E.compositeTestBtn)E.compositeTestBtn.addEventListener('click',function(){
+    E.compositeTestBtn.disabled=true;
+    setCompositeStatus('正在测试 AI 连接...','');
+    chrome.runtime.sendMessage({type:MSG.TEST_AI_CONFIG,config:readCompositeConfig()},function(resp){
+      E.compositeTestBtn.disabled=false;
+      if(chrome.runtime.lastError||!resp||!resp.success){
+        setCompositeStatus('AI 连接失败: '+((resp&&resp.error)||chrome.runtime.lastError?.message||'未知错误'),'error');
+        return;
+      }
+      setCompositeStatus('AI 连接成功','success');
+    });
+  });
+  if(E.compositeExportBtn)E.compositeExportBtn.addEventListener('click',function(){
+    E.compositeExportBtn.disabled=true;
+    showCompositeImportStatus('正在导出配置...','');
+    SettingsBackupApi.readBackupSnapshot().then(function(snapshot){
+      downloadBackupSnapshot(snapshot);
+      showCompositeImportStatus('配置已导出','success');
+    }).catch(function(err){
+      showCompositeImportStatus('导出失败: '+err.message,'error');
+    }).finally(function(){
+      E.compositeExportBtn.disabled=false;
+    });
+  });
+  if(E.compositeImportBtn&&E.compositeImportFileInput){
+    E.compositeImportBtn.addEventListener('click',function(){E.compositeImportFileInput.click()});
+    E.compositeImportFileInput.addEventListener('change',function(){
+      var file=E.compositeImportFileInput.files&&E.compositeImportFileInput.files[0];
+      E.compositeImportFileInput.value='';
+      if(!file)return;
+      file.text().then(function(text){
+        var parsed=JSON.parse(text);
+        pendingCompositeImportDraft=SettingsBackupApi.normalizeImportPayload(parsed);
+        renderCompositeImportPreview(pendingCompositeImportDraft);
+        showCompositeImportStatus('导入文件解析成功，请确认覆盖。','success');
+      }).catch(function(err){
+        pendingCompositeImportDraft=null;
+        hideCompositeImportPreview();
+        showCompositeImportStatus('导入失败: '+err.message,'error');
+      });
+    });
+  }
+  if(E.compositeConfirmImportBtn)E.compositeConfirmImportBtn.addEventListener('click',function(){
+    if(!pendingCompositeImportDraft)return;
+    E.compositeConfirmImportBtn.disabled=true;
+    if(E.compositeCancelImportBtn)E.compositeCancelImportBtn.disabled=true;
+    showCompositeImportStatus('正在写入导入配置...','');
+    SettingsBackupApi.applySnapshotToStorage(pendingCompositeImportDraft).then(function(){
+      pendingCompositeImportDraft=null;
+      hideCompositeImportPreview();
+      return hydratePopupFromStorage();
+    }).then(function(){
+      showCompositeImportStatus('导入完成，当前侧栏已同步最新配置。','success');
+    }).catch(function(err){
+      showCompositeImportStatus('导入失败: '+err.message,'error');
+    }).finally(function(){
+      E.compositeConfirmImportBtn.disabled=false;
+      if(E.compositeCancelImportBtn)E.compositeCancelImportBtn.disabled=false;
+    });
+  });
+  if(E.compositeCancelImportBtn)E.compositeCancelImportBtn.addEventListener('click',function(){
+    pendingCompositeImportDraft=null;
+    hideCompositeImportPreview();
+    showCompositeImportStatus('已取消导入。','');
+  });
+}
+
+function openFullOptionsPage(){
+  var optionsUrl=chrome.runtime&&chrome.runtime.getURL?chrome.runtime.getURL('src/options/options.html'):'src/options/options.html';
+  function fallbackOpen(){
+    if(chrome.tabs&&chrome.tabs.create){
+      chrome.tabs.create({url:optionsUrl});
+      return true;
+    }
+    return false;
+  }
+  try{
+    if(chrome.runtime&&typeof chrome.runtime.openOptionsPage==='function'){
+      chrome.runtime.openOptionsPage(function(){
+        if(chrome.runtime.lastError){
+          fallbackOpen();
+        }
+      });
+      return;
+    }
+  }catch(e){
+    if(fallbackOpen())return;
+  }
+  fallbackOpen();
+}
+
+function downloadBackupSnapshot(snapshot){
+  var blob=new Blob([JSON.stringify(snapshot,null,2)],{type:'application/json'});
+  var url=URL.createObjectURL(blob);
+  var link=document.createElement('a');
+  var stamp=new Date().toISOString().replace(/[:.]/g,'-');
+  link.href=url;
+  link.download='boss-hunter-backup-'+stamp+'.json';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function applyResumeImagesToStore(stored){
+  var images=[];
+  (stored||[]).forEach(function(it){
+    var thumbSrc=it.thumb||(it.data?arrayBufferToDataUrl(it.data,it.type||'image/jpeg'):null);
+    if(!it.data&&!thumbSrc)return;
+    var entry={src:thumbSrc||it.data,name:it.name,id:it.id||Date.now()+'_'+Math.random().toString(36).slice(2,6)};
+    if(it.fullSrc)entry.fullSrc=it.fullSrc;
+    else if(it.data)entry.fullSrc=arrayBufferToDataUrl(it.data,it.type||'image/jpeg');
+    images.push(entry);
+  });
+  Store.set('resumeImages',images);
+  window.renderResumeImages();
+  window.refreshBImages();
+}
+
+function applyAiStorageState(aiConfig,textResume){
+  var cfg=Object.assign({},DEFAULT_AI_CONFIG,aiConfig||{});
+  fillAiDrawer(cfg,textResume||'');
+}
+
+function applyFilterStateToStore(filterState){
+  filterState=typeof normalizeFilterStateDefaults==='function'?normalizeFilterStateDefaults(filterState):filterState;
+  Store.set('selectedCities',filterState&&filterState.selectedCities&&filterState.selectedCities.length?filterState.selectedCities:[]);
+  Store.set('selectedPositions',filterState&&filterState.selectedPositions?filterState.selectedPositions:[]);
+  Store.set('customPositions',filterState&&filterState.customPositions?filterState.customPositions:[]);
+  Store.set('hrActiveFilter',filterState&&filterState.hrActiveFilter?filterState.hrActiveFilter:'不限');
+  Store.set('selectedIndustries',filterState&&filterState.selectedIndustries?filterState.selectedIndustries:[]);
+  Store.set('workAreas',filterState&&filterState.workAreas&&filterState.workAreas.length?filterState.workAreas:['不限']);
+  Store.set('jobTypes',filterState&&filterState.jobTypes&&filterState.jobTypes.length?filterState.jobTypes:['不限']);
+  Store.set('salaryRanges',filterState&&filterState.salaryRanges&&filterState.salaryRanges.length?filterState.salaryRanges:['不限']);
+  Store.set('experience',filterState&&filterState.experience&&filterState.experience.length?filterState.experience:['不限']);
+  Store.set('education',filterState&&filterState.education&&filterState.education.length?filterState.education:['不限']);
+  Store.set('companySizes',filterState&&filterState.companySizes&&filterState.companySizes.length?filterState.companySizes:['不限']);
+  Store.set('fundingStages',filterState&&filterState.fundingStages&&filterState.fundingStages.length?filterState.fundingStages:['不限']);
+  Store.set('excludeKeywords',filterState&&Array.isArray(filterState.excludeKeywords)?filterState.excludeKeywords:(typeof DEFAULT_EXCLUDE_KEYWORDS!=='undefined'?DEFAULT_EXCLUDE_KEYWORDS.slice():[]));
+  Store.set('skipHistoryEnabled',!filterState||filterState.skipHistoryEnabled!==false);
+  Store.set('skipHistoryScope','hr');
+  Store.set('sendGreeting',!filterState||typeof filterState.sendGreeting!=='boolean'?true:filterState.sendGreeting);
+  window.renderCityChips(E.cityInput&&E.cityInput.value||'');
+  window.renderChipSecs();
+  window.renderSettings();
+  window.renderSendGreetingToggle&&window.renderSendGreetingToggle();
+  window.renderExcludeKeywords&&window.renderExcludeKeywords();
+  window.renderSkipHistoryToggle&&window.renderSkipHistoryToggle();
+}
+
+function hydrateAiSettingsFromStorage(done){
+  try{
+    chrome.storage.local.get(['apiKey','textResume',AI_CONFIG_KEY],function(items){
+      var cfg=Object.assign({},DEFAULT_AI_CONFIG,items[AI_CONFIG_KEY]||{});
+      if(items.apiKey&&!cfg.apiKey)cfg.apiKey=items.apiKey;
+      applyAiStorageState(cfg,items.textResume||'');
+      if(done)done();
+    });
+  }catch(e){
+    if(done)done(e);
+  }
+}
+
+function hydratePopupFromStorage(done){
+  try{
+    chrome.storage.local.get(['resumeImages',FILTER_STATE_KEY,'apiKey','textResume',AI_CONFIG_KEY],function(items){
+      applyResumeImagesToStore(items.resumeImages||[]);
+      applyFilterStateToStore(items[FILTER_STATE_KEY]||null);
+      var cfg=Object.assign({},DEFAULT_AI_CONFIG,items[AI_CONFIG_KEY]||{});
+      if(items.apiKey&&!cfg.apiKey)cfg.apiKey=items.apiKey;
+      applyAiStorageState(cfg,items.textResume||'');
+      if(done)done();
+    });
+  }catch(e){
+    if(done)done(e);
+  }
+}
+
+function bindPopupStorageSync(){
+  if(popupStorageListenerBound||!chrome.storage||!chrome.storage.onChanged)return;
+  chrome.storage.onChanged.addListener(function(changes,areaName){
+    if(areaName!=='local'||!changes)return;
+
+    if(Object.prototype.hasOwnProperty.call(changes,'resumeImages')){
+      applyResumeImagesToStore(changes.resumeImages&&changes.resumeImages.newValue||[]);
+    }
+
+    if(Object.prototype.hasOwnProperty.call(changes,FILTER_STATE_KEY)){
+      applyFilterStateToStore(changes[FILTER_STATE_KEY]?changes[FILTER_STATE_KEY].newValue:null);
+    }
+
+    if(
+      Object.prototype.hasOwnProperty.call(changes,AI_CONFIG_KEY)||
+      Object.prototype.hasOwnProperty.call(changes,'apiKey')||
+      Object.prototype.hasOwnProperty.call(changes,'textResume')
+    ){
+      hydrateAiSettingsFromStorage();
+    }
+  });
+  popupStorageListenerBound=true;
+}
+
+function refineCollectErrorText(text){
+  var raw=String(text||'').trim();
+  if(/_security_check|安全验证|security/i.test(raw)){
+    return '请先完成 BOSS 安全验证后再收集';
+  }
+  return raw||'请重试';
+}
+
 function init(){
   if(typeof TAG_DATA==='undefined'){
     console.warn('TAG_DATA not loaded, attempting dynamic load...');
@@ -579,42 +1160,11 @@ function init(){
   window.renderCityChips('');
   window.renderSettings();
   window.renderResumeImages();
+  updateAiFilterAssistantState();
+  window.renderFilterSuggestionPreview&&window.renderFilterSuggestionPreview(Store.get('filterSuggestionDraft'));
 
-  // Restore resume images + filter state from storage (merged single call)
-  try{chrome.storage.local.get(['resumeImages',STORAGE_KEYS.UI.FILTER_STATE],function(r){
-    // Resume images
-    var stored=r.resumeImages||[];
-    stored.forEach(function(it){
-      var thumbSrc=it.thumb||(it.data?arrayBufferToDataUrl(it.data,it.type||'image/jpeg'):null);
-      if(!it.data&&!thumbSrc)return;
-      var images=Store.get('resumeImages')||[];
-      var entry={src:thumbSrc||it.data,name:it.name,id:it.id||Date.now()+'_'+Math.random().toString(36).slice(2,6)};
-      if(it.fullSrc)entry.fullSrc=it.fullSrc;
-      else if(it.data)entry.fullSrc=arrayBufferToDataUrl(it.data,it.type||'image/jpeg');
-      images.push(entry);
-      Store.set('resumeImages',images);
-    });
-    if(stored.length)window.refreshBImages();
-    // Filter state
-    var filterState=r[STORAGE_KEYS.UI.FILTER_STATE];
-    if(filterState){
-      if(filterState.selectedCities&&filterState.selectedCities.length)Store.set('selectedCities',filterState.selectedCities);
-      if(filterState.selectedPositions)Store.set('selectedPositions',filterState.selectedPositions);
-      if(filterState.customPositions)Store.set('customPositions',filterState.customPositions);
-      if(filterState.hrActiveFilter)Store.set('hrActiveFilter',filterState.hrActiveFilter);
-      if(filterState.selectedIndustries)Store.set('selectedIndustries',filterState.selectedIndustries);
-      if(filterState.workAreas)Store.set('workAreas',filterState.workAreas);
-      if(filterState.jobTypes)Store.set('jobTypes',filterState.jobTypes);
-      if(filterState.salaryRanges)Store.set('salaryRanges',filterState.salaryRanges);
-      if(filterState.experience)Store.set('experience',filterState.experience);
-      if(filterState.education)Store.set('education',filterState.education);
-      if(filterState.companySizes)Store.set('companySizes',filterState.companySizes);
-      if(filterState.fundingStages)Store.set('fundingStages',filterState.fundingStages);
-      window.renderCityChips('');
-      window.renderChipSecs();
-      window.renderSettings();
-    }
-  })}catch(e){}
+  hydratePopupFromStorage();
+  bindPopupStorageSync();
 
   // Load state from background
   try{
@@ -636,6 +1186,38 @@ function init(){
   E.settingsClose.addEventListener('click',hideSettings);
   E.settingsOverlay.addEventListener('click',function(e){
     if(e.target===E.settingsOverlay)hideSettings();
+  });
+  wireCompositeDrawer();
+  document.addEventListener('change',function(e){
+    if(e.target&&e.target.id==='jobAnalysisRange'){
+      syncJobAnalysisCustomRange();
+      setJobAnalysisExportStatus('','');
+    }
+  });
+  document.addEventListener('click',function(e){
+    if(e.target&&e.target.closest&&e.target.closest('#btnExportJobAnalysis')){
+      e.preventDefault();
+      exportJobAnalysis();
+    }
+    if(e.target&&e.target.closest&&e.target.closest('#btnImportJobAnalysis')){
+      e.preventDefault();
+      openJobAnalysisImportPicker();
+    }
+    if(e.target&&e.target.closest&&e.target.closest('#btnCopyBatchOverview')){
+      e.preventDefault();
+      copyBatchOverview();
+    }
+    if(e.target&&e.target.closest&&e.target.closest('#btnApplyOverviewToFilter')){
+      e.preventDefault();
+      generateFilterFromOverview();
+    }
+  });
+  document.addEventListener('change',function(e){
+    if(e.target&&e.target.id==='jobAnalysisImportFileInput'){
+      var file=e.target.files&&e.target.files[0];
+      e.target.value='';
+      importJobAnalysisFile(file);
+    }
   });
 
   // ── Chrome message listener ──
@@ -697,7 +1279,7 @@ function init(){
         var _errText=msg.message||msg.error;
         if(Store.get('mode')==='results'&&!Store.get('progressDone')){
           E.progressText.textContent='收集过程中出现错误';
-          E.progressSub.textContent=_errText||'请重试';
+          E.progressSub.textContent=refineCollectErrorText(_errText);
         }
         if(Store.get('sending')){
           Store.set('sending',false);
