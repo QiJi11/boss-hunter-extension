@@ -187,16 +187,35 @@ function uniqueStrings(list) {
 
 function normalizeAiSalaryRange(input) {
   var raw = input && typeof input === 'object' ? input : {};
+  function pickValue(keys) {
+    for (var i = 0; i < keys.length; i++) {
+      if (raw[keys[i]] != null && raw[keys[i]] !== '') return raw[keys[i]];
+    }
+    return '';
+  }
+  function extractRange(text) {
+    var value = String(text == null ? '' : text).trim();
+    if (!value) return null;
+    var nums = value.match(/\d+(?:\.\d+)?/g);
+    if (!nums || !nums.length) return null;
+    return {
+      minK: nums[0] || '',
+      maxK: nums.length > 1 ? nums[1] : '',
+    };
+  }
   function clean(value) {
     var text = String(value == null ? '' : value).trim();
     if (!text) return '';
-    var num = Number(text);
+    var range = extractRange(text);
+    var num = Number(range ? range.minK : text);
     return Number.isFinite(num) && num >= 0 ? String(num) : '';
   }
+  var rangeText = raw.range || raw.salaryRange || raw.value || raw.text || '';
+  var parsedRange = extractRange(rangeText);
   var mode = raw.mode === 'strict' ? 'strict' : 'loose';
   return {
-    minK: clean(raw.minK),
-    maxK: clean(raw.maxK),
+    minK: clean(pickValue(['minK', 'min', 'minimumK', 'minimum', 'lowerK', 'lower']) || (parsedRange && parsedRange.minK) || ''),
+    maxK: clean(pickValue(['maxK', 'max', 'maximumK', 'maximum', 'upperK', 'upper']) || (parsedRange && parsedRange.maxK) || ''),
     mode: mode,
   };
 }

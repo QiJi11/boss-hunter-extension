@@ -105,6 +105,17 @@ window.initEventsA=function(){
     return value?String(value):'不限';
   }
 
+  function normalizeSuggestedSalaryRange(changes){
+    if(!changes||typeof changes!=='object')return null;
+    var raw=changes.aiSalaryRange;
+    if(!raw){
+      raw=changes.salaryRange||changes.customSalaryRange||changes.aiSalary||changes.salary;
+    }
+    if(raw&&typeof raw==='object'&&!Array.isArray(raw))return normalizeAiSalaryRange(raw);
+    if(typeof raw==='string'||typeof raw==='number')return normalizeAiSalaryRange({range:raw,mode:changes.salaryMode||changes.mode||'loose'});
+    return null;
+  }
+
   /** 归一化 AI 建议，过滤非法值并产出差异预览。 */
   function normalizeFilterSuggestion(raw){
     var base=getCurrentFilterState();
@@ -162,9 +173,10 @@ window.initEventsA=function(){
     applyArrayField('workAreas', changes.workAreas, (allowed.workAreas||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
     applyArrayField('jobTypes', changes.jobTypes, (allowed.jobTypes||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
     applyArrayField('salaryRanges', changes.salaryRanges, (allowed.salaryRanges||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
-    if('aiSalaryRange' in changes){
-      if(!changes.aiSalaryRange||typeof changes.aiSalaryRange!=='object'||Array.isArray(changes.aiSalaryRange))ignored.push('aiSalaryRange 格式错误');
-      else next.aiSalaryRange=normalizeAiSalaryRange(changes.aiSalaryRange);
+    if('aiSalaryRange' in changes||'salaryRange' in changes||'customSalaryRange' in changes||'aiSalary' in changes||('salary' in changes&&!Array.isArray(changes.salary))){
+      var suggestedRange=normalizeSuggestedSalaryRange(changes);
+      if(!suggestedRange)ignored.push('AI 薪资范围格式错误');
+      else next.aiSalaryRange=suggestedRange;
     }
     applyArrayField('experience', changes.experience, (allowed.experience||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
     applyArrayField('education', changes.education, (allowed.education||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
@@ -190,13 +202,14 @@ window.initEventsA=function(){
       summary:String(raw&&raw.summary||'').trim(),
       nextState:next,
       ignored:uniqueStrings(ignored),
-      diffRows:rows
+      diffRows:rows,
+      applied:false
     };
   }
 
   function renderStoredSuggestion(){
     var draft=Store.get('filterSuggestionDraft');
-    if(E.aiFilterApplyBtn)E.aiFilterApplyBtn.classList.toggle('hidden',!draft);
+    if(E.aiFilterApplyBtn)E.aiFilterApplyBtn.classList.toggle('hidden',!draft||!!draft.applied);
     if(E.aiFilterDiscardBtn)E.aiFilterDiscardBtn.classList.toggle('hidden',!draft);
     if(window.renderFilterSuggestionPreview)window.renderFilterSuggestionPreview(draft);
   }
@@ -693,9 +706,9 @@ window.initEventsA=function(){
       var draft=Store.get('filterSuggestionDraft');
       if(!draft||!draft.nextState){setFilterSuggestionStatus('当前没有可应用的建议','error');return;}
       applyFilterState(draft.nextState);
-      Store.set('filterSuggestionDraft',null);
+      Store.set('filterSuggestionDraft',Object.assign({},draft,{applied:true}));
       renderStoredSuggestion();
-      setFilterSuggestionStatus('筛选条件已应用，未自动开始采集','success');
+      setFilterSuggestionStatus('筛选条件已应用，下面是本次改动范围','success');
     });
   }
 

@@ -80,8 +80,9 @@ window.renderFilterSuggestionPreview=function(preview){
   var ignored=(preview.ignored||[]).length
     ? '<div class="ai-filter-preview-ignored">未应用：' + esc(preview.ignored.join('、')) + '</div>'
     : '';
-  E.aiFilterPreview.innerHTML='<div class="ai-filter-preview-title">建议预览</div>'
-    +'<div class="ai-filter-preview-summary">'+esc(preview.summary||'AI 已生成建议，请确认后应用')+'</div>'
+  var applied=!!preview.applied;
+  E.aiFilterPreview.innerHTML='<div class="ai-filter-preview-title">'+(applied?'已应用改动':'建议预览')+'</div>'
+    +'<div class="ai-filter-preview-summary">'+esc(preview.summary||(applied?'筛选条件已应用，以下是本次改动范围':'AI 已生成建议，请确认后应用'))+'</div>'
     +(rows||'<div class="ai-filter-preview-empty">本次没有可应用的变更</div>')
     +ignored;
   E.aiFilterPreview.classList.remove('hidden');
