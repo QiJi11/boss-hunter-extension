@@ -150,8 +150,49 @@ body {
   transition: border-color 0.2s;
   font-family: inherit;
 }
+select.form-input { height: 42px; }
 .form-input:focus { border-color: #14B8A6; }
 .form-input::placeholder { color: #475569; }
+.hidden { display: none !important; }
+.secret-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.secret-input-wrap .form-input { padding-right: 46px; }
+.secret-toggle {
+  position: absolute;
+  right: 7px;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.secret-toggle:hover { color: #cbd5e1; background: rgba(148, 163, 184, 0.12); }
+.secret-toggle svg { width: 17px; height: 17px; }
+.secret-toggle .eye-closed { display: none; }
+.secret-toggle.revealed .eye-open { display: none; }
+.secret-toggle.revealed .eye-closed { display: block; }
+.model-select-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.model-select-row select { min-width: 0; flex: 1; }
+.model-refresh-btn {
+  flex: 0 0 auto;
+  min-width: 92px;
+  height: 42px;
+  padding: 0 14px;
+}
+.model-refresh-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .form-textarea {
   width: 100%;

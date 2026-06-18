@@ -29,12 +29,22 @@ var SettingsBackupApi=window.SettingsBackup||{};
 var FILTER_STATE_KEY=SettingsBackupApi.FILTER_STATE_KEY||'ui:filterState';
 var AI_CONFIG_KEY=SettingsBackupApi.AI_CONFIG_KEY||'sw:aiConfig';
 var DEFAULT_AI_CONFIG=SettingsBackupApi.DEFAULT_AI_CONFIG||{
-  provider:'openai-compatible',
+  provider:'openai',
   baseUrl:'https://api.openai.com/v1',
   apiKey:'',
   model:'gpt-4.1-mini',
   scoreThreshold:60
 };
+var AI_PROVIDER_PRESETS=SettingsBackupApi.AI_PROVIDER_PRESETS||[
+  {id:'openai',name:'OpenAI',baseUrl:'https://api.openai.com/v1',defaultModel:'gpt-4.1-mini'},
+  {id:'deepseek',name:'DeepSeek',baseUrl:'https://api.deepseek.com/v1',defaultModel:'deepseek-chat'},
+  {id:'kimi',name:'Kimi（月之暗面）',baseUrl:'https://api.moonshot.cn/v1',defaultModel:'moonshot-v1-8k'},
+  {id:'qwen',name:'通义千问',baseUrl:'https://dashscope.aliyuncs.com/compatible-mode/v1',defaultModel:'qwen-plus'},
+  {id:'zhipu',name:'智谱 GLM',baseUrl:'https://open.bigmodel.cn/api/paas/v4',defaultModel:'glm-4-flash'},
+  {id:'siliconflow',name:'硅基流动',baseUrl:'https://api.siliconflow.cn/v1',defaultModel:'Qwen/Qwen2.5-7B-Instruct'},
+  {id:'openrouter',name:'OpenRouter',baseUrl:'https://openrouter.ai/api/v1',defaultModel:'openai/gpt-4.1-mini'},
+  {id:'openai-compatible',name:'自定义 OpenAI-compatible',baseUrl:'https://api.openai.com/v1',defaultModel:'gpt-4.1-mini',custom:true}
+];
 function initDomRefs(){
   E.headerLeft=$('#headerLeft');E.hdrTitle=$('#hdrTitle');E.btnBack=$('#btnBack');
   E.settingsPanel=$('#settingsPanel');E.resultsPanel=$('#resultsPanel');
@@ -63,6 +73,7 @@ function initDomRefs(){
   E.compositeBtn=$('#compositeBtn');E.compositeOverlay=$('#compositeOverlay');E.compositeClose=$('#compositeClose');
   E.compositeOpenOptionsBtn=$('#compositeOpenOptionsBtn');
   E.compositeAiProvider=$('#compositeAiProvider');E.compositeAiBaseUrl=$('#compositeAiBaseUrl');E.compositeAiApiKey=$('#compositeAiApiKey');
+  E.compositeAiBaseUrlField=$('#compositeAiBaseUrlField');E.compositeAiKeyToggle=$('#compositeAiKeyToggle');E.compositeModelRefreshBtn=$('#compositeModelRefreshBtn');
   E.compositeAiModel=$('#compositeAiModel');E.compositeAiScoreThreshold=$('#compositeAiScoreThreshold');E.compositeTextResume=$('#compositeTextResume');
   E.compositeTestBtn=$('#compositeTestBtn');E.compositeSaveBtn=$('#compositeSaveBtn');E.compositeStatus=$('#compositeStatus');
   E.compositeExportBtn=$('#compositeExportBtn');E.compositeImportBtn=$('#compositeImportBtn');E.compositeImportFileInput=$('#compositeImportFileInput');
@@ -816,10 +827,117 @@ function renderCompositeImportPreview(draft){
   }
 }
 
+function getAiProviderPreset(provider){
+  for(var i=0;i<AI_PROVIDER_PRESETS.length;i++){
+    if(AI_PROVIDER_PRESETS[i].id===provider)return AI_PROVIDER_PRESETS[i];
+  }
+  return AI_PROVIDER_PRESETS[0];
+}
+
+function inferAiProvider(provider,baseUrl){
+  if(SettingsBackupApi.inferAiProvider)return SettingsBackupApi.inferAiProvider(provider,baseUrl);
+  var id=String(provider||'').trim();
+  var url=String(baseUrl||'').trim().replace(/\/+$/,'');
+  if(id&&id!=='openai-compatible')return getAiProviderPreset(id).id;
+  for(var i=0;i<AI_PROVIDER_PRESETS.length;i++){
+    var item=AI_PROVIDER_PRESETS[i];
+    if(!item.custom&&item.baseUrl.replace(/\/+$/,'')===url)return item.id;
+  }
+  return id||DEFAULT_AI_CONFIG.provider;
+}
+
+function normalizeAiBaseUrlForUi(provider,baseUrl){
+  if(SettingsBackupApi.normalizeAiBaseUrlForStorage)return SettingsBackupApi.normalizeAiBaseUrlForStorage(provider,baseUrl);
+  var preset=getAiProviderPreset(provider);
+  var url=preset.custom?String(baseUrl||preset.baseUrl||DEFAULT_AI_CONFIG.baseUrl).trim():preset.baseUrl;
+  url=String(url||DEFAULT_AI_CONFIG.baseUrl).replace(/\/+$/,'');
+  if(!/\/v\d+(?:\.\d+)?$/.test(url)&&!/\/compatible-mode\/v\d+$/.test(url)&&!/\/api\/paas\/v\d+$/.test(url))url+='/v1';
+  return url;
+}
+
+function ensureSelectOption(select,value,label){
+  if(!select||!value)return;
+  var exists=false;
+  for(var i=0;i<select.options.length;i++){
+    if(select.options[i].value===value){exists=true;break}
+  }
+  if(!exists){
+    var opt=document.createElement('option');
+    opt.value=value;opt.textContent=label||value;
+    select.appendChild(opt);
+  }
+}
+
+function populateProviderSelect(select){
+  if(!select||select.options.length)return;
+  AI_PROVIDER_PRESETS.forEach(function(item){
+    var opt=document.createElement('option');
+    opt.value=item.id;opt.textContent=item.name;
+    select.appendChild(opt);
+  });
+}
+
+function populateModelSelect(select,models,currentModel){
+  if(!select)return;
+  var keep=currentModel||select.value||'';
+  select.innerHTML='';
+  var list=(models&&models.length?models:[{id:keep||DEFAULT_AI_CONFIG.model,label:keep||DEFAULT_AI_CONFIG.model}]);
+  list.forEach(function(item){
+    var id=String(item.id||item.label||'').trim();
+    if(!id)return;
+    ensureSelectOption(select,id,item.label||id);
+  });
+  if(keep)ensureSelectOption(select,keep,keep);
+  select.value=keep||select.options[0]&&select.options[0].value||'';
+}
+
+function updateBaseUrlVisibility(providerEl,baseUrlEl,fieldEl){
+  var provider=providerEl?providerEl.value:DEFAULT_AI_CONFIG.provider;
+  var preset=getAiProviderPreset(provider);
+  if(baseUrlEl)baseUrlEl.value=normalizeAiBaseUrlForUi(provider,baseUrlEl.value);
+  if(fieldEl)fieldEl.classList.toggle('hidden',!preset.custom);
+}
+
+function syncModelDefault(providerEl,modelEl){
+  if(!providerEl||!modelEl)return;
+  var preset=getAiProviderPreset(providerEl.value);
+  var fallback=preset.defaultModel||DEFAULT_AI_CONFIG.model;
+  if(!modelEl.value)populateModelSelect(modelEl,[{id:fallback,label:fallback}],fallback);
+}
+
+function wireSecretToggle(input,button){
+  if(!input||!button||button._wired)return;
+  button._wired=true;
+  button.addEventListener('click',function(){
+    var reveal=input.type==='password';
+    input.type=reveal?'text':'password';
+    button.classList.toggle('revealed',reveal);
+    button.title=reveal?'隐藏 API Key':'显示 API Key';
+    button.setAttribute('aria-label',button.title);
+  });
+}
+
+function loadModelsForConfig(cfg,modelEl,statusSetter,button){
+  if(!modelEl)return;
+  if(button)button.disabled=true;
+  if(statusSetter)statusSetter('正在获取模型列表...','');
+  chrome.runtime.sendMessage({type:MSG.LIST_AI_MODELS,config:cfg},function(resp){
+    if(button)button.disabled=false;
+    if(chrome.runtime.lastError||!resp||!resp.success){
+      populateModelSelect(modelEl,null,cfg.model);
+      if(statusSetter)statusSetter('模型获取失败: '+((resp&&resp.error)||chrome.runtime.lastError?.message||'未知错误'),'error');
+      return;
+    }
+    populateModelSelect(modelEl,resp.models,cfg.model);
+    if(statusSetter)statusSetter('模型列表已更新','success');
+  });
+}
+
 function readAiConfigFromElements(providerEl,baseUrlEl,apiKeyEl,modelEl,scoreEl){
+  var provider=providerEl?providerEl.value.trim():DEFAULT_AI_CONFIG.provider;
   return {
-    provider:providerEl?providerEl.value.trim():'openai-compatible',
-    baseUrl:baseUrlEl?baseUrlEl.value.trim():'',
+    provider:provider,
+    baseUrl:normalizeAiBaseUrlForUi(provider,baseUrlEl?baseUrlEl.value.trim():''),
     apiKey:apiKeyEl?apiKeyEl.value.trim():'',
     model:modelEl?modelEl.value.trim():'',
     scoreThreshold:scoreEl?Number(scoreEl.value||60):60
@@ -831,12 +949,14 @@ function readCompositeConfig(){
 }
 
 function fillAiFields(target,cfg,textResume){
-  if(target.provider)target.provider.value=cfg.provider||'openai-compatible';
-  if(target.baseUrl)target.baseUrl.value=cfg.baseUrl||'';
+  cfg.provider=inferAiProvider(cfg.provider,cfg.baseUrl);
+  if(target.provider){populateProviderSelect(target.provider);target.provider.value=cfg.provider||DEFAULT_AI_CONFIG.provider}
+  if(target.baseUrl)target.baseUrl.value=normalizeAiBaseUrlForUi(cfg.provider,cfg.baseUrl);
   if(target.apiKey)target.apiKey.value=cfg.apiKey||'';
-  if(target.model)target.model.value=cfg.model||'';
+  if(target.model)populateModelSelect(target.model,[{id:cfg.model||getAiProviderPreset(cfg.provider).defaultModel,label:cfg.model||getAiProviderPreset(cfg.provider).defaultModel}],cfg.model||getAiProviderPreset(cfg.provider).defaultModel);
   if(target.scoreThreshold)target.scoreThreshold.value=cfg.scoreThreshold||60;
   if(target.textResume)target.textResume.value=textResume||'';
+  if(target.baseUrlField)updateBaseUrlVisibility(target.provider,target.baseUrl,target.baseUrlField);
 }
 
 function fillAiDrawer(config,textResume){
@@ -844,6 +964,7 @@ function fillAiDrawer(config,textResume){
   fillAiFields({
     provider:E.compositeAiProvider,
     baseUrl:E.compositeAiBaseUrl,
+    baseUrlField:E.compositeAiBaseUrlField,
     apiKey:E.compositeAiApiKey,
     model:E.compositeAiModel,
     scoreThreshold:E.compositeAiScoreThreshold,
@@ -926,6 +1047,19 @@ function saveAiConfig(cfg,textResume,statusSetter,callback){
 
 function wireCompositeDrawer(){
   if(!E.compositeBtn||!E.compositeOverlay)return;
+  populateProviderSelect(E.compositeAiProvider);
+  wireSecretToggle(E.compositeAiApiKey,E.compositeAiKeyToggle);
+  if(E.compositeAiProvider)E.compositeAiProvider.addEventListener('change',function(){
+    var preset=getAiProviderPreset(E.compositeAiProvider.value);
+    if(E.compositeAiBaseUrl)E.compositeAiBaseUrl.value=normalizeAiBaseUrlForUi(preset.id,E.compositeAiBaseUrl.value);
+    populateModelSelect(E.compositeAiModel,[{id:preset.defaultModel,label:preset.defaultModel}],preset.defaultModel);
+    updateBaseUrlVisibility(E.compositeAiProvider,E.compositeAiBaseUrl,E.compositeAiBaseUrlField);
+    setCompositeStatus('','');
+  });
+  if(E.compositeModelRefreshBtn)E.compositeModelRefreshBtn.addEventListener('click',function(){
+    var cfg=readCompositeConfig();
+    loadModelsForConfig(cfg,E.compositeAiModel,setCompositeStatus,E.compositeModelRefreshBtn);
+  });
   function showComposite(){
     pendingCompositeImportDraft=null;
     hideCompositeImportPreview();

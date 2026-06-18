@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Boss Hunter 设置</title>
+  <title>猎职 设置</title>
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
   <div class="container">
     <header class="header">
-      <h1 class="title">Boss Hunter<span class="dot">·</span>设置</h1>
+      <h1 class="title">猎职<span class="dot">·</span>设置</h1>
       <p class="subtitle">配置 AI 接口和简历信息</p>
     </header>
 
@@ -48,19 +48,28 @@
       <div class="card-body-collapsible" id="apiSectionBody">
         <div class="form-group">
           <label class="form-label" for="provider">Provider</label>
-          <input type="text" id="provider" class="form-input" placeholder="openai-compatible" autocomplete="off">
+          <select id="provider" class="form-input"></select>
         </div>
-        <div class="form-group">
+        <div class="form-group hidden" id="baseUrlGroup">
           <label class="form-label" for="baseUrl">Base URL</label>
-          <input type="url" id="baseUrl" class="form-input" placeholder="https://api.openai.com/v1" autocomplete="off">
+          <input type="url" id="baseUrl" class="form-input" placeholder="https://api.example.com/v1" autocomplete="off">
         </div>
         <div class="form-group">
           <label class="form-label" for="apiKey">API Key</label>
-          <input type="password" id="apiKey" class="form-input" placeholder="sk-xxxxxxxxxxxx" autocomplete="off">
+          <div class="secret-input-wrap">
+            <input type="password" id="apiKey" class="form-input" placeholder="sk-xxxxxxxxxxxx" autocomplete="off">
+            <button class="secret-toggle" id="apiKeyToggle" type="button" title="显示 API Key" aria-label="显示 API Key">
+              <svg class="eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg class="eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 10.6a3 3 0 0 0 4.2 4.2"/><path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c6.5 0 10 8 10 8a18 18 0 0 1-3.1 4.2"/><path d="M6.6 6.6C3.6 8.6 2 12 2 12s3.5 8 10 8a10.8 10.8 0 0 0 4.1-.8"/></svg>
+            </button>
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label" for="model">Model</label>
-          <input type="text" id="model" class="form-input" placeholder="gpt-4.1-mini" autocomplete="off">
+          <div class="model-select-row">
+            <select id="model" class="form-input"></select>
+            <button type="button" id="refreshModelsBtn" class="btn-secondary model-refresh-btn">刷新模型</button>
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label" for="scoreThreshold">AI 筛选阈值</label>

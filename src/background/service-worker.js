@@ -8,12 +8,51 @@ importScripts('/src/shared/device-id.js');
 // 纯内存 push + 异步节流落盘，不阻塞 boot-restore 链路（#33/#36 竞态红线）。
 try { DiagLogger.userEvent('sw.lifecycle', 'SW started (cold start or wake)'); } catch (_) {}
 const DEFAULT_AI_CONFIG = {
-  provider: 'openai-compatible',
+  provider: 'openai',
   baseUrl: 'https://api.openai.com/v1',
   apiKey: '',
   model: 'gpt-4.1-mini',
   scoreThreshold: 60,
 };
+const AI_PROVIDER_PRESETS = [
+  { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-4.1-mini' },
+  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat' },
+  { id: 'kimi', name: 'Kimi（月之暗面）', baseUrl: 'https://api.moonshot.cn/v1', defaultModel: 'moonshot-v1-8k' },
+  { id: 'qwen', name: '通义千问', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', defaultModel: 'qwen-plus' },
+  { id: 'zhipu', name: '智谱 GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', defaultModel: 'glm-4-flash' },
+  { id: 'siliconflow', name: '硅基流动', baseUrl: 'https://api.siliconflow.cn/v1', defaultModel: 'Qwen/Qwen2.5-7B-Instruct' },
+  { id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', defaultModel: 'openai/gpt-4.1-mini' },
+  { id: 'openai-compatible', name: '自定义 OpenAI-compatible', baseUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-4.1-mini', custom: true },
+];
+
+function getAiProviderPreset(provider) {
+  var id = String(provider || DEFAULT_AI_CONFIG.provider).trim();
+  for (var i = 0; i < AI_PROVIDER_PRESETS.length; i++) {
+    if (AI_PROVIDER_PRESETS[i].id === id) return AI_PROVIDER_PRESETS[i];
+  }
+  return AI_PROVIDER_PRESETS[0];
+}
+
+function inferAiProvider(provider, baseUrl) {
+  var id = String(provider || '').trim();
+  var url = String(baseUrl || '').trim().replace(/\/+$/, '');
+  if (id && id !== 'openai-compatible') return getAiProviderPreset(id).id;
+  for (var i = 0; i < AI_PROVIDER_PRESETS.length; i++) {
+    var item = AI_PROVIDER_PRESETS[i];
+    if (!item.custom && item.baseUrl.replace(/\/+$/, '') === url) return item.id;
+  }
+  return id || DEFAULT_AI_CONFIG.provider;
+}
+
+function normalizeAiBaseUrlForStorage(provider, baseUrl) {
+  var preset = getAiProviderPreset(provider);
+  var url = preset.custom ? String(baseUrl || preset.baseUrl || DEFAULT_AI_CONFIG.baseUrl).trim() : preset.baseUrl;
+  url = String(url || DEFAULT_AI_CONFIG.baseUrl).trim().replace(/\/+$/, '');
+  if (!/\/v\d+(?:\.\d+)?$/.test(url) && !/\/compatible-mode\/v\d+$/.test(url) && !/\/api\/paas\/v\d+$/.test(url)) {
+    url += '/v1';
+  }
+  return url;
+}
 
 async function ensureApiKey() {
   const result = await chrome.storage.local.get(['apiKey', STORAGE_KEYS.SW.AI_CONFIG]);
@@ -29,12 +68,20 @@ function normalizeAiBaseUrl(baseUrl) {
   return /\/chat\/completions$/.test(url) ? url : url + '/chat/completions';
 }
 
+function normalizeAiModelsUrl(baseUrl) {
+  var url = String(baseUrl || '').trim().replace(/\/+$/, '');
+  if (!url) url = DEFAULT_AI_CONFIG.baseUrl;
+  return /\/models$/.test(url) ? url : url + '/models';
+}
+
 function normalizeAiConfig(raw) {
   var cfg = Object.assign({}, DEFAULT_AI_CONFIG, raw || {});
-  cfg.provider = cfg.provider || 'openai-compatible';
-  cfg.baseUrl = String(cfg.baseUrl || DEFAULT_AI_CONFIG.baseUrl).trim().replace(/\/+$/, '');
+  cfg.provider = inferAiProvider(cfg.provider, cfg.baseUrl);
+  var preset = getAiProviderPreset(cfg.provider);
+  cfg.provider = preset.id;
+  cfg.baseUrl = normalizeAiBaseUrlForStorage(cfg.provider, cfg.baseUrl);
   cfg.apiKey = String(cfg.apiKey || '').trim();
-  cfg.model = String(cfg.model || DEFAULT_AI_CONFIG.model).trim();
+  cfg.model = String(cfg.model || preset.defaultModel || DEFAULT_AI_CONFIG.model).trim();
   cfg.scoreThreshold = Math.max(0, Math.min(100, Number(cfg.scoreThreshold || DEFAULT_AI_CONFIG.scoreThreshold)));
   return cfg;
 }
@@ -48,6 +95,27 @@ async function saveAiConfig(config) {
   const cfg = normalizeAiConfig(config);
   await chrome.storage.local.set({ [STORAGE_KEYS.SW.AI_CONFIG]: cfg, apiKey: cfg.apiKey });
   return cfg;
+}
+
+async function listAiModels(config) {
+  const cfg = normalizeAiConfig(config);
+  if (!cfg.apiKey) throw new Error('请先填写 API Key');
+  const resp = await fetch(normalizeAiModelsUrl(cfg.baseUrl), {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${cfg.apiKey}` },
+  });
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => '未知错误');
+    throw new Error(`模型列表获取失败 ${resp.status}: ${errText.substring(0, 200)}`);
+  }
+  const data = await resp.json();
+  const source = Array.isArray(data.data) ? data.data : (Array.isArray(data.models) ? data.models : []);
+  const models = source.map((item) => {
+    const id = String((item && (item.id || item.name || item.model)) || '').trim();
+    return id ? { id, label: id } : null;
+  }).filter(Boolean);
+  if (!models.length) throw new Error('接口未返回可用模型');
+  return models;
 }
 
 async function getTextResume() {
@@ -1526,6 +1594,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       callOpenAICompatible(normalizeAiConfig(msg.config), [
         { role: 'user', content: 'Reply with OK only.' },
       ], 8, 20000, 'test').then((text) => sendResponse({ success: true, message: text })).catch((e) => sendResponse({ success: false, error: e.message }));
+      return true;
+
+    case MSG.LIST_AI_MODELS:
+      listAiModels(msg.config || {}).then((models) => sendResponse({ success: true, models })).catch((e) => sendResponse({ success: false, error: e.message }));
       return true;
 
     case MSG.GENERATE_FILTER_SUGGESTION:

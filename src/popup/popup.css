@@ -535,16 +535,37 @@ body{
 .ai-field label{
   display:block;margin-bottom:6px;font-size:12px;font-weight:600;color:var(--text-secondary);
 }
-.ai-field input,.ai-textarea{
+.ai-field input,.ai-field select,.ai-textarea{
   width:100%;box-sizing:border-box;border:1px solid var(--border-light);
   border-radius:8px;background:var(--card);color:var(--text);
   font-size:13px;line-height:1.5;outline:none;transition:border-color .12s,box-shadow .12s;
 }
-.ai-field input{height:38px;padding:8px 10px}
+.ai-field input,.ai-field select{height:38px;padding:8px 10px}
 .ai-textarea{padding:10px;resize:vertical;min-height:120px}
-.ai-field input:focus,.ai-textarea:focus{
+.ai-field input:focus,.ai-field select:focus,.ai-textarea:focus{
   border-color:var(--accent);box-shadow:0 0 0 3px rgba(15,118,110,.10);
 }
+.secret-input-wrap{position:relative;display:flex;align-items:center}
+.secret-input-wrap input{padding-right:40px}
+.secret-toggle{
+  position:absolute;right:6px;width:30px;height:30px;border:0;border-radius:7px;
+  background:transparent;color:var(--text-muted);display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:background .12s,color .12s;
+}
+.secret-toggle:hover{background:var(--border-light);color:var(--text)}
+.secret-toggle svg{width:17px;height:17px}
+.secret-toggle .eye-closed{display:none}
+.secret-toggle.revealed .eye-open{display:none}
+.secret-toggle.revealed .eye-closed{display:block}
+.model-select-row{display:flex;gap:8px;align-items:center}
+.model-select-row select{min-width:0;flex:1}
+.model-refresh-btn{
+  flex:0 0 auto;height:38px;padding:0 12px;border:1px solid var(--border-light);
+  border-radius:8px;background:var(--card);color:var(--accent);font-size:12px;font-weight:600;
+  cursor:pointer;transition:border-color .12s,background .12s;
+}
+.model-refresh-btn:hover{border-color:var(--accent);background:rgba(15,118,110,.06)}
+.model-refresh-btn:disabled{opacity:.55;cursor:not-allowed}
 .ai-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:10px}
 .ai-actions .btn{min-width:96px}
 .ai-status{

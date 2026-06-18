@@ -32,7 +32,7 @@
 
   <header class="header">
     <div class="header-left" id="headerLeft">
-      <span class="title" id="hdrTitle">Boss Hunter</span>
+      <span class="title" id="hdrTitle">猎职</span>
       <button class="btn-back hidden" id="btnBack">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 3L5 8l5 5"/></svg>
       </button>
@@ -293,19 +293,28 @@
           <div class="settings-section-title">OpenAI-compatible 接口</div>
           <div class="ai-field">
             <label for="compositeAiProvider">Provider</label>
-            <input id="compositeAiProvider" type="text" placeholder="openai-compatible" autocomplete="off">
+            <select id="compositeAiProvider"></select>
           </div>
-          <div class="ai-field">
+          <div class="ai-field hidden" id="compositeAiBaseUrlField">
             <label for="compositeAiBaseUrl">Base URL</label>
-            <input id="compositeAiBaseUrl" type="url" placeholder="https://api.openai.com/v1" autocomplete="off">
+            <input id="compositeAiBaseUrl" type="url" placeholder="https://api.example.com/v1" autocomplete="off">
           </div>
           <div class="ai-field">
             <label for="compositeAiApiKey">API Key</label>
-            <input id="compositeAiApiKey" type="password" placeholder="sk-..." autocomplete="off">
+            <div class="secret-input-wrap">
+              <input id="compositeAiApiKey" type="password" placeholder="sk-..." autocomplete="off">
+              <button class="secret-toggle" id="compositeAiKeyToggle" type="button" title="显示 API Key" aria-label="显示 API Key">
+                <svg class="eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="eye-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 10.6a3 3 0 0 0 4.2 4.2"/><path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c6.5 0 10 8 10 8a18 18 0 0 1-3.1 4.2"/><path d="M6.6 6.6C3.6 8.6 2 12 2 12s3.5 8 10 8a10.8 10.8 0 0 0 4.1-.8"/></svg>
+              </button>
+            </div>
           </div>
           <div class="ai-field">
             <label for="compositeAiModel">Model</label>
-            <input id="compositeAiModel" type="text" placeholder="gpt-4.1-mini" autocomplete="off">
+            <div class="model-select-row">
+              <select id="compositeAiModel"></select>
+              <button class="model-refresh-btn" id="compositeModelRefreshBtn" type="button">刷新</button>
+            </div>
           </div>
           <div class="ai-field">
             <label for="compositeAiScoreThreshold">AI 筛选阈值</label>

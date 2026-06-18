@@ -17,8 +17,11 @@ const fileInput = document.getElementById('fileInput');
 const previewGrid = document.getElementById('previewGrid');
 const providerInput = document.getElementById('provider');
 const baseUrlInput = document.getElementById('baseUrl');
+const baseUrlGroup = document.getElementById('baseUrlGroup');
 const apiKeyInput = document.getElementById('apiKey');
+const apiKeyToggle = document.getElementById('apiKeyToggle');
 const modelInput = document.getElementById('model');
+const refreshModelsBtn = document.getElementById('refreshModelsBtn');
 const scoreThresholdInput = document.getElementById('scoreThreshold');
 const textResumeInput = document.getElementById('textResume');
 const apiSectionToggle = document.getElementById('apiSectionToggle');
@@ -40,6 +43,16 @@ let resumeImages = [];
 let aiConfig = { ...DEFAULT_AI_CONFIG };
 let textResume = '';
 let pendingImportDraft = null;
+const AI_PROVIDER_PRESETS = window.SettingsBackup.AI_PROVIDER_PRESETS || [
+  { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-4.1-mini' },
+  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat' },
+  { id: 'kimi', name: 'Kimi（月之暗面）', baseUrl: 'https://api.moonshot.cn/v1', defaultModel: 'moonshot-v1-8k' },
+  { id: 'qwen', name: '通义千问', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', defaultModel: 'qwen-plus' },
+  { id: 'zhipu', name: '智谱 GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', defaultModel: 'glm-4-flash' },
+  { id: 'siliconflow', name: '硅基流动', baseUrl: 'https://api.siliconflow.cn/v1', defaultModel: 'Qwen/Qwen2.5-7B-Instruct' },
+  { id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', defaultModel: 'openai/gpt-4.1-mini' },
+  { id: 'openai-compatible', name: '自定义 OpenAI-compatible', baseUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-4.1-mini', custom: true },
+];
 
 /**
  * 初始化设置页。
@@ -62,6 +75,23 @@ let pendingImportDraft = null;
 })();
 
 function bindEvents() {
+  populateProviderSelect(providerInput);
+  wireSecretToggle(apiKeyInput, apiKeyToggle);
+  if (providerInput) {
+    providerInput.addEventListener('change', () => {
+      const preset = getAiProviderPreset(providerInput.value);
+      if (baseUrlInput) baseUrlInput.value = normalizeAiBaseUrlForUi(preset.id, baseUrlInput.value);
+      populateModelSelect(modelInput, [{ id: preset.defaultModel, label: preset.defaultModel }], preset.defaultModel);
+      updateBaseUrlVisibility();
+      setStatus('', '');
+    });
+  }
+  if (refreshModelsBtn) {
+    refreshModelsBtn.addEventListener('click', () => {
+      loadModelsForConfig(readAiConfigFromForm(), modelInput, setStatus, refreshModelsBtn);
+    });
+  }
+
   uploadZone.addEventListener('click', () => fileInput.click());
 
   uploadZone.addEventListener('dragover', (e) => {
@@ -194,6 +224,7 @@ function bindEvents() {
  * 从本地存储读取并刷新页面状态。
  */
 async function hydratePageFromStorage() {
+  populateProviderSelect(providerInput);
   const [storedImages, storedResumeData, storedConfig] = await Promise.all([
     getResumeImages().catch(() => []),
     chrome.storage.local.get(['resumeImages', 'apiKey', 'textResume', AI_CONFIG_KEY, FILTER_STATE_KEY]).catch(() => ({})),
@@ -204,12 +235,14 @@ async function hydratePageFromStorage() {
   if (storedConfig.apiKey && !aiConfig.apiKey) aiConfig.apiKey = storedConfig.apiKey;
   textResume = storedConfig.textResume || '';
 
+  aiConfig.provider = inferAiProvider(aiConfig.provider, aiConfig.baseUrl);
   if (providerInput) providerInput.value = aiConfig.provider || DEFAULT_AI_CONFIG.provider;
-  if (baseUrlInput) baseUrlInput.value = aiConfig.baseUrl || '';
+  if (baseUrlInput) baseUrlInput.value = normalizeAiBaseUrlForUi(aiConfig.provider, aiConfig.baseUrl);
   if (apiKeyInput) apiKeyInput.value = aiConfig.apiKey || '';
-  if (modelInput) modelInput.value = aiConfig.model || '';
+  if (modelInput) populateModelSelect(modelInput, [{ id: aiConfig.model || getAiProviderPreset(aiConfig.provider).defaultModel, label: aiConfig.model || getAiProviderPreset(aiConfig.provider).defaultModel }], aiConfig.model || getAiProviderPreset(aiConfig.provider).defaultModel);
   if (scoreThresholdInput) scoreThresholdInput.value = aiConfig.scoreThreshold || DEFAULT_AI_CONFIG.scoreThreshold;
   if (textResumeInput) textResumeInput.value = textResume;
+  updateBaseUrlVisibility();
 
   if (storedResumeData.resumeImages?.length) {
     resumeImages = deserializeResumeImages(storedResumeData.resumeImages);
@@ -258,13 +291,103 @@ function renderPreviews() {
 }
 
 function readAiConfigFromForm() {
+  const provider = providerInput ? providerInput.value.trim() : DEFAULT_AI_CONFIG.provider;
   return {
-    provider: providerInput ? providerInput.value.trim() : DEFAULT_AI_CONFIG.provider,
-    baseUrl: baseUrlInput ? baseUrlInput.value.trim() : '',
+    provider,
+    baseUrl: normalizeAiBaseUrlForUi(provider, baseUrlInput ? baseUrlInput.value.trim() : ''),
     apiKey: apiKeyInput ? apiKeyInput.value.trim() : '',
     model: modelInput ? modelInput.value.trim() : '',
     scoreThreshold: scoreThresholdInput ? Number(scoreThresholdInput.value || DEFAULT_AI_CONFIG.scoreThreshold) : DEFAULT_AI_CONFIG.scoreThreshold,
   };
+}
+
+function getAiProviderPreset(provider) {
+  return AI_PROVIDER_PRESETS.find((item) => item.id === provider) || AI_PROVIDER_PRESETS[0];
+}
+
+function inferAiProvider(provider, baseUrl) {
+  if (window.SettingsBackup.inferAiProvider) return window.SettingsBackup.inferAiProvider(provider, baseUrl);
+  const id = String(provider || '').trim();
+  const url = String(baseUrl || '').trim().replace(/\/+$/, '');
+  if (id && id !== 'openai-compatible') return getAiProviderPreset(id).id;
+  const matched = AI_PROVIDER_PRESETS.find((item) => !item.custom && item.baseUrl.replace(/\/+$/, '') === url);
+  return matched ? matched.id : (id || DEFAULT_AI_CONFIG.provider);
+}
+
+function normalizeAiBaseUrlForUi(provider, baseUrl) {
+  if (window.SettingsBackup.normalizeAiBaseUrlForStorage) {
+    return window.SettingsBackup.normalizeAiBaseUrlForStorage(provider, baseUrl);
+  }
+  const preset = getAiProviderPreset(provider);
+  let url = preset.custom ? String(baseUrl || preset.baseUrl || DEFAULT_AI_CONFIG.baseUrl).trim() : preset.baseUrl;
+  url = String(url || DEFAULT_AI_CONFIG.baseUrl).replace(/\/+$/, '');
+  if (!/\/v\d+(?:\.\d+)?$/.test(url) && !/\/compatible-mode\/v\d+$/.test(url) && !/\/api\/paas\/v\d+$/.test(url)) url += '/v1';
+  return url;
+}
+
+function populateProviderSelect(select) {
+  if (!select || select.options.length) return;
+  AI_PROVIDER_PRESETS.forEach((item) => {
+    const opt = document.createElement('option');
+    opt.value = item.id;
+    opt.textContent = item.name;
+    select.appendChild(opt);
+  });
+}
+
+function ensureSelectOption(select, value, label) {
+  if (!select || !value) return;
+  if (Array.from(select.options).some((opt) => opt.value === value)) return;
+  const opt = document.createElement('option');
+  opt.value = value;
+  opt.textContent = label || value;
+  select.appendChild(opt);
+}
+
+function populateModelSelect(select, models, currentModel) {
+  if (!select) return;
+  const keep = currentModel || select.value || '';
+  select.innerHTML = '';
+  const list = models && models.length ? models : [{ id: keep || DEFAULT_AI_CONFIG.model, label: keep || DEFAULT_AI_CONFIG.model }];
+  list.forEach((item) => {
+    const id = String(item.id || item.label || '').trim();
+    if (id) ensureSelectOption(select, id, item.label || id);
+  });
+  if (keep) ensureSelectOption(select, keep, keep);
+  select.value = keep || (select.options[0] && select.options[0].value) || '';
+}
+
+function updateBaseUrlVisibility() {
+  const preset = getAiProviderPreset(providerInput ? providerInput.value : DEFAULT_AI_CONFIG.provider);
+  if (baseUrlInput) baseUrlInput.value = normalizeAiBaseUrlForUi(preset.id, baseUrlInput.value);
+  if (baseUrlGroup) baseUrlGroup.classList.toggle('hidden', !preset.custom);
+}
+
+function wireSecretToggle(input, button) {
+  if (!input || !button) return;
+  button.addEventListener('click', () => {
+    const reveal = input.type === 'password';
+    input.type = reveal ? 'text' : 'password';
+    button.classList.toggle('revealed', reveal);
+    button.title = reveal ? '隐藏 API Key' : '显示 API Key';
+    button.setAttribute('aria-label', button.title);
+  });
+}
+
+function loadModelsForConfig(cfg, modelEl, statusSetter, button) {
+  if (!modelEl) return;
+  if (button) button.disabled = true;
+  statusSetter('正在获取模型列表...', '');
+  chrome.runtime.sendMessage({ type: 'LIST_AI_MODELS', config: cfg }, (resp) => {
+    if (button) button.disabled = false;
+    if (chrome.runtime.lastError || !resp || !resp.success) {
+      populateModelSelect(modelEl, null, cfg.model);
+      statusSetter('模型获取失败: ' + ((resp && resp.error) || chrome.runtime.lastError?.message || '未知错误'), 'error');
+      return;
+    }
+    populateModelSelect(modelEl, resp.models, cfg.model);
+    statusSetter('模型列表已更新', 'success');
+  });
 }
 
 function setStatus(text, cls) {

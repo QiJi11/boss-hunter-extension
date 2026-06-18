@@ -2,12 +2,45 @@
   const FILTER_STATE_KEY = 'ui:filterState';
   const AI_CONFIG_KEY = 'sw:aiConfig';
   const DEFAULT_AI_CONFIG = {
-    provider: 'openai-compatible',
+    provider: 'openai',
     baseUrl: 'https://api.openai.com/v1',
     apiKey: '',
     model: 'gpt-4.1-mini',
     scoreThreshold: 60,
   };
+  const AI_PROVIDER_PRESETS = [
+    { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-4.1-mini' },
+    { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat' },
+    { id: 'kimi', name: 'Kimi（月之暗面）', baseUrl: 'https://api.moonshot.cn/v1', defaultModel: 'moonshot-v1-8k' },
+    { id: 'qwen', name: '通义千问', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', defaultModel: 'qwen-plus' },
+    { id: 'zhipu', name: '智谱 GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', defaultModel: 'glm-4-flash' },
+    { id: 'siliconflow', name: '硅基流动', baseUrl: 'https://api.siliconflow.cn/v1', defaultModel: 'Qwen/Qwen2.5-7B-Instruct' },
+    { id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', defaultModel: 'openai/gpt-4.1-mini' },
+    { id: 'openai-compatible', name: '自定义 OpenAI-compatible', baseUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-4.1-mini', custom: true },
+  ];
+
+  function getAiProviderPreset(provider) {
+    const id = String(provider || DEFAULT_AI_CONFIG.provider).trim();
+    return AI_PROVIDER_PRESETS.find((item) => item.id === id) || AI_PROVIDER_PRESETS[0];
+  }
+
+  function inferAiProvider(provider, baseUrl) {
+    const id = String(provider || '').trim();
+    const url = String(baseUrl || '').trim().replace(/\/+$/, '');
+    if (id && id !== 'openai-compatible') return getAiProviderPreset(id).id;
+    const matched = AI_PROVIDER_PRESETS.find((item) => !item.custom && item.baseUrl.replace(/\/+$/, '') === url);
+    return matched ? matched.id : (id || DEFAULT_AI_CONFIG.provider);
+  }
+
+  function normalizeAiBaseUrlForStorage(provider, baseUrl) {
+    const preset = getAiProviderPreset(provider);
+    let url = preset.custom ? String(baseUrl || preset.baseUrl || DEFAULT_AI_CONFIG.baseUrl).trim() : preset.baseUrl;
+    url = String(url || DEFAULT_AI_CONFIG.baseUrl).trim().replace(/\/+$/, '');
+    if (!/\/v\d+(?:\.\d+)?$/.test(url) && !/\/compatible-mode\/v\d+$/.test(url) && !/\/api\/paas\/v\d+$/.test(url)) {
+      url += '/v1';
+    }
+    return url;
+  }
 
   /**
    * 读取当前完整备份快照。
@@ -167,6 +200,12 @@
     if (typeof cfg.scoreThreshold !== 'number' || Number.isNaN(cfg.scoreThreshold)) {
       throw new Error('aiConfig.scoreThreshold 类型错误');
     }
+    cfg.provider = inferAiProvider(cfg.provider, cfg.baseUrl);
+    const preset = getAiProviderPreset(cfg.provider);
+    cfg.provider = preset.id;
+    cfg.baseUrl = normalizeAiBaseUrlForStorage(cfg.provider, cfg.baseUrl);
+    cfg.model = cfg.model.trim() || preset.defaultModel || DEFAULT_AI_CONFIG.model;
+    cfg.apiKey = cfg.apiKey.trim();
     return cfg;
   }
 
@@ -299,6 +338,10 @@
     FILTER_STATE_KEY,
     AI_CONFIG_KEY,
     DEFAULT_AI_CONFIG,
+    AI_PROVIDER_PRESETS,
+    getAiProviderPreset,
+    inferAiProvider,
+    normalizeAiBaseUrlForStorage,
     readBackupSnapshot,
     normalizeImportPayload,
     applySnapshotToStorage,
