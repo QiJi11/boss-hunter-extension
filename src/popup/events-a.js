@@ -116,6 +116,13 @@ window.initEventsA=function(){
     return null;
   }
 
+  function syncSalaryPairFrom(source){
+    if(typeof normalizeSalaryFilterPair!=='function')return;
+    var pair=normalizeSalaryFilterPair(Store.get('salaryRanges'),Store.get('aiSalaryRange'),source);
+    Store.set('salaryRanges',pair.salaryRanges);
+    Store.set('aiSalaryRange',pair.aiSalaryRange);
+  }
+
   /** 归一化 AI 建议，过滤非法值并产出差异预览。 */
   function normalizeFilterSuggestion(raw){
     var base=getCurrentFilterState();
@@ -172,11 +179,18 @@ window.initEventsA=function(){
     applyArrayField('selectedIndustries', changes.selectedIndustries, allowed.industriesByName, { emptyValue: [] });
     applyArrayField('workAreas', changes.workAreas, (allowed.workAreas||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
     applyArrayField('jobTypes', changes.jobTypes, (allowed.jobTypes||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
+    var changedSalaryRanges=Object.prototype.hasOwnProperty.call(changes,'salaryRanges');
+    var changedAiSalaryRange='aiSalaryRange' in changes||'salaryRange' in changes||'customSalaryRange' in changes||'aiSalary' in changes||('salary' in changes&&!Array.isArray(changes.salary));
     applyArrayField('salaryRanges', changes.salaryRanges, (allowed.salaryRanges||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
-    if('aiSalaryRange' in changes||'salaryRange' in changes||'customSalaryRange' in changes||'aiSalary' in changes||('salary' in changes&&!Array.isArray(changes.salary))){
+    if(changedAiSalaryRange){
       var suggestedRange=normalizeSuggestedSalaryRange(changes);
       if(!suggestedRange)ignored.push('AI 薪资范围格式错误');
       else next.aiSalaryRange=suggestedRange;
+    }
+    if(typeof normalizeSalaryFilterPair==='function'&&(changedSalaryRanges||changedAiSalaryRange)){
+      var salaryPair=normalizeSalaryFilterPair(next.salaryRanges,next.aiSalaryRange,changedAiSalaryRange?'aiSalaryRange':'salaryRanges');
+      next.salaryRanges=salaryPair.salaryRanges;
+      next.aiSalaryRange=salaryPair.aiSalaryRange;
     }
     applyArrayField('experience', changes.experience, (allowed.experience||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
     applyArrayField('education', changes.education, (allowed.education||[]).reduce(function(acc, item){ acc[item]=true; return acc; }, {}), { emptyValue: ['不限'] });
@@ -601,8 +615,10 @@ window.initEventsA=function(){
       var hd=da&&da[0]==='不限';
       togD(arr,v,hd);
       Store.set(sec.k,arr);
+      if(sec.k==='salaryRanges')syncSalaryPairFrom('salaryRanges');
       var items=sec.k==='workAreas'?getWorkAreas():chipData[sec.k];
       window.renderChips(sec.e,items,Store.get(sec.k)||[]);
+      if(sec.k==='salaryRanges')window.renderAiSalaryRange&&window.renderAiSalaryRange();
       persistFilterState();
     })
   });
@@ -612,10 +628,14 @@ window.initEventsA=function(){
     input.addEventListener('change',function(){
       markConfigEdit();
       Store.set('aiSalaryRange',readAiSalaryRangeFromInputs());
+      syncSalaryPairFrom('aiSalaryRange');
+      window.renderChipSecs();
       persistFilterState();
     });
     input.addEventListener('input',function(){
       Store.set('aiSalaryRange',readAiSalaryRangeFromInputs());
+      syncSalaryPairFrom('aiSalaryRange');
+      window.renderChips(E.salaryChips,chipData.salaryRanges,Store.get('salaryRanges')||[]);
     });
   });
 

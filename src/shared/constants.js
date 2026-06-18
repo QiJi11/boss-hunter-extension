@@ -220,10 +220,79 @@ function normalizeAiSalaryRange(input) {
   };
 }
 
+var SALARY_RANGE_BOUNDS = {
+  '3K以下': { minK: 0, maxK: 3 },
+  '3-5K': { minK: 3, maxK: 5 },
+  '5-10K': { minK: 5, maxK: 10 },
+  '10-20K': { minK: 10, maxK: 20 },
+  '20-50K': { minK: 20, maxK: 50 },
+  '50K以上': { minK: 50, maxK: null },
+};
+
+function salaryRangesToAiSalaryRange(ranges, currentMode) {
+  var list = uniqueStrings(ranges);
+  if (!list.length || list.indexOf('不限') >= 0) return { minK: '', maxK: '', mode: currentMode === 'strict' ? 'strict' : 'loose' };
+  var min = null;
+  var max = null;
+  var hasOpenMax = false;
+  list.forEach(function(label) {
+    var bound = SALARY_RANGE_BOUNDS[label];
+    if (!bound) return;
+    if (min == null || bound.minK < min) min = bound.minK;
+    if (bound.maxK == null) hasOpenMax = true;
+    else if (max == null || bound.maxK > max) max = bound.maxK;
+  });
+  if (min == null && max == null) return { minK: '', maxK: '', mode: currentMode === 'strict' ? 'strict' : 'loose' };
+  return {
+    minK: min == null ? '' : String(min),
+    maxK: hasOpenMax ? '' : (max == null ? '' : String(max)),
+    mode: currentMode === 'strict' ? 'strict' : 'loose',
+  };
+}
+
+function aiSalaryRangeToSalaryRanges(range) {
+  var normalized = normalizeAiSalaryRange(range);
+  var min = normalized.minK === '' ? null : Number(normalized.minK);
+  var max = normalized.maxK === '' ? null : Number(normalized.maxK);
+  if (min == null && max == null) return ['不限'];
+  var out = [];
+  Object.keys(SALARY_RANGE_BOUNDS).forEach(function(label) {
+    var bound = SALARY_RANGE_BOUNDS[label];
+    var boundMin = bound.minK;
+    var boundMax = bound.maxK;
+    var overlaps = boundMax == null
+      ? max == null || max > boundMin
+      : (max == null ? boundMax > min : boundMax > min && boundMin < max);
+    if (overlaps) out.push(label);
+  });
+  return out.length ? out : ['不限'];
+}
+
+function normalizeSalaryFilterPair(salaryRanges, aiSalaryRange, source) {
+  var mode = normalizeAiSalaryRange(aiSalaryRange).mode;
+  var ranges = uniqueStrings(salaryRanges);
+  var aiRange = normalizeAiSalaryRange(aiSalaryRange);
+  if (source === 'aiSalaryRange') {
+    ranges = aiSalaryRangeToSalaryRanges(aiRange);
+  } else if (source === 'salaryRanges') {
+    aiRange = salaryRangesToAiSalaryRange(ranges, mode);
+  } else if ((aiRange.minK || aiRange.maxK) && (!ranges.length || ranges.indexOf('不限') >= 0)) {
+    ranges = aiSalaryRangeToSalaryRanges(aiRange);
+  } else if (!(aiRange.minK || aiRange.maxK) && ranges.length && ranges.indexOf('不限') < 0) {
+    aiRange = salaryRangesToAiSalaryRange(ranges, mode);
+  }
+  return {
+    salaryRanges: ranges.length ? ranges : ['不限'],
+    aiSalaryRange: normalizeAiSalaryRange(aiRange),
+  };
+}
+
 function normalizeFilterStateDefaults(filterState) {
   var raw = filterState && typeof filterState === 'object' ? filterState : {};
+  var salaryPair = normalizeSalaryFilterPair(raw.salaryRanges, raw.aiSalaryRange);
   return Object.assign({}, raw, {
-    aiSalaryRange: normalizeAiSalaryRange(raw.aiSalaryRange),
+    salaryRanges: salaryPair.salaryRanges,
+    aiSalaryRange: salaryPair.aiSalaryRange,
     excludeKeywords: uniqueStrings(
       Array.isArray(raw.excludeKeywords) ? raw.excludeKeywords : DEFAULT_EXCLUDE_KEYWORDS
     ),

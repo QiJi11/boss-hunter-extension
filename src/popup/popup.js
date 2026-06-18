@@ -652,7 +652,13 @@ function handleStateUpdate(state){
   if(state.selectedPositions&&state.selectedPositions.length)Store.set('selectedPositions',state.selectedPositions);
   if(state.customPositions)Store.set('customPositions',state.customPositions);
   if(Array.isArray(state.excludeKeywords))Store.set('excludeKeywords',state.excludeKeywords);
-  if(Object.prototype.hasOwnProperty.call(state,'aiSalaryRange'))Store.set('aiSalaryRange',normalizeAiSalaryRange(state.aiSalaryRange));
+  if(Object.prototype.hasOwnProperty.call(state,'aiSalaryRange')){
+    var salaryPair=typeof normalizeSalaryFilterPair==='function'
+      ? normalizeSalaryFilterPair(Store.get('salaryRanges'),state.aiSalaryRange,'aiSalaryRange')
+      : {salaryRanges:Store.get('salaryRanges'),aiSalaryRange:normalizeAiSalaryRange(state.aiSalaryRange)};
+    Store.set('salaryRanges',salaryPair.salaryRanges);
+    Store.set('aiSalaryRange',salaryPair.aiSalaryRange);
+  }
   if(Object.prototype.hasOwnProperty.call(state,'skipHistoryEnabled'))Store.set('skipHistoryEnabled',state.skipHistoryEnabled!==false);
   if(Object.prototype.hasOwnProperty.call(state,'skipHistoryScope'))Store.set('skipHistoryScope','hr');
   if(state.greetings)Store.set('greetings',state.greetings);
@@ -1078,8 +1084,11 @@ function applyFilterStateToStore(filterState){
   Store.set('selectedIndustries',filterState&&filterState.selectedIndustries?filterState.selectedIndustries:[]);
   Store.set('workAreas',filterState&&filterState.workAreas&&filterState.workAreas.length?filterState.workAreas:['不限']);
   Store.set('jobTypes',filterState&&filterState.jobTypes&&filterState.jobTypes.length?filterState.jobTypes:['不限']);
-  Store.set('salaryRanges',filterState&&filterState.salaryRanges&&filterState.salaryRanges.length?filterState.salaryRanges:['不限']);
-  Store.set('aiSalaryRange',normalizeAiSalaryRange(filterState&&filterState.aiSalaryRange));
+  var salaryPair=typeof normalizeSalaryFilterPair==='function'
+    ? normalizeSalaryFilterPair(filterState&&filterState.salaryRanges,filterState&&filterState.aiSalaryRange)
+    : {salaryRanges:filterState&&filterState.salaryRanges&&filterState.salaryRanges.length?filterState.salaryRanges:['不限'],aiSalaryRange:normalizeAiSalaryRange(filterState&&filterState.aiSalaryRange)};
+  Store.set('salaryRanges',salaryPair.salaryRanges);
+  Store.set('aiSalaryRange',salaryPair.aiSalaryRange);
   Store.set('experience',filterState&&filterState.experience&&filterState.experience.length?filterState.experience:['不限']);
   Store.set('education',filterState&&filterState.education&&filterState.education.length?filterState.education:['不限']);
   Store.set('companySizes',filterState&&filterState.companySizes&&filterState.companySizes.length?filterState.companySizes:['不限']);

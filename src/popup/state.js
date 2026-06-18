@@ -78,9 +78,15 @@
     restore: function (snapshot) {
       var defaults = JSON.parse(JSON.stringify(_state));
       var copy = Object.assign(defaults, JSON.parse(JSON.stringify(snapshot || {})));
-      copy.aiSalaryRange = typeof normalizeAiSalaryRange === 'function'
-        ? normalizeAiSalaryRange(copy.aiSalaryRange)
-        : (copy.aiSalaryRange || { minK: '', maxK: '', mode: 'loose' });
+      if (typeof normalizeSalaryFilterPair === 'function') {
+        var salaryPair = normalizeSalaryFilterPair(copy.salaryRanges, copy.aiSalaryRange);
+        copy.salaryRanges = salaryPair.salaryRanges;
+        copy.aiSalaryRange = salaryPair.aiSalaryRange;
+      } else {
+        copy.aiSalaryRange = typeof normalizeAiSalaryRange === 'function'
+          ? normalizeAiSalaryRange(copy.aiSalaryRange)
+          : (copy.aiSalaryRange || { minK: '', maxK: '', mode: 'loose' });
+      }
       var keys = Object.keys(_state);
       for (var i = 0; i < keys.length; i++) delete _state[keys[i]];
       var ckeys = Object.keys(copy);
