@@ -21,14 +21,34 @@ function renderOverviewItems(items, emptyText){
   }).join('')+'</div>';
 }
 
+function renderCollectionDiag(){
+  var c=Store.get('collectionSummary')||{};
+  var a=Store.get('aiOverviewSummary')||{};
+  var jobs=Store.get('jobs')||[];
+  var jd=Store.get('jdHydrationProgress')||{};
+  if(!c.startedAt&&!a.status&&!jobs.length)return '';
+  var reason=a.reason?('，原因：'+a.reason):'';
+  var aiStatus=a.status||'idle';
+  var items=[
+    '采集：原始 '+Number(c.rawJobs||0)+'，匹配 '+Number(c.matchedJobs||0)+'，可见 '+Number(c.visibleJobs||jobs.length)+'，选中 '+Number(c.checkedJobs||0),
+    '过滤：排除词 '+Number(c.excludedJobs||0)+'，同 HR 历史 '+Number(c.historySkippedJobs||0)+'，分组 '+Number(c.groups||0),
+    'AI 总结：'+aiStatus+reason,
+    'JD：'+Number(a.jobsWithJD||jd.success||0)+'/'+Number(a.totalJobs||jd.total||jobs.length)+'，失败 '+Number(a.failedJdJobs||jd.failed||0)+'，剩余 '+Number(a.pendingJobs||jd.pending||0)
+  ];
+  return '<div class="collection-diag-panel"><div class="collection-diag-title">本次采集诊断</div>'
+    +items.map(function(item){return '<div class="collection-diag-line">'+esc(item)+'</div>';}).join('')
+    +'</div>';
+}
+
 window.renderSummaryPanel=function(){
   var host=getSummaryHost();
   if(!host)return;
   var jobs=Store.get('jobs')||[];
   var overview=Store.get('aiBatchOverview');
   var progress=Store.get('jdHydrationProgress');
+  var diagHtml=renderCollectionDiag();
   if(!overview||(!overview.headline&&!((overview.good||[]).length)&&!((overview.bad||[]).length)&&!((overview.nextFocus||[]).length)&&!((overview.pitfalls||[]).length))){
-    host.innerHTML='';
+    host.innerHTML=diagHtml;
     return;
   }
   var coverage=overview.coverage||{};
@@ -52,6 +72,7 @@ window.renderSummaryPanel=function(){
     +'<input id="jobAnalysisImportFileInput" type="file" accept=".json,application/json" hidden>'
     +'<span class="job-analysis-export-status" id="jobAnalysisExportStatus"></span>'
     +'</div>'
+    +diagHtml
     +'<div class="summary-panel-meta">已结合 '+Number(coverage.jobsWithJD||0)+'/'+Number(coverage.totalJobs||jobs.length)+' 条 JD，剩余 '+Number(coverage.pendingJobs||0)+' 条，已完成 '+Number(coverage.completedBatches||0)+' 批</div>'
     +'<div class="summary-section"><div class="summary-section-title">优点</div>'+renderOverviewItems(overview.good,'暂无明显共性优点')+'</div>'
     +'<div class="summary-section"><div class="summary-section-title">缺点</div>'+renderOverviewItems(overview.bad,'暂无明显共性缺点')+'</div>'

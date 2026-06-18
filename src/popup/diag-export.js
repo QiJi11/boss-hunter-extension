@@ -130,6 +130,16 @@
         snap.dailySendCount = dsc != null ? dsc : null;
       }
     } catch (e) {}
+    try {
+      if (swState) {
+        snap.collectionSummary = swState.collectionSummary || null;
+        snap.aiOverviewSummary = swState.aiOverviewSummary || null;
+      } else {
+        var ls2 = storageData[LASTSNAPSHOT_KEY];
+        snap.collectionSummary = ls2 && ls2.collectionSummary || null;
+        snap.aiOverviewSummary = ls2 && ls2.aiOverviewSummary || null;
+      }
+    } catch (e2) {}
     return snap;
   }
 
@@ -171,6 +181,8 @@
         snapshot: buildSnapshot(swState, storageData),
         diagLogs: diagLogs,
         errorLog: storageData[ERRORLOG_KEY] || [],
+        collectionSummary: swState && swState.collectionSummary || (storageData[LASTSNAPSHOT_KEY] && storageData[LASTSNAPSHOT_KEY].collectionSummary) || null,
+        aiOverviewSummary: swState && swState.aiOverviewSummary || (storageData[LASTSNAPSHOT_KEY] && storageData[LASTSNAPSHOT_KEY].aiOverviewSummary) || null,
         sendSummary: summarizeSendResults(storageData[SENDRESULTS_KEY]),
         sendResultsFull: storageData[SENDRESULTS_KEY] || [],
         recentRuns: Array.isArray(storageData[RECENTRUNS_KEY]) ? storageData[RECENTRUNS_KEY] : [],
@@ -190,6 +202,13 @@
     L.push('');
     L.push('【状态快照】');
     L.push(JSON.stringify(b.snapshot, null, 1));
+    L.push('');
+
+    L.push('【采集诊断】');
+    L.push(JSON.stringify({
+      collectionSummary: b.collectionSummary || null,
+      aiOverviewSummary: b.aiOverviewSummary || null,
+    }, null, 1));
     L.push('');
 
     var userEvents = [], errors = [], normals = [];
@@ -259,6 +278,8 @@
     var full = {
       env: b.env,
       snapshot: b.snapshot,
+      collectionSummary: b.collectionSummary || null,
+      aiOverviewSummary: b.aiOverviewSummary || null,
       diagLogs: b.diagLogs,
       errorLog: b.errorLog,
       sendResults: b.sendResultsFull,
@@ -303,6 +324,21 @@
   }
 
   function wire() {
+    var btnCopy = document.getElementById('btnDiagCopy');
+    if (btnCopy) {
+      btnCopy.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        var originText = btnCopy.textContent;
+        try { if (typeof DiagLogger !== 'undefined') DiagLogger.userEvent('popup', '用户点击「复制诊断摘要」'); } catch (_) {}
+        collectBundle().then(function (b) {
+          return copyToClipboard(buildText(b));
+        }).then(function (ok) {
+          flashBtn(btnCopy, ok ? '已复制' : '复制失败', originText);
+        }).catch(function () {
+          flashBtn(btnCopy, '复制失败', originText);
+        });
+      });
+    }
     var btnDl = document.getElementById('btnDiagDownload');
     if (btnDl) {
       btnDl.addEventListener('click', function (ev) {

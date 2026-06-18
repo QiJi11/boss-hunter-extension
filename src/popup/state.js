@@ -38,6 +38,8 @@
     sendGreeting: true,
     filterSuggestionDraft: null,
     aiBatchOverview: null,
+    aiOverviewSummary: null,
+    collectionSummary: null,
     jdHydrationProgress: {
       running: false,
       done: 0,

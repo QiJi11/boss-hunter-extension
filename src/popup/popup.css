@@ -634,6 +634,12 @@ body{
 .summary-panel-sub{font-size:11px;color:var(--text-weak)}
 .summary-panel-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
 .summary-panel-meta{font-size:11px;color:var(--text-secondary);padding:8px 10px;border-radius:8px;background:#fffbf5;border:1px solid var(--border-light)}
+.collection-diag-panel{
+  margin:10px 0;padding:10px 12px;border:1px solid var(--border-light);
+  border-radius:8px;background:#f8fafc;color:var(--text-secondary);
+}
+.collection-diag-title{font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px}
+.collection-diag-line{font-size:11px;line-height:1.55}
 .summary-section{margin-top:12px}
 .summary-section-title{font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px}
 .summary-overview-list{display:flex;flex-direction:column;gap:8px}
