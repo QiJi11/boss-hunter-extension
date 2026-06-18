@@ -28,7 +28,7 @@
     return {
       version: 1,
       exportedAt: new Date().toISOString(),
-      filterState: storageItems[FILTER_STATE_KEY] || null,
+      filterState: normalizeFilterStateForBackup(storageItems[FILTER_STATE_KEY] || null),
       resumeImages: images.length ? images : null,
       textResume: typeof storageItems.textResume === 'string' ? storageItems.textResume : null,
       aiConfig,
@@ -56,7 +56,7 @@
       if (raw.filterState !== null && typeof raw.filterState !== 'object') {
         throw new Error('filterState 类型错误');
       }
-      draft.filterState = raw.filterState || null;
+      draft.filterState = normalizeFilterStateForBackup(raw.filterState || null);
     }
 
     if (Object.prototype.hasOwnProperty.call(raw, 'resumeImages')) {
@@ -238,6 +238,7 @@
 
   function summarizeFilterState(filterState) {
     if (!filterState) return '未提供筛选配置';
+    filterState = normalizeFilterStateForBackup(filterState);
     const lines = [];
     lines.push('城市：' + summarizeList(filterState.selectedCities));
     lines.push('岗位：' + summarizeList((filterState.selectedPositions || []).concat(filterState.customPositions || [])));
@@ -245,7 +246,21 @@
     lines.push('HR 活跃度：' + (filterState.hrActiveFilter || '不限'));
     lines.push('薪资：' + summarizeList(filterState.salaryRanges));
     lines.push('打招呼：' + (filterState.sendGreeting === false ? '关闭' : '开启'));
+    lines.push('排除：' + summarizeList(filterState.excludeKeywords));
+    lines.push('历史跳过：' + (filterState.skipHistoryEnabled === false ? '关闭' : '同 HR'));
     return lines.join('；');
+  }
+
+  function normalizeFilterStateForBackup(filterState) {
+    if (!filterState || typeof filterState !== 'object') return filterState;
+    if (typeof global.normalizeFilterStateDefaults === 'function') {
+      return global.normalizeFilterStateDefaults(filterState);
+    }
+    const copy = Object.assign({}, filterState);
+    copy.excludeKeywords = Array.isArray(copy.excludeKeywords) ? copy.excludeKeywords : [];
+    copy.skipHistoryEnabled = copy.skipHistoryEnabled !== false;
+    copy.skipHistoryScope = 'hr';
+    return copy;
   }
 
   function summarizeAiConfig(config) {

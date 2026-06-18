@@ -1,4 +1,17 @@
 // 岗位收集模块 — DOM 解析 + 无限滚动 + 标签聚类 + URL 筛选
+function extractHrName(card, companyText) {
+  const selectors = ['.boss-name', '.name', '.job-boss-info .name', '[class*="boss-name"]'];
+  for (const selector of selectors) {
+    const el = card.querySelector(selector);
+    const text = el?.textContent.trim();
+    if (text) return text.replace(companyText || '', '').trim();
+  }
+  const raw = card.querySelector('.job-card-footer')?.textContent.trim() || '';
+  if (!raw) return '';
+  const cleaned = raw.replace(companyText || '', '').replace(/\s+/g, ' ').trim();
+  return cleaned.split(/[·|｜\s]/).filter(Boolean)[0] || '';
+}
+
 const JobCollector = {
   collected: new Map(), // id → job
   stopped: false,
@@ -13,12 +26,15 @@ const JobCollector = {
     const tags = [...card.querySelectorAll(SELECTORS.jobs.tagList)].map((t) => t.textContent.trim());
     const link = card.querySelector('a')?.href || '';
     const id = link.match(/job_detail\/([^.]+)\.html/)?.[1] || link;
+    const companyText = companyEl?.textContent.trim() || '';
+    const hrName = extractHrName(card, companyText);
 
     return {
       id,
       name: nameEl?.textContent.trim() || '',
       salary: decodeSalary(salaryEl?.textContent || ''),
-      company: companyEl?.textContent.trim() || '',
+      company: companyText,
+      hrName,
       tags,
       link,
     };

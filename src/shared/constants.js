@@ -159,6 +159,69 @@ const CONFIG = {
   SOFT_BATCH_LIMIT: 75,    // 单批软提示阈值：单批选中 > 75 时提示但允许继续
 };
 
+const DEFAULT_EXCLUDE_KEYWORDS = [
+  '外包',
+  '驻场',
+  '培训',
+  '推广',
+  '销售',
+  '主播',
+  '客服',
+  '讲师',
+  '剪辑',
+  '游戏前端',
+  '伪AI',
+  '包装AI应用开发',
+];
+
+function uniqueStrings(list) {
+  var seen = {};
+  return (Array.isArray(list) ? list : []).map(function(item) {
+    return String(item || '').trim();
+  }).filter(function(item) {
+    if (!item || seen[item]) return false;
+    seen[item] = true;
+    return true;
+  });
+}
+
+function normalizeFilterStateDefaults(filterState) {
+  var raw = filterState && typeof filterState === 'object' ? filterState : {};
+  return Object.assign({}, raw, {
+    excludeKeywords: uniqueStrings(
+      Array.isArray(raw.excludeKeywords) ? raw.excludeKeywords : DEFAULT_EXCLUDE_KEYWORDS
+    ),
+    skipHistoryEnabled: raw.skipHistoryEnabled !== false,
+    skipHistoryScope: 'hr',
+  });
+}
+
+function findExcludeKeywordHit(job, excludeKeywords) {
+  var keywords = uniqueStrings(excludeKeywords);
+  if (!keywords.length || !job) return '';
+  var haystack = [
+    job.name,
+    job.title,
+    job.positionName,
+    job.company,
+    job.companyName,
+    job.salary,
+    Array.isArray(job.tags) ? job.tags.join(' ') : '',
+    job.detail,
+    job.desc,
+    job.description,
+    job.aiScreen && job.aiScreen.reason,
+    job.aiScreen && Array.isArray(job.aiScreen.risks) ? job.aiScreen.risks.join(' ') : '',
+  ].map(function(part) {
+    return String(part || '').toLowerCase();
+  }).join(' ');
+  for (var i = 0; i < keywords.length; i++) {
+    var kw = keywords[i];
+    if (kw && haystack.indexOf(kw.toLowerCase()) >= 0) return kw;
+  }
+  return '';
+}
+
 // ── 岗位归类：单一真相源（分来源打分） ──
 // 一个 job 该归到哪个期望词组的唯一判定。SW（采集过滤 / 发送分组 / cluster）
 // 与 popup（B 页 prepareGroups）都调它，保证「编辑 key === 发送 key」、归组结果一致。

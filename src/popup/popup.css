@@ -426,13 +426,6 @@ body{
 .gear-btn:active svg{transform:rotate(90deg)}
 .composite-btn svg{width:18px;height:18px}
 .composite-btn:hover svg,.composite-btn:active svg{transform:none}
-.ai-btn span{
-  font-size:12px;font-weight:700;letter-spacing:0;color:inherit;
-}
-.ai-btn.configured{
-  color:var(--accent);background:rgba(0,122,255,.08);
-}
-.ai-btn:hover span{transform:none}
 
 /* ════════════════════════════════════════════════════════════
    Settings Overlay Panel
@@ -639,6 +632,7 @@ body{
 .summary-panel-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
 .summary-panel-title{font-size:14px;font-weight:700;color:var(--text)}
 .summary-panel-sub{font-size:11px;color:var(--text-weak)}
+.summary-panel-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
 .summary-panel-meta{font-size:11px;color:var(--text-secondary);padding:8px 10px;border-radius:8px;background:#fffbf5;border:1px solid var(--border-light)}
 .summary-section{margin-top:12px}
 .summary-section-title{font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px}
@@ -649,3 +643,32 @@ body{
 }
 .summary-retry-btn{padding:6px 12px;font-size:11px;min-width:96px}
 .summary-panel-empty{font-size:12px;color:var(--text-weak);padding:8px 0}
+.job-analysis-export-bar{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  margin:10px 0 10px;padding:9px 10px;border:1px solid var(--border-light);
+  border-radius:8px;background:#fff;
+}
+.job-analysis-range,.job-analysis-date{
+  height:32px;border:1px solid var(--border-light);border-radius:8px;
+  background:var(--card);color:var(--text-secondary);font-size:12px;font-family:inherit;
+  padding:0 8px;outline:none;
+}
+.job-analysis-range:focus,.job-analysis-date:focus{border-color:var(--accent)}
+.job-analysis-export-btn{padding:6px 12px;font-size:11px}
+.job-analysis-export-status{
+  min-height:16px;font-size:11px;color:var(--text-weak);line-height:1.4;
+}
+.job-analysis-export-status.success{color:var(--green)}
+.job-analysis-export-status.error{color:var(--red)}
+.exclude-input-row{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.exclude-input-row input{
+  flex:1;height:34px;border:1px solid var(--border-light);border-radius:8px;
+  padding:0 10px;font-size:13px;color:var(--text);background:var(--card);outline:none;
+}
+.exclude-input-row input:focus{border-color:var(--accent)}
+.exclude-tags{min-height:24px}
+.exclude-empty{font-size:12px;color:var(--text-weak)}
+.job-skip-reason{
+  display:inline-flex;align-items:center;margin-top:8px;padding:4px 8px;border-radius:8px;
+  background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:11px;font-weight:600;
+}

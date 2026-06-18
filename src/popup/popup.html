@@ -38,9 +38,6 @@
       </button>
     </div>
     <div class="header-right">
-      <button class="gear-btn ai-btn" id="aiBtn" title="AI 设置">
-        <span>AI</span>
-      </button>
       <button class="gear-btn composite-btn" id="compositeBtn" title="完整设置">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 7h16"/>
@@ -159,6 +156,25 @@
       <div class="section-divider"></div>
 
       <div class="section">
+        <div class="section-title">排除条件</div>
+        <div class="exclude-input-row">
+          <input type="text" id="excludeKeywordInput" placeholder="添加排除词，如 外包、驻场、主播" autocomplete="off">
+          <button class="btn btn-ghost" id="addExcludeKeywordBtn" type="button">添加</button>
+        </div>
+        <div class="selected-tags exclude-tags" id="excludeKeywordTags"></div>
+      </div>
+
+      <div class="chips-section">
+        <div class="section-title">历史跳过</div>
+        <label class="send-greeting-toggle">
+          <input type="checkbox" id="skipHistoryToggle" checked>
+          <span>跳过已投过的同 HR</span>
+        </label>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <div class="section">
         <div class="section-title">AI 改筛选条件</div>
         <div class="ai-filter-box" id="aiFilterBox">
           <textarea id="aiFilterPrompt" class="ai-filter-textarea" rows="4" placeholder="例如：减少销售岗，多加深圳南山/福田的 AI 产品和增长运营岗位，薪资至少 15K。"></textarea>
@@ -270,55 +286,6 @@
   </div>
   <!-- ═══════ /Settings Overlay Panel ═══════ -->
 
-  <div class="settings-overlay hidden" id="aiOverlay">
-    <div class="settings-drawer ai-drawer" id="aiDrawer">
-      <div class="settings-header">
-        <div class="ai-drawer-header-main">
-          <div class="ai-drawer-title">AI 设置</div>
-          <button class="ai-drawer-link" id="aiOpenOptionsBtn" type="button">完整设置</button>
-        </div>
-        <button class="settings-close" id="aiClose" title="关闭">
-          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l8 8M11 3l-8 8"/></svg>
-        </button>
-      </div>
-      <div class="settings-body">
-        <div class="ai-drawer-hint">导入/导出、筛选配置和图片简历请在完整设置页中操作。</div>
-        <div class="settings-section">
-          <div class="settings-section-title">OpenAI-compatible 接口</div>
-          <div class="ai-field">
-            <label for="aiProvider">Provider</label>
-            <input id="aiProvider" type="text" placeholder="openai-compatible" autocomplete="off">
-          </div>
-          <div class="ai-field">
-            <label for="aiBaseUrl">Base URL</label>
-            <input id="aiBaseUrl" type="url" placeholder="https://api.openai.com/v1" autocomplete="off">
-          </div>
-          <div class="ai-field">
-            <label for="aiApiKey">API Key</label>
-            <input id="aiApiKey" type="password" placeholder="sk-..." autocomplete="off">
-          </div>
-          <div class="ai-field">
-            <label for="aiModel">Model</label>
-            <input id="aiModel" type="text" placeholder="gpt-4.1-mini" autocomplete="off">
-          </div>
-          <div class="ai-field">
-            <label for="aiScoreThreshold">AI 筛选阈值</label>
-            <input id="aiScoreThreshold" type="number" min="0" max="100" step="1" placeholder="60">
-          </div>
-        </div>
-        <div class="settings-section">
-          <div class="settings-section-title">文字简历</div>
-          <textarea id="aiTextResume" class="ai-textarea" rows="7" placeholder="粘贴你的文字简历，AI 会用它判断岗位是否符合。"></textarea>
-        </div>
-        <div class="ai-actions">
-          <button class="btn btn-ghost" id="aiTestBtn">测试连接</button>
-          <button class="btn btn-primary" id="aiSaveBtn">保存设置</button>
-        </div>
-        <div class="ai-status" id="aiStatus"></div>
-      </div>
-    </div>
-  </div>
-
   <div class="settings-overlay hidden" id="compositeOverlay">
     <div class="settings-drawer composite-drawer" id="compositeDrawer">
       <div class="settings-header">
@@ -391,6 +358,7 @@
 <script src="../shared/device-id.js"></script>
 <script src="../db/indexeddb.js"></script>
 <script src="../shared/settings-backup.js"></script>
+<script src="../shared/job-analysis-export.js"></script>
 <!-- data -->
 <script src="../content/tag-data.js"></script>
 <!-- foundation -->

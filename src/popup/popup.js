@@ -45,6 +45,8 @@ function initDomRefs(){
   E.workAreaChips=$('#workAreaChips');E.jobTypeChips=$('#jobTypeChips');
   E.salaryChips=$('#salaryChips');E.expChips=$('#expChips');E.eduChips=$('#eduChips');
   E.sizeChips=$('#sizeChips');E.stageChips=$('#stageChips');
+  E.excludeKeywordInput=$('#excludeKeywordInput');E.addExcludeKeywordBtn=$('#addExcludeKeywordBtn');E.excludeKeywordTags=$('#excludeKeywordTags');
+  E.skipHistoryToggle=$('#skipHistoryToggle');
   E.aiFilterBox=$('#aiFilterBox');E.aiFilterPrompt=$('#aiFilterPrompt');
   E.aiFilterGenerateBtn=$('#aiFilterGenerateBtn');E.aiFilterApplyBtn=$('#aiFilterApplyBtn');
   E.aiFilterDiscardBtn=$('#aiFilterDiscardBtn');E.aiFilterStatus=$('#aiFilterStatus');E.aiFilterPreview=$('#aiFilterPreview');
@@ -57,11 +59,6 @@ function initDomRefs(){
   E.progressSection=$('#progressSection');E.progressFill=$('#progressFill');
   E.progressText=$('#progressText');E.progressSub=$('#progressSub');
   E.resultsContent=$('#resultsContent');E.groupedContent=$('#groupedContent');
-  E.aiBtn=$('#aiBtn');E.aiOverlay=$('#aiOverlay');E.aiClose=$('#aiClose');
-  E.aiOpenOptionsBtn=$('#aiOpenOptionsBtn');
-  E.aiProvider=$('#aiProvider');E.aiBaseUrl=$('#aiBaseUrl');E.aiApiKey=$('#aiApiKey');
-  E.aiModel=$('#aiModel');E.aiScoreThreshold=$('#aiScoreThreshold');E.aiTextResume=$('#aiTextResume');
-  E.aiTestBtn=$('#aiTestBtn');E.aiSaveBtn=$('#aiSaveBtn');E.aiStatus=$('#aiStatus');
   E.compositeBtn=$('#compositeBtn');E.compositeOverlay=$('#compositeOverlay');E.compositeClose=$('#compositeClose');
   E.compositeOpenOptionsBtn=$('#compositeOpenOptionsBtn');
   E.compositeAiProvider=$('#compositeAiProvider');E.compositeAiBaseUrl=$('#compositeAiBaseUrl');E.compositeAiApiKey=$('#compositeAiApiKey');
@@ -328,7 +325,7 @@ function completeCollection(){
 
 function updateAiFilterAssistantState(){
   if(!E.aiFilterGenerateBtn||!E.aiFilterPrompt)return;
-  var hasAi=!!(E.aiBtn&&E.aiBtn.classList.contains('configured'));
+  var hasAi=!!(E.compositeBtn&&E.compositeBtn.classList.contains('configured'));
   E.aiFilterGenerateBtn.disabled=!hasAi;
   E.aiFilterPrompt.disabled=!hasAi;
   if(!hasAi){
@@ -360,7 +357,7 @@ function updateAiNotConfiguredHint(){
     el.style.cssText='font-size:12px;color:var(--text-weak);padding:8px 16px;text-align:center;background:#f9fafb;border-bottom:1px solid var(--border-light)';
     E.groupedContent.insertBefore(el,E.groupedContent.firstChild);
   }
-  el.textContent='未配置 AI，当前仅展示普通岗位列表；点击顶部 AI 按钮可开启岗位匹配判断';
+  el.textContent='未配置 AI，当前仅展示普通岗位列表；点击顶部完整设置可开启岗位匹配判断';
 }
 
 function updateGreetingProgress(progress){
@@ -405,6 +402,135 @@ function updateAiScreeningProgress(progress){
       if(window.updResCnt)window.updResCnt();
     }
   }
+}
+
+function setJobAnalysisExportStatus(text,cls){
+  var el=document.getElementById('jobAnalysisExportStatus');
+  if(!el)return;
+  el.textContent=text||'';
+  el.className='job-analysis-export-status '+(cls||'');
+}
+
+function syncJobAnalysisCustomRange(){
+  var rangeEl=document.getElementById('jobAnalysisRange');
+  var startEl=document.getElementById('jobAnalysisStartDate');
+  var endEl=document.getElementById('jobAnalysisEndDate');
+  var custom=rangeEl&&rangeEl.value==='custom';
+  if(startEl)startEl.classList.toggle('hidden',!custom);
+  if(endEl)endEl.classList.toggle('hidden',!custom);
+}
+
+function readJobAnalysisRangeOptions(){
+  var rangeEl=document.getElementById('jobAnalysisRange');
+  var startEl=document.getElementById('jobAnalysisStartDate');
+  var endEl=document.getElementById('jobAnalysisEndDate');
+  return {
+    type:rangeEl?rangeEl.value:'last7',
+    startDate:startEl?startEl.value:'',
+    endDate:endEl?endEl.value:'',
+    aiBatchOverview:Store.get('aiBatchOverview')||null
+  };
+}
+
+async function exportJobAnalysis(){
+  var btn=document.getElementById('btnExportJobAnalysis');
+  if(!window.JobAnalysisExport||typeof getJobRecords!=='function'){
+    setJobAnalysisExportStatus('岗位分析导出不可用','error');
+    return;
+  }
+  if(btn)btn.disabled=true;
+  setJobAnalysisExportStatus('正在导出...','');
+  try{
+    var records=await getJobRecords();
+    var payload=window.JobAnalysisExport.buildJobAnalysisExport(records,readJobAnalysisRangeOptions());
+    window.JobAnalysisExport.downloadJobAnalysisExport(payload);
+    setJobAnalysisExportStatus('已导出 '+payload.summary.total+' 条','success');
+  }catch(e){
+    setJobAnalysisExportStatus('导出失败: '+(e&&e.message||e),'error');
+  }finally{
+    if(btn)btn.disabled=false;
+  }
+}
+
+function openJobAnalysisImportPicker(){
+  var input=document.getElementById('jobAnalysisImportFileInput');
+  if(!input){
+    setJobAnalysisExportStatus('岗位分析导入入口不可用','error');
+    return;
+  }
+  input.click();
+}
+
+async function importJobAnalysisFile(file){
+  var btn=document.getElementById('btnImportJobAnalysis');
+  if(!window.JobAnalysisExport||typeof saveJobRecords!=='function'){
+    setJobAnalysisExportStatus('岗位分析导入不可用','error');
+    return;
+  }
+  if(!file)return;
+  if(btn)btn.disabled=true;
+  setJobAnalysisExportStatus('正在导入...','');
+  try{
+    var text=await file.text();
+    var parsed=JSON.parse(text);
+    var records=window.JobAnalysisExport.normalizeJobAnalysisImportPayload(parsed);
+    var saved=await saveJobRecords(records);
+    setJobAnalysisExportStatus('已导入 '+saved.length+' 条岗位记录','success');
+  }catch(e){
+    setJobAnalysisExportStatus('导入失败: '+(e&&e.message||e),'error');
+  }finally{
+    if(btn)btn.disabled=false;
+  }
+}
+
+function buildBatchOverviewText(){
+  var overview=Store.get('aiBatchOverview')||{};
+  var coverage=overview.coverage||{};
+  function section(title,list){
+    var items=Array.isArray(list)?list.filter(Boolean):[];
+    return title+'\\n'+(items.length?items.map(function(item){return '- '+item}).join('\\n'):'- 暂无');
+  }
+  return [
+    '整批岗位 AI 总览',
+    overview.headline||'',
+    '覆盖：已结合 '+Number(coverage.jobsWithJD||0)+'/'+Number(coverage.totalJobs||0)+' 条 JD，剩余 '+Number(coverage.pendingJobs||0)+' 条，已完成 '+Number(coverage.completedBatches||0)+' 批',
+    section('优点',overview.good),
+    section('缺点',overview.bad),
+    section('下次方向',overview.nextFocus),
+    section('避坑提醒',overview.pitfalls)
+  ].filter(Boolean).join('\\n\\n');
+}
+
+async function copyBatchOverview(){
+  var text=buildBatchOverviewText();
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText)await navigator.clipboard.writeText(text);
+    else{
+      var ta=document.createElement('textarea');
+      ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    }
+    setJobAnalysisExportStatus('总览已复制','success');
+  }catch(e){
+    setJobAnalysisExportStatus('复制失败: '+(e&&e.message||e),'error');
+  }
+}
+
+function generateFilterFromOverview(){
+  var overview=Store.get('aiBatchOverview');
+  if(!overview){
+    setJobAnalysisExportStatus('暂无 AI 总览可生成筛选方案','error');
+    return;
+  }
+  if(E.aiFilterPrompt){
+    E.aiFilterPrompt.value=[
+      '根据这批岗位总览优化首页筛选：',
+      buildBatchOverviewText(),
+      '',
+      '请减少外包、驻场、培训推广、销售/主播/客服、伪装成开发岗的岗位；保留真正的 AI 应用开发、Agent、RAG、工作流、API 集成、后端落地方向。'
+    ].join('\\n');
+  }
+  if(typeof window.toSettings==='function')window.toSettings();
+  if(E.aiFilterGenerateBtn)E.aiFilterGenerateBtn.click();
 }
 
 // ════════════════════════════════════════════════════════════
@@ -508,6 +634,9 @@ function handleStateUpdate(state){
   // Update Store from incoming state
   if(state.selectedPositions&&state.selectedPositions.length)Store.set('selectedPositions',state.selectedPositions);
   if(state.customPositions)Store.set('customPositions',state.customPositions);
+  if(Array.isArray(state.excludeKeywords))Store.set('excludeKeywords',state.excludeKeywords);
+  if(Object.prototype.hasOwnProperty.call(state,'skipHistoryEnabled'))Store.set('skipHistoryEnabled',state.skipHistoryEnabled!==false);
+  if(Object.prototype.hasOwnProperty.call(state,'skipHistoryScope'))Store.set('skipHistoryScope','hr');
   if(state.greetings)Store.set('greetings',state.greetings);
   if(state.aiBatchOverview)Store.set('aiBatchOverview',state.aiBatchOverview);
   if(state.jdHydrationProgress)Store.set('jdHydrationProgress',state.jdHydrationProgress);
@@ -624,12 +753,6 @@ function showCaptchaWarning(){
 // INIT
 // ════════════════════════════════════════════════════════════
 
-function setAiStatus(text, cls){
-  if(!E.aiStatus)return;
-  E.aiStatus.textContent=text||'';
-  E.aiStatus.className='ai-status '+(cls||'');
-}
-
 function setCompositeStatus(text,cls){
   if(!E.compositeStatus)return;
   E.compositeStatus.textContent=text||'';
@@ -677,10 +800,6 @@ function readAiConfigFromElements(providerEl,baseUrlEl,apiKeyEl,modelEl,scoreEl)
   };
 }
 
-function readAiDrawerConfig(){
-  return readAiConfigFromElements(E.aiProvider,E.aiBaseUrl,E.aiApiKey,E.aiModel,E.aiScoreThreshold);
-}
-
 function readCompositeConfig(){
   return readAiConfigFromElements(E.compositeAiProvider,E.compositeAiBaseUrl,E.compositeAiApiKey,E.compositeAiModel,E.compositeAiScoreThreshold);
 }
@@ -697,14 +816,6 @@ function fillAiFields(target,cfg,textResume){
 function fillAiDrawer(config,textResume){
   var cfg=Object.assign({},DEFAULT_AI_CONFIG,config||{});
   fillAiFields({
-    provider:E.aiProvider,
-    baseUrl:E.aiBaseUrl,
-    apiKey:E.aiApiKey,
-    model:E.aiModel,
-    scoreThreshold:E.aiScoreThreshold,
-    textResume:E.aiTextResume
-  },cfg,textResume);
-  fillAiFields({
     provider:E.compositeAiProvider,
     baseUrl:E.compositeAiBaseUrl,
     apiKey:E.compositeAiApiKey,
@@ -712,7 +823,7 @@ function fillAiDrawer(config,textResume){
     scoreThreshold:E.compositeAiScoreThreshold,
     textResume:E.compositeTextResume
   },cfg,textResume);
-  if(E.aiBtn)E.aiBtn.classList.toggle('configured',!!cfg.apiKey);
+  if(E.compositeBtn)E.compositeBtn.classList.toggle('configured',!!cfg.apiKey);
   updateAiFilterAssistantState();
 }
 
@@ -725,7 +836,7 @@ function loadAiDrawerConfig(done){
       if(done)done(cfg);
     });
   }catch(e){
-    setAiStatus('读取 AI 设置失败: '+e.message,'error');
+    setCompositeStatus('读取 AI 设置失败: '+e.message,'error');
   }
 }
 
@@ -741,13 +852,10 @@ function isSameJobSnapshot(curJob,newJob){
   if((curJob.jdStatus||'')!==(newJob.jdStatus||''))return false;
   if((curJob.jdAttempts||0)!==(newJob.jdAttempts||0))return false;
   if((curJob.jdLastError||'')!==(newJob.jdLastError||''))return false;
+  if((curJob.excludeReason||'')!==(newJob.excludeReason||''))return false;
+  if((curJob.historySkipReason||'')!==(newJob.historySkipReason||''))return false;
+  if((curJob.searchKeyword||'')!==(newJob.searchKeyword||''))return false;
   return true;
-}
-
-function saveAiDrawerConfig(callback){
-  var cfg=readAiDrawerConfig();
-  var textResume=E.aiTextResume?E.aiTextResume.value.trim():'';
-  saveAiConfig(cfg,textResume,setAiStatus,callback);
 }
 
 function saveCompositeConfig(callback){
@@ -788,44 +896,6 @@ function saveAiConfig(cfg,textResume,statusSetter,callback){
     statusSetter('保存失败: '+e.message,'error');
     if(callback)callback(false);
   }
-}
-
-function wireAiDrawer(){
-  if(!E.aiBtn||!E.aiOverlay)return;
-  function showAi(){
-    setAiStatus('','');
-    loadAiDrawerConfig();
-    E.aiOverlay.classList.remove('hidden');
-  }
-  function hideAi(){E.aiOverlay.classList.add('hidden')}
-  E.aiBtn.addEventListener('click',showAi);
-  if(E.aiClose)E.aiClose.addEventListener('click',hideAi);
-  E.aiOverlay.addEventListener('click',function(e){
-    if(e.target===E.aiOverlay)hideAi();
-  });
-  if(E.aiOpenOptionsBtn)E.aiOpenOptionsBtn.addEventListener('click',function(){
-    openFullOptionsPage();
-  });
-  if(E.aiSaveBtn)E.aiSaveBtn.addEventListener('click',function(){
-    E.aiSaveBtn.disabled=true;
-    setAiStatus('正在保存...','');
-    saveAiDrawerConfig(function(){
-      E.aiSaveBtn.disabled=false;
-    });
-  });
-  if(E.aiTestBtn)E.aiTestBtn.addEventListener('click',function(){
-    E.aiTestBtn.disabled=true;
-    setAiStatus('正在测试 AI 连接...','');
-    chrome.runtime.sendMessage({type:MSG.TEST_AI_CONFIG,config:readAiDrawerConfig()},function(resp){
-      E.aiTestBtn.disabled=false;
-      if(chrome.runtime.lastError||!resp||!resp.success){
-        setAiStatus('AI 连接失败: '+((resp&&resp.error)||chrome.runtime.lastError?.message||'未知错误'),'error');
-        return;
-      }
-      setAiStatus('AI 连接成功','success');
-    });
-  });
-  loadAiDrawerConfig();
 }
 
 function wireCompositeDrawer(){
@@ -979,6 +1049,7 @@ function applyAiStorageState(aiConfig,textResume){
 }
 
 function applyFilterStateToStore(filterState){
+  filterState=typeof normalizeFilterStateDefaults==='function'?normalizeFilterStateDefaults(filterState):filterState;
   Store.set('selectedCities',filterState&&filterState.selectedCities&&filterState.selectedCities.length?filterState.selectedCities:[]);
   Store.set('selectedPositions',filterState&&filterState.selectedPositions?filterState.selectedPositions:[]);
   Store.set('customPositions',filterState&&filterState.customPositions?filterState.customPositions:[]);
@@ -991,11 +1062,16 @@ function applyFilterStateToStore(filterState){
   Store.set('education',filterState&&filterState.education&&filterState.education.length?filterState.education:['不限']);
   Store.set('companySizes',filterState&&filterState.companySizes&&filterState.companySizes.length?filterState.companySizes:['不限']);
   Store.set('fundingStages',filterState&&filterState.fundingStages&&filterState.fundingStages.length?filterState.fundingStages:['不限']);
+  Store.set('excludeKeywords',filterState&&Array.isArray(filterState.excludeKeywords)?filterState.excludeKeywords:(typeof DEFAULT_EXCLUDE_KEYWORDS!=='undefined'?DEFAULT_EXCLUDE_KEYWORDS.slice():[]));
+  Store.set('skipHistoryEnabled',!filterState||filterState.skipHistoryEnabled!==false);
+  Store.set('skipHistoryScope','hr');
   Store.set('sendGreeting',!filterState||typeof filterState.sendGreeting!=='boolean'?true:filterState.sendGreeting);
   window.renderCityChips(E.cityInput&&E.cityInput.value||'');
   window.renderChipSecs();
   window.renderSettings();
   window.renderSendGreetingToggle&&window.renderSendGreetingToggle();
+  window.renderExcludeKeywords&&window.renderExcludeKeywords();
+  window.renderSkipHistoryToggle&&window.renderSkipHistoryToggle();
 }
 
 function hydrateAiSettingsFromStorage(done){
@@ -1111,8 +1187,38 @@ function init(){
   E.settingsOverlay.addEventListener('click',function(e){
     if(e.target===E.settingsOverlay)hideSettings();
   });
-  wireAiDrawer();
   wireCompositeDrawer();
+  document.addEventListener('change',function(e){
+    if(e.target&&e.target.id==='jobAnalysisRange'){
+      syncJobAnalysisCustomRange();
+      setJobAnalysisExportStatus('','');
+    }
+  });
+  document.addEventListener('click',function(e){
+    if(e.target&&e.target.closest&&e.target.closest('#btnExportJobAnalysis')){
+      e.preventDefault();
+      exportJobAnalysis();
+    }
+    if(e.target&&e.target.closest&&e.target.closest('#btnImportJobAnalysis')){
+      e.preventDefault();
+      openJobAnalysisImportPicker();
+    }
+    if(e.target&&e.target.closest&&e.target.closest('#btnCopyBatchOverview')){
+      e.preventDefault();
+      copyBatchOverview();
+    }
+    if(e.target&&e.target.closest&&e.target.closest('#btnApplyOverviewToFilter')){
+      e.preventDefault();
+      generateFilterFromOverview();
+    }
+  });
+  document.addEventListener('change',function(e){
+    if(e.target&&e.target.id==='jobAnalysisImportFileInput'){
+      var file=e.target.files&&e.target.files[0];
+      e.target.value='';
+      importJobAnalysisFile(file);
+    }
+  });
 
   // ── Chrome message listener ──
   if(typeof chrome!=='undefined'&&chrome.runtime&&chrome.runtime.onMessage){

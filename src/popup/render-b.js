@@ -36,7 +36,22 @@ window.renderSummaryPanel=function(){
   var btnText=running?'JD补拉中...':'继续补拉 JD';
   host.innerHTML='<div class="summary-panel">'
     +'<div class="summary-panel-header"><div><div class="summary-panel-title">整批岗位 AI 总览</div><div class="summary-panel-sub">'+esc(overview.headline||'已结合当前岗位信息生成总览')+'</div></div>'
-    +'<button class="btn btn-ghost summary-retry-btn" id="btnRetryJobDetails" '+(running?'disabled':'')+'>'+btnText+'</button></div>'
+    +'<div class="summary-panel-actions"><button class="btn btn-ghost summary-retry-btn" id="btnCopyBatchOverview" type="button">复制总览</button><button class="btn btn-ghost summary-retry-btn" id="btnApplyOverviewToFilter" type="button">生成筛选方案</button><button class="btn btn-ghost summary-retry-btn" id="btnRetryJobDetails" '+(running?'disabled':'')+'>'+btnText+'</button></div></div>'
+    +'<div class="job-analysis-export-bar">'
+    +'<select class="job-analysis-range" id="jobAnalysisRange" aria-label="岗位分析导出时间范围">'
+    +'<option value="today">今天</option>'
+    +'<option value="last7" selected>最近 7 天</option>'
+    +'<option value="last30">最近 30 天</option>'
+    +'<option value="all">全部</option>'
+    +'<option value="custom">自定义</option>'
+    +'</select>'
+    +'<input class="job-analysis-date hidden" id="jobAnalysisStartDate" type="date" aria-label="开始日期">'
+    +'<input class="job-analysis-date hidden" id="jobAnalysisEndDate" type="date" aria-label="结束日期">'
+    +'<button class="btn btn-ghost job-analysis-export-btn" id="btnExportJobAnalysis" type="button">导出岗位分析</button>'
+    +'<button class="btn btn-ghost job-analysis-export-btn" id="btnImportJobAnalysis" type="button">导入岗位分析</button>'
+    +'<input id="jobAnalysisImportFileInput" type="file" accept=".json,application/json" hidden>'
+    +'<span class="job-analysis-export-status" id="jobAnalysisExportStatus"></span>'
+    +'</div>'
     +'<div class="summary-panel-meta">已结合 '+Number(coverage.jobsWithJD||0)+'/'+Number(coverage.totalJobs||jobs.length)+' 条 JD，剩余 '+Number(coverage.pendingJobs||0)+' 条，已完成 '+Number(coverage.completedBatches||0)+' 批</div>'
     +'<div class="summary-section"><div class="summary-section-title">优点</div>'+renderOverviewItems(overview.good,'暂无明显共性优点')+'</div>'
     +'<div class="summary-section"><div class="summary-section-title">缺点</div>'+renderOverviewItems(overview.bad,'暂无明显共性缺点')+'</div>'
@@ -307,6 +322,14 @@ function renderJobAiHTML(job){
     +'</div>';
 }
 
+function renderJobSkipReasonHTML(job){
+  var parts=[];
+  if(job&&job.excludeReason)parts.push(job.excludeReason);
+  if(job&&job.historySkipReason)parts.push(job.historySkipReason);
+  if(job&&job.searchKeyword)parts.push('来源：'+job.searchKeyword);
+  return parts.length?'<div class="job-skip-reason">'+esc(parts.join(' · '))+'</div>':'';
+}
+
 function renderJobItemHTML(job){
   var jdText=String(job.detail||job.desc||job.description||'').trim();
   var jdEmptyText='暂无JD详情，后台补拉中';
@@ -321,6 +344,7 @@ function renderJobItemHTML(job){
     +'<div class="job-company">'+esc(job.company)+'</div>'
     +'<div class="job-salary">'+esc(job.salary||'')+'</div>'
     +'<div class="job-tags">'+(job.tags||[]).map(function(t){return'<span class="job-tag">'+esc(t)+'</span>'}).join('')+'</div>'
+    +renderJobSkipReasonHTML(job)
     +jdHtml
     +renderJobAiHTML(job)
     +'<div class="job-custom-toggle" data-job-id="'+job.id+'" style="margin-top:10px">&#9654; 自定义消息</div>'
@@ -338,6 +362,15 @@ function syncRenderedJobItem(job){
   if(oldJd&&oldJd.parentNode)oldJd.parentNode.removeChild(oldJd);
   var oldAi=info.querySelector('.job-ai');
   if(oldAi&&oldAi.parentNode)oldAi.parentNode.removeChild(oldAi);
+  var oldSkip=info.querySelector('.job-skip-reason');
+  if(oldSkip&&oldSkip.parentNode)oldSkip.parentNode.removeChild(oldSkip);
+  var skipHtml=renderJobSkipReasonHTML(job);
+  if(skipHtml){
+    var skipWrap=document.createElement('div');
+    skipWrap.innerHTML=skipHtml;
+    var beforeSkip=info.querySelector('.job-jd-preview,.job-jd-empty,.job-custom-toggle');
+    info.insertBefore(skipWrap.firstElementChild,beforeSkip||null);
+  }
   var jdWrap=document.createElement('div');
   var jdText=String(job.detail||job.desc||job.description||'').trim();
   var jdEmptyText='暂无JD详情，后台补拉中';

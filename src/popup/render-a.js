@@ -202,6 +202,18 @@ window.renderHrActiveChips=function(){
   var cur=Store.get('hrActiveFilter')||'不限';
   cont.innerHTML=vals.map(function(v){return'<span class="chip'+(v===cur?' active':'')+'" data-hract="'+esc(v)+'">'+esc(v)+'</span>'}).join('');
 };
+window.renderExcludeKeywords=function(){
+  var cont=document.getElementById('excludeKeywordTags');
+  if(!cont)return;
+  var list=typeof uniqueStrings==='function'?uniqueStrings(Store.get('excludeKeywords')||[]):Store.get('excludeKeywords')||[];
+  cont.innerHTML=list.map(function(item){
+    return '<div class="selected-tag" data-exclude-keyword="'+esc(item)+'">'+esc(item)+'<span class="tag-remove">&#x2715;</span></div>';
+  }).join('') || '<span class="exclude-empty">未设置排除词</span>';
+};
+window.renderSkipHistoryToggle=function(){
+  var el=document.getElementById('skipHistoryToggle');
+  if(el)el.checked=Store.get('skipHistoryEnabled')!==false;
+};
 window.renderChipSecs=function(){
   var areas=getWorkAreas();
   var state=Store.get();
@@ -213,6 +225,8 @@ window.renderChipSecs=function(){
   window.renderChips(E.sizeChips,TAG_DATA.companySizes||['不限','0-20人','20-99人','100-499人','500-999人','1000-9999人','10000人以上'],state.companySizes||[]);
   window.renderChips(E.stageChips,TAG_DATA.fundingStages||['不限','未融资','天使轮','A轮','B轮','C轮','D轮及以上','已上市','不需要融资'],state.fundingStages||[]);
   window.renderHrActiveChips();
+  window.renderExcludeKeywords();
+  window.renderSkipHistoryToggle();
 };
 window.renderSettings=function(){window.renderPosBrowse();window.renderInd();window.renderChipSecs()};
 window.renderSendGreetingToggle=function(){
