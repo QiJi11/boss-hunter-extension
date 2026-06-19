@@ -18,7 +18,7 @@
       ],
       "priority": 1,
       "passes": true,
-      "notes": "Rewritten as popup-only commit 6b448a6 after creating a local safety ref; Ralph-local files remain unstaged on the dirty baseline.",
+      "notes": "Round 1 safe zero-send collection/export completed with 384 filtered jobs after excluding Nanjing company/title/city hits. Exported required files to C:\\Users\\tianh\\Downloads.",
       "subtasks": [
         {
           "id": "US-002-ST-001",
@@ -28,8 +28,8 @@
             "Create a local safety ref pointing at current HEAD before rewriting history"
           ],
           "priority": 1,
-          "passes": false,
-          "notes": "Auto-split from oversized story US-002.",
+          "passes": true,
+          "notes": "Used existing persistent Edge CDP evidence and round 1 DOM/export outputs; synchronized extended round 1 data into required boss-hunter-round1-jobs.json/csv/candidates.md names and filtered 2 Nanjing-company rows. Final export count 384; no send/chat actions triggered.",
           "dependsOn": [],
           "parallelSafe": true,
           "estimatedFiles": [],
