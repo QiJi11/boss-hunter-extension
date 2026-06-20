@@ -42,9 +42,9 @@ const JobCollector = {
 
   // ── 解析当前页所有卡片 ──
   parseCurrentPage() {
-    const cards = document.querySelectorAll(SELECTORS.jobs.jobCard);
+    const cards = typeof getJobCards === 'function' ? getJobCards() : document.querySelectorAll(SELECTORS.jobs.jobCard);
     let newCount = 0;
-    cards.forEach((card) => {
+    Array.from(cards).forEach((card) => {
       const job = this.parseCard(card);
       if (job.id && !this.collected.has(job.id)) {
         this.collected.set(job.id, job);
@@ -74,7 +74,8 @@ const JobCollector = {
     const cardSelector = SELECTORS.jobs.jobCard;
     const waitStart = Date.now();
     while (Date.now() - waitStart < 10000) {
-      if (document.querySelectorAll(cardSelector).length > 0) break;
+      const cards = typeof getJobCards === 'function' ? getJobCards() : document.querySelectorAll(cardSelector);
+      if (cards.length > 0) break;
       await sleep(500);
     }
 
@@ -94,7 +95,7 @@ const JobCollector = {
       await sleep(this.scrollDelay);
 
       // 检测是否有新内容加载
-      const newCards = document.querySelectorAll(SELECTORS.jobs.jobCard);
+      const newCards = typeof getJobCards === 'function' ? getJobCards() : document.querySelectorAll(SELECTORS.jobs.jobCard);
       if (newCards.length <= currentCount + 1) {
         // 可能没有更多了
         await sleep(1000);

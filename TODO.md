@@ -1,4 +1,4 @@
-# 即投增强版 MVP TODO
+# 猎职增强版 MVP TODO
 
 ## 已完成
 
@@ -22,7 +22,8 @@
 
 ## 验收清单
 
-1. 加载扩展后，BOSS 页面右侧即投面板正常显示。
+0. 发布前品牌防回归检查通过：`pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-brand.ps1`。
+1. 加载扩展后，BOSS 页面右侧猎职面板正常显示。
 2. 能配置简历、城市、岗位并采集岗位。
 3. 采集后岗位显示 AI 分数、理由、风险和建议状态。
 4. 低分岗位默认不勾选，高分岗位默认勾选。

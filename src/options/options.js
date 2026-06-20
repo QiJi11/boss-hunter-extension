@@ -309,7 +309,7 @@ function downloadBackup(snapshot) {
   const link = document.createElement('a');
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   link.href = url;
-  link.download = `boss-hunter-backup-${stamp}.json`;
+  link.download = `liezhi-backup-${stamp}.json`;
   document.body.appendChild(link);
   link.click();
   link.remove();
