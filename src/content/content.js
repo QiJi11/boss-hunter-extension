@@ -86,28 +86,54 @@ function passActivityFilter(filter, act){
 }
 
 var JobClicker = {
+  getCards: function() {
+    return typeof getJobCards === 'function' ? getJobCards() : Array.from(document.querySelectorAll(SELECTORS.jobs.jobCard));
+  },
   findCardByLink: function(jobLink) {
-    var cards = document.querySelectorAll(SELECTORS.jobs.jobCard);
-    var jobId = (jobLink || '').split('/').pop();
-    if (jobId) jobId = jobId.replace('.html', '');
+    var cards = this.getCards();
+    var jobId = typeof extractJobIdFromLink === 'function'
+      ? extractJobIdFromLink(jobLink)
+      : String(jobLink || '').split(/[?#]/)[0].split('/').pop().replace('.html', '');
     if (!jobId) return null;
     for (var c = 0; c < cards.length; c++) {
       var links = cards[c].querySelectorAll('a');
       for (var l = 0; l < links.length; l++) {
-        if ((links[l].getAttribute('href') || '').includes(jobId)) return cards[c];
+        var href = links[l].getAttribute('href') || links[l].href || '';
+        var linkId = typeof extractJobIdFromLink === 'function' ? extractJobIdFromLink(href) : href;
+        if (linkId === jobId || href.indexOf(jobId) >= 0) return cards[c];
       }
     }
     return null;
   },
   findCardByText: function(positionName, companyName) {
-    var cards = document.querySelectorAll(SELECTORS.jobs.jobCard);
+    var cards = this.getCards();
+    var targetName = typeof normalizeJobCardText === 'function' ? normalizeJobCardText(positionName) : String(positionName || '').replace(/\s+/g, '');
+    var targetCompany = typeof normalizeJobCardText === 'function' ? normalizeJobCardText(companyName) : String(companyName || '').replace(/\s+/g, '');
     for (var c = 0; c < cards.length; c++) {
       var nameEl = cards[c].querySelector(SELECTORS.jobs.jobName);
-      var companyEl = cards[c].querySelector(SELECTORS.jobs.company);
+      var companyEl = cards[c].querySelector(SELECTORS.jobs.company) || cards[c].querySelector('.company-name') || cards[c].querySelector('[class*="company"]') || cards[c].querySelector('.boss-info');
       if (!nameEl || !companyEl) continue;
-      if (nameEl.textContent.trim() === positionName && companyEl.textContent.trim().includes(companyName)) return cards[c];
+      var cardName = typeof normalizeJobCardText === 'function' ? normalizeJobCardText(nameEl.textContent) : String(nameEl.textContent || '').replace(/\s+/g, '');
+      var cardCompany = typeof normalizeJobCardText === 'function' ? normalizeJobCardText(companyEl.textContent) : String(companyEl.textContent || '').replace(/\s+/g, '');
+      var nameOk = targetName && (cardName === targetName || cardName.indexOf(targetName) >= 0 || targetName.indexOf(cardName) >= 0);
+      var companyOk = !targetCompany || cardCompany.indexOf(targetCompany) >= 0 || targetCompany.indexOf(cardCompany) >= 0;
+      if (nameOk && companyOk) return cards[c];
     }
     return null;
+  },
+  buildFindCardDiagnostics: function(jobLink, positionName, companyName) {
+    var cards = this.getCards();
+    var samples = [];
+    for (var i = 0; i < Math.min(cards.length, 5); i++) {
+      samples.push(typeof getJobCardSummary === 'function' ? getJobCardSummary(cards[i]) : { text: String(cards[i].textContent || '').trim().slice(0, 120) });
+    }
+    return {
+      cardCount: cards.length,
+      targetJobId: typeof extractJobIdFromLink === 'function' ? extractJobIdFromLink(jobLink) : '',
+      targetTitle: positionName || '',
+      targetCompany: companyName || '',
+      samples: samples,
+    };
   },
 
   // v5: 只点"立即沟通"，提取HR信息，关闭弹窗，不导航页面
@@ -132,8 +158,11 @@ var JobClicker = {
     var card = null;
     if (jobLink) card = this.findCardByLink(jobLink);
     if (!card && positionName && companyName) card = this.findCardByText(positionName, companyName);
-    _dbg('click:findCard', { found: !!card, byLink: !!(jobLink && this.findCardByLink(jobLink)) });
-    if (!card) return { success: false, error: '未找到岗位卡片: ' + (positionName || jobLink) };
+    var findDiag = this.buildFindCardDiagnostics(jobLink, positionName, companyName);
+    findDiag.found = !!card;
+    findDiag.byLink = !!(jobLink && this.findCardByLink(jobLink));
+    _dbg('click:findCard', findDiag);
+    if (!card) return { success: false, error: '未找到岗位卡片: ' + (positionName || jobLink) + '（候选卡片 ' + findDiag.cardCount + ' 个）' };
     card.scrollIntoView({ block: 'center', behavior: 'instant' });
     await new Promise(function(r) { setTimeout(r, 200); });
     if (_isStopped()) { _dbg('click:bail', { at: 'beforeCardClick' }); return { success: false, stopped: true }; }
@@ -297,7 +326,7 @@ async function closeBlockingDialogs(maxRounds) {
       var msg = '[#39] btn-sure 弹窗未点确认 reason=' + reason + ' btnText=「' + btnTxt + '」 dlgCls=' + dlg.className + ' dlgText=' + snippet;
       try { if (typeof DiagLogger !== 'undefined') DiagLogger.warn('cs.flow', msg); } catch (_) {}
       _persistDiag('dialog:sureSkip', { reason: reason, btnText: btnTxt, text: snippet, cls: dlg.className });
-      console.warn('[即投] closeBlockingDialogs: ' + msg);
+      console.warn('[猎职] closeBlockingDialogs: ' + msg);
     } catch (e) {}
   };
   for (var round = 0; round < maxRounds; round++) {
@@ -416,7 +445,7 @@ async function closeBlockingDialogs(maxRounds) {
   var leftover = document.querySelectorAll('[class*="dialog"]');
   for (var k = 0; k < leftover.length; k++) {
     if (leftover[k].offsetHeight > 0 && !_isConfirmed(leftover[k])) {
-      console.warn('[即投] closeBlockingDialogs: 多轮后弹窗仍在，cls=' +
+      console.warn('[猎职] closeBlockingDialogs: 多轮后弹窗仍在，cls=' +
         leftover[k].className + ' text=' + (leftover[k].textContent || '').trim().substring(0, 100));
       try { if (typeof DiagLogger !== 'undefined') DiagLogger.warn('cs.flow', '[#39] 多轮后弹窗仍在 cls=' + leftover[k].className + ' text=' + (leftover[k].textContent || '').trim().substring(0, 80)); } catch (_) {}
       _persistDiag('dialog:leftoverOpen', { cls: leftover[k].className, text: (leftover[k].textContent || '').trim().substring(0, 80) });
@@ -567,7 +596,7 @@ function findChatConversation(hrName, hrCompany) {
     }
   }
   if (nameOnlyHits.length > 1) {
-    console.warn('[即投] findChatConversation: 兜底命中 ' + nameOnlyHits.length + ' 个同名HR（歧义）→ 不返回，转定位失败/补发');
+    console.warn('[猎职] findChatConversation: 兜底命中 ' + nameOnlyHits.length + ' 个同名HR（歧义）→ 不返回，转定位失败/补发');
     try {
       if (typeof ErrorLogger !== 'undefined' && ErrorLogger.logError) {
         ErrorLogger.logError('[findConv:ambiguous] ' + JSON.stringify({
@@ -603,7 +632,7 @@ function findChatConversation(hrName, hrCompany) {
       }), '', 'findConv.diag');
     }
   } catch (e) {}
-  console.warn('[即投] findChatConversation: 未找到匹配对话');
+  console.warn('[猎职] findChatConversation: 未找到匹配对话');
   return null;
 }
 
@@ -618,7 +647,7 @@ function assertOpenConversationIdentity(targetHrName, targetHrCompany) {
   // 边界兜底：必须恰好 1 个激活对话，否则无法确定当前打开的是哪个 → cannotVerify 转补发
   var sels = document.querySelectorAll('.friend-content.selected');
   if (sels.length !== 1) {
-    console.warn('[即投] assertOpenConversationIdentity: .friend-content.selected 数量=' + sels.length + '（非唯一）→ cannotVerify，转补发');
+    console.warn('[猎职] assertOpenConversationIdentity: .friend-content.selected 数量=' + sels.length + '（非唯一）→ cannotVerify，转补发');
     return { ok: false, cannotVerify: true, openName: '', openCompany: '' };
   }
   var sel = sels[0];
@@ -645,7 +674,7 @@ function assertOpenConversationIdentity(targetHrName, targetHrCompany) {
 
   // 取不到名或公司 → 无法核验，按核心原则（错投 >> 漏发）当失败转补发
   if (!openName || !openCompany) {
-    console.warn('[即投] assertOpenConversationIdentity: .selected 取不到 name/company（name="' + openName + '" company="' + openCompany + '"）→ cannotVerify，转补发');
+    console.warn('[猎职] assertOpenConversationIdentity: .selected 取不到 name/company（name="' + openName + '" company="' + openCompany + '"）→ cannotVerify，转补发');
     return { ok: false, cannotVerify: true, openName: openName, openCompany: openCompany };
   }
   var nameOk = openName.indexOf(hrName) !== -1 || hrName.indexOf(openName) !== -1 || openName === hrName;
@@ -653,7 +682,7 @@ function assertOpenConversationIdentity(targetHrName, targetHrCompany) {
   if (nameOk && companyOk) {
     return { ok: true, openName: openName, openCompany: openCompany };
   }
-  console.warn('[即投] assertOpenConversationIdentity: 身份断言失败 target="' + hrName + '/' + (targetHrCompany || '') + '" open="' + openName + '/' + openCompany + '" nameOk=' + nameOk + ' companyOk=' + companyOk + ' → 转补发');
+  console.warn('[猎职] assertOpenConversationIdentity: 身份断言失败 target="' + hrName + '/' + (targetHrCompany || '') + '" open="' + openName + '/' + openCompany + '" nameOk=' + nameOk + ' companyOk=' + companyOk + ' → 转补发');
   try {
     if (typeof ErrorLogger !== 'undefined' && ErrorLogger.logError) {
       ErrorLogger.logError('[identityAssert:fail] ' + JSON.stringify({
@@ -1408,7 +1437,7 @@ async function handleWorkerActivate(msg) {
   }
 
   if (!chatLoaded) {
-    console.warn('[即投] handleWorkerActivate: 点击后对话未加载，input可见=', !!document.querySelector('.chat-input'));
+    console.warn('[猎职] handleWorkerActivate: 点击后对话未加载，input可见=', !!document.querySelector('.chat-input'));
     return { success: false, jobId: jobId, error: '点击对话后未加载聊天详情', positionName: positionName, companyName: companyName };
   }
 

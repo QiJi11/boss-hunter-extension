@@ -1,4 +1,4 @@
-﻿// Service Worker — 消息中枢 + OpenAI-compatible AI 代理
+// Service Worker — 消息中枢 + OpenAI-compatible AI 代理
 importScripts('/src/shared/constants.js');
 importScripts('/src/db/indexeddb.js');
 importScripts('/src/shared/error-logger.js');
@@ -87,7 +87,7 @@ async function callOpenAICompatible(config, messages, maxTokens = 2000, timeoutM
     clearTimeout(timeoutId);
     if (!resp.ok) {
       const errText = await resp.text().catch(() => '未知错误');
-      console.error(`[即投]${tag} HTTP ${resp.status} after fetch=${tFetchEnd - tFetchStart}ms`);
+      console.error(`[猎职]${tag} HTTP ${resp.status} after fetch=${tFetchEnd - tFetchStart}ms`);
       throw new Error(`API 错误 ${resp.status}: ${errText.substring(0, 200)}`);
     }
     const data = await resp.json();
@@ -100,7 +100,7 @@ async function callOpenAICompatible(config, messages, maxTokens = 2000, timeoutM
     const phase = tFetchEnd ? 'parse' : (tFetchStart ? 'fetch' : 'pre');
     const fetchElapsed = tFetchStart ? ((tFetchEnd || tErr) - tFetchStart) : 0;
     const msg = `${tag} ${err.name} phase=${phase} fetchElapsed=${fetchElapsed}ms TOTAL=${tErr - t0}ms timeoutBudget=${timeoutMs}ms msg=${err.message}`;
-    console.error(`[即投]${msg}`);
+    console.error(`[猎职]${msg}`);
     ErrorLogger.logError(msg, err.stack, 'callOpenAICompatible');
     if (err.name === 'AbortError') throw new Error(`请求超时（${timeoutMs/1000}秒），请检查网络`);
     throw err;
@@ -169,6 +169,11 @@ function buildEmptyCollectionSummary() {
     rawJobs: 0,
     matchedJobs: 0,
     visibleJobs: 0,
+    positionFilteredJobs: 0,
+    duplicateJobs: 0,
+    postRuleFilteredJobs: 0,
+    emptyTasks: 0,
+    failedTasks: 0,
     checkedJobs: 0,
     excludedJobs: 0,
     historySkippedJobs: 0,
@@ -200,6 +205,14 @@ function countExcludedJobs(jobs) {
 
 function countHistorySkippedJobs(jobs) {
   return (Array.isArray(jobs) ? jobs : []).filter(function(job) { return !!(job && job.historySkipReason); }).length;
+}
+
+function countEmptyCollectTasks(tasks) {
+  return (Array.isArray(tasks) ? tasks : []).filter(function(task) { return task && task.status === 'ok' && !Number(task.rawJobs || 0); }).length;
+}
+
+function countFailedCollectTasks(tasks) {
+  return (Array.isArray(tasks) ? tasks : []).filter(function(task) { return task && task.status === 'failed'; }).length;
 }
 
 function countFailedJdJobs(jobs) {
@@ -866,7 +879,7 @@ async function loadResumeImages() {
       } catch (e) {
         // 压缩失败降级：不发原图（必 413），而是缩到 400px/q0.4 再试一次；仍失败则跳过这张图。
         // 取舍：宁可少喂一张图也不让超大图阻断招呼语，也不发必 413 的大图。
-        console.warn('[即投] Image compress fallback:', e.message);
+        console.warn('[猎职] Image compress fallback:', e.message);
         ErrorLogger.logError(e.message, e.stack, 'Image compress fallback');
         try {
           const blob = new Blob([bytes], { type: mimeType });
@@ -880,7 +893,7 @@ async function loadResumeImages() {
           const base64 = await _blobToBase64(cblob);
           results.push({ type: 'image/jpeg', base64 });
         } catch (e2) {
-          console.warn('[即投] Image compress fallback failed, skip image:', e2.message);
+          console.warn('[猎职] Image compress fallback failed, skip image:', e2.message);
           ErrorLogger.logError(e2.message, e2.stack, 'Image compress fallback skip');
         }
       }
@@ -889,7 +902,7 @@ async function loadResumeImages() {
     _cachedResumeImages = results;
     return results;
   } catch (e) {
-    console.warn('[即投] Failed to load resume images:', e);
+    console.warn('[猎职] Failed to load resume images:', e);
     ErrorLogger.logError(e.message || String(e), e?.stack, 'loadResumeImages');
     _cachedResumeImages = [];
     return [];
@@ -981,7 +994,7 @@ function buildSendQueueV6(state, jobIds) {
     .filter(function(id) { return !sentJobIds.has(id); })
     .map(function(id) {
       var job = state.jobs.find(function(j) { return (j.jobId || j.id) === id; });
-      if (!job) { console.warn('[即投] buildSendQueueV6: 未找到 job id=' + id); }
+      if (!job) { console.warn('[猎职] buildSendQueueV6: 未找到 job id=' + id); }
       var category = job ? matchJobToPosition(job, picker, custom) : '其他';
       var greeting = state.sendGreeting === false ? '' : ((job && job.aiGreeting) || state.greetings[category] || '');
       // per-job 自定义招呼语优先：该岗设了非空 customGreeting → 覆盖组级招呼语；为空/未设则保持组级 fallback（行为不变）
@@ -1044,7 +1057,7 @@ function dropMissingGreetingJobs() {
       error: 'AI招呼语缺失，未投递（请刷新重新采集）',
     });
   }
-  console.warn('[即投] 空招呼语保险丝：剔除', dropped.length, '个岗位不入队');
+  console.warn('[猎职] 空招呼语保险丝：剔除', dropped.length, '个岗位不入队');
   pushState();
 }
 
@@ -1153,12 +1166,12 @@ function persistState() {
 self.addEventListener('error', (event) => {
   ErrorLogger.logError(event.message, event.filename + ':' + event.lineno, 'SW global error');
   try { DiagLogger.error('sw.global', event.message + ' at ' + event.filename + ':' + event.lineno); } catch (_) {}
-  console.error('[即投] SW global error:', event.message, 'at', event.filename + ':' + event.lineno);
+  console.error('[猎职] SW global error:', event.message, 'at', event.filename + ':' + event.lineno);
 });
 self.addEventListener('unhandledrejection', (event) => {
   ErrorLogger.logError(event.reason?.message || String(event.reason), event.reason?.stack, 'SW unhandled rejection');
   try { DiagLogger.error('sw.global', 'unhandledrejection: ' + (event.reason?.message || String(event.reason))); } catch (_) {}
-  console.error('[即投] SW unhandled rejection:', event.reason?.message || String(event.reason));
+  console.error('[猎职] SW unhandled rejection:', event.reason?.message || String(event.reason));
 });
 
 // SW 启动时还原持久化状态，并确保 API Key 已预置
@@ -1298,12 +1311,32 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (state._multiCityCollect) { sendResponse({ success: true }); break; }
       // 单城市路径：BOSS 模糊匹配脏数据由 service-worker 再过滤一遍，clusters 重算以反映过滤后集合
       {
-        const _filteredJobs = filterJobsByExpected(msg.jobs || [], state.selectedPositions, state.customPositions);
-        state.jobs = _filteredJobs;
+        const _rawJobs = Array.isArray(msg.jobs) ? msg.jobs : [];
+        const _filteredJobs = filterJobsByExpected(_rawJobs, state.selectedPositions, state.customPositions);
+        const _mergedJobs = mergeCollectedJobsById(_filteredJobs);
+        state.jobs = _mergedJobs;
         const _allPos394 = allExpectedPositions(state);
         state.clusters = _allPos394.length
-          ? clusterJobs(_filteredJobs, state.selectedPositions, state.customPositions)
+          ? clusterJobs(state.jobs, state.selectedPositions, state.customPositions)
           : (msg.clusters || {});
+        updateCollectionSummary({
+          startedAt: state.collectionSummary && state.collectionSummary.startedAt || Date.now(),
+          tasksTotal: 1,
+          tasksDone: 1,
+          rawJobs: _rawJobs.length,
+          matchedJobs: _filteredJobs.length,
+          positionFilteredJobs: Math.max(0, _rawJobs.length - _filteredJobs.length),
+          duplicateJobs: Math.max(0, _filteredJobs.length - _mergedJobs.length),
+          postRuleFilteredJobs: 0,
+          emptyTasks: _rawJobs.length ? 0 : 1,
+          failedTasks: 0,
+          visibleJobs: state.jobs.length,
+          checkedJobs: countCheckedJobs(state.jobs),
+          excludedJobs: 0,
+          historySkippedJobs: 0,
+          groups: summarizeGroups(state.clusters),
+          taskSummaries: [{ city: '', keyword: '', rawJobs: _rawJobs.length, status: 'ok' }],
+        });
       }
       state.jdSamples = msg.jdSamples;
       ensureJobHydrationMeta(state.jobs);
@@ -1314,6 +1347,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         state.clusters = _allPosScreened.length
           ? clusterJobs(state.jobs, state.selectedPositions, state.customPositions)
           : (state.clusters || {});
+        const _screenedExcludedCount = countExcludedJobs(state.jobs);
+        const _screenedHistorySkippedCount = countHistorySkippedJobs(state.jobs);
+        updateCollectionSummary({
+          postRuleFilteredJobs: _screenedExcludedCount + _screenedHistorySkippedCount,
+          visibleJobs: state.jobs.length,
+          checkedJobs: countCheckedJobs(state.jobs),
+          excludedJobs: _screenedExcludedCount,
+          historySkippedJobs: _screenedHistorySkippedCount,
+          groups: summarizeGroups(state.clusters),
+        });
         saveCollectedJobRecords(state.jobs, 'ai-screen');
         pushState();
         return refreshBatchOverview(true);
@@ -1345,6 +1388,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       break;
 
     case 'START_SEND':
+      state.phase = 'ready';
+      state.sendQueue = [];
+      state.sendQueueV6 = [];
+      state.sendPhase = '';
+      state.sendIndex = 0;
+      state.sendProgress = null;
+      persistState();
+      sendResponse({ success: false, error: '当前插件包已禁用投递，只允许采集岗位。', errorCode: 'SEND_DISABLED' });
+      return true;
+
       // sender.tab 在 side panel 场景下为 undefined，fallback 到 lastFocused 窗口
       if (sender && sender.tab && sender.tab.windowId) {
         state.originalMainWindowId = sender.tab.windowId;
@@ -1374,6 +1427,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true;
 
     case MSG.REPAIR_MISSED:
+      state.phase = 'ready';
+      state.sendQueue = [];
+      state.sendQueueV6 = [];
+      state.sendPhase = '';
+      state.missedJobs = [];
+      persistState();
+      sendResponse({ success: false, error: '当前插件包已禁用补发，只允许采集岗位。', errorCode: 'SEND_DISABLED' });
+      return true;
+
       // A1：review 页「一键补发」漏发岗位（已建联但未发 AI 招呼语+图）
       startRepairMissed().then(() => sendResponse({ success: true })).catch((e) => {
         ErrorLogger.logError(e.message, e.stack, 'REPAIR_MISSED failed');
@@ -1668,7 +1730,7 @@ async function waitForContentScript(tabId, timeoutMs = 3000, maxRetries = 3) {
         return true;
       }
     } catch (err) {
-      console.warn(`[即投] PING attempt ${attempt + 1}/${maxRetries} failed:`, err.message);
+      console.warn(`[猎职] PING attempt ${attempt + 1}/${maxRetries} failed:`, err.message);
       ErrorLogger.logError(err.message, err.stack, `PING attempt ${attempt + 1}/${maxRetries}`);
       if (attempt < maxRetries - 1) {
         await new Promise((r) => setTimeout(r, 500));
@@ -1723,7 +1785,7 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
   // 异步发 PING，不 await（alarm 回调不需要保活）
   chrome.tabs.sendMessage(tabId, { type: MSG.PING }).catch(function(err) {
     // 失败可能是 tab 已关、CS 未注入、BFCache — 都不致命，下次 alarm 继续试
-    console.warn('[即投] keepalive PING failed tab=' + tabId + ' err=' + err.message);
+    console.warn('[猎职] keepalive PING failed tab=' + tabId + ' err=' + err.message);
   });
 });
 
@@ -1788,6 +1850,11 @@ async function startCollect(params) {
       rawJobs: 0,
       matchedJobs: 0,
       visibleJobs: 0,
+      positionFilteredJobs: 0,
+      duplicateJobs: 0,
+      postRuleFilteredJobs: 0,
+      emptyTasks: 0,
+      failedTasks: 0,
       checkedJobs: 0,
       excludedJobs: 0,
       historySkippedJobs: 0,
@@ -1829,6 +1896,8 @@ async function startCollect(params) {
       updateCollectionSummary({
         tasksDone: Math.min(i + MAX_PARALLEL, tasks.length),
         rawJobs: allJobs.length,
+        emptyTasks: countEmptyCollectTasks(state.collectionSummary.taskSummaries),
+        failedTasks: countFailedCollectTasks(state.collectionSummary.taskSummaries),
       });
 
       // 【并行优化】第一批岗位收集完后立即异步启动招呼语生成，不等待后续批次
@@ -1873,38 +1942,49 @@ async function startCollect(params) {
     var rawJobCount = allJobs.length;
     var matchedJobs = filterJobsByExpected(allJobs, state.selectedPositions, state.customPositions);
     var matchedJobCount = matchedJobs.length;
-    allJobs = mergeCollectedJobsById(matchedJobs);
-    state.jobs = await applyPostCollectRules(allJobs, state);
+    var mergedJobs = mergeCollectedJobsById(matchedJobs);
+    var mergedJobCount = mergedJobs.length;
+    state.jobs = await applyPostCollectRules(mergedJobs, state);
+    var excludedCount = countExcludedJobs(state.jobs);
+    var historySkippedCount = countHistorySkippedJobs(state.jobs);
     ensureJobHydrationMeta(state.jobs);
     state.clusters = clusterJobs(state.jobs, state.selectedPositions, state.customPositions);
     state.jdSamples = sampleJDs(state.clusters, 5);
     updateCollectionSummary({
       rawJobs: rawJobCount,
       matchedJobs: matchedJobCount,
+      positionFilteredJobs: Math.max(0, rawJobCount - matchedJobCount),
+      duplicateJobs: Math.max(0, matchedJobCount - mergedJobCount),
+      postRuleFilteredJobs: excludedCount + historySkippedCount,
+      emptyTasks: countEmptyCollectTasks(state.collectionSummary.taskSummaries),
+      failedTasks: countFailedCollectTasks(state.collectionSummary.taskSummaries),
       visibleJobs: state.jobs.length,
       checkedJobs: countCheckedJobs(state.jobs),
-      excludedJobs: countExcludedJobs(state.jobs),
-      historySkippedJobs: countHistorySkippedJobs(state.jobs),
+      excludedJobs: excludedCount,
+      historySkippedJobs: historySkippedCount,
       groups: summarizeGroups(state.clusters),
     });
     state.phase = 'ready';
     saveCollectedJobRecords(state.jobs, 'collect');
     pushState();
 
-    if (allJobs.length === 0) {
+    if (mergedJobs.length === 0) {
       chrome.runtime.sendMessage({ type: 'ERROR', message: '未找到匹配岗位，请调整筛选条件' }).catch(() => {});
       return;
     }
 
-    applyAiScreeningToJobs(allJobs).then(async function(screenedJobs) {
+    applyAiScreeningToJobs(mergedJobs).then(async function(screenedJobs) {
       state.jobs = await applyPostCollectRules(screenedJobs, state);
       state.clusters = clusterJobs(state.jobs, state.selectedPositions, state.customPositions);
       state.jdSamples = sampleJDs(state.clusters, 5);
+      var screenedExcludedCount = countExcludedJobs(state.jobs);
+      var screenedHistorySkippedCount = countHistorySkippedJobs(state.jobs);
       updateCollectionSummary({
+        postRuleFilteredJobs: screenedExcludedCount + screenedHistorySkippedCount,
         visibleJobs: state.jobs.length,
         checkedJobs: countCheckedJobs(state.jobs),
-        excludedJobs: countExcludedJobs(state.jobs),
-        historySkippedJobs: countHistorySkippedJobs(state.jobs),
+        excludedJobs: screenedExcludedCount,
+        historySkippedJobs: screenedHistorySkippedCount,
         groups: summarizeGroups(state.clusters),
       });
       saveCollectedJobRecords(state.jobs, 'ai-screen');
@@ -2893,7 +2973,7 @@ async function startSendV6(jobIds) {
       state.searchTabId = tab.id;
       await runStage1();
     } catch(e) {
-      console.error('[即投] v6 stage1: tab', (ti + 1), '处理失败:', e.message);
+      console.error('[猎职] v6 stage1: tab', (ti + 1), '处理失败:', e.message);
       // 单个 tab 失败不影响其它 tab，继续下一个
     }
   }
@@ -3138,7 +3218,7 @@ async function runStage1() {
         if (timedOut || settled) return;
         var isBFCache = err.message.includes('back/forward cache') || err.message.includes('message channel') || err.message.includes('port') || err.message.includes('Receiving end does not exist');
         if (retryCount < 5 && isBFCache) {
-          console.warn('[即投] runStage1: BFCache/port closed, 重试 ' + (retryCount + 1) + '/5, 重新激活 tab');
+          console.warn('[猎职] runStage1: BFCache/port closed, 重试 ' + (retryCount + 1) + '/5, 重新激活 tab');
           chrome.tabs.update(state.searchTabId, { active: true }).then(function() {
             setTimeout(function() { doSend(retryCount + 1); }, 1500);
           }).catch(function() {
@@ -3152,7 +3232,7 @@ async function runStage1() {
         _stage1ForceSettle = null;
         clearTimeout(timeout);
         chrome.runtime.onMessage.removeListener(handler);
-        console.error('[即投] runStage1: sendMessage 最终失败', err.message);
+        console.error('[猎职] runStage1: sendMessage 最终失败', err.message);
         reject(new Error('无法向搜索页发送提取指令: ' + err.message));
       });
     };
@@ -3319,7 +3399,7 @@ async function _runStage1Recovery(tabId) {
 
 async function runStage2() {
   if (!chrome.alarms) {
-    console.error('[即投] runStage2: chrome.alarms 不可用！请在 manifest.json permissions 添加 "alarms"');
+    console.error('[猎职] runStage2: chrome.alarms 不可用！请在 manifest.json permissions 添加 "alarms"');
   }
   var workerCount = Math.min(CONFIG.MAX_SEND_WORKERS, state.sendQueueV6.length);
   // ② 0-WS 起步防泄漏：上一批若有未关干净的 worker/补发窗口（cleanup 失败或异常），
@@ -3775,7 +3855,7 @@ async function generateAllGreetingsConcurrent() {
               const tRaceEnd = Date.now();
               const raceElapsed = tRaceEnd - tRaceStart;
               const reason = err.message === 'timeout' ? `RACE_TIMEOUT@${raceElapsed}ms` : `ERR ${err.message}`;
-              console.warn(`[即投][RACE] ${category} attempt=${attempt} LOSE ${raceElapsed}ms reason=${reason}`);
+              console.warn(`[猎职][RACE] ${category} attempt=${attempt} LOSE ${raceElapsed}ms reason=${reason}`);
               ErrorLogger.logError(`RACE_LOSE ${category} attempt=${attempt} elapsed=${raceElapsed}ms ${reason}`, err.stack, 'greeting race');
               if (attempt < 2) {
                 console.warn(`Greeting generation timeout, retrying (${attempt}/2):`, category, err.message);

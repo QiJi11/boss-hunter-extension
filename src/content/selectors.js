@@ -2,7 +2,7 @@
 const SELECTORS = {
   // ── 岗位搜索页 /web/geek/jobs ──
   jobs: {
-    jobCard: 'li.job-card-box',
+    jobCard: 'li.job-card-box, .job-card-box, [class*="job-card-box"], [class*="job-card"][class*="box"]',
     jobName: '.job-name',
     jobSalary: '.job-salary',
     tagList: '.tag-list li',
@@ -47,6 +47,59 @@ const SELECTORS = {
     jobSecText: '.job-sec-text',
   },
 };
+
+/**
+ * Normalize BOSS job-card text for resilient title/company comparisons.
+ */
+function normalizeJobCardText(text) {
+  return String(text || '').replace(/\s+/g, '').trim();
+}
+
+/**
+ * Extract a stable BOSS job id from absolute or relative job-detail links.
+ */
+function extractJobIdFromLink(link) {
+  var raw = String(link || '').trim();
+  if (!raw) return '';
+  var match = raw.match(/job_detail\/([^/?#]+?)(?:\.html)?(?:[?#]|$)/);
+  if (match && match[1]) return match[1].replace(/\.html$/, '');
+  var last = raw.split(/[?#]/)[0].split('/').filter(Boolean).pop() || '';
+  return last.replace(/\.html$/, '');
+}
+
+/**
+ * Return candidate BOSS job cards using both known card selectors and job-detail links.
+ */
+function getJobCards() {
+  var seen = [];
+  var out = [];
+  function add(card) {
+    if (!card || seen.indexOf(card) >= 0) return;
+    if (!card.querySelector(SELECTORS.jobs.jobName) && !card.querySelector('a[href*="/job_detail/"]')) return;
+    seen.push(card);
+    out.push(card);
+  }
+  document.querySelectorAll(SELECTORS.jobs.jobCard).forEach(add);
+  document.querySelectorAll('a[href*="/job_detail/"]').forEach(function(link) {
+    add(link.closest(SELECTORS.jobs.jobCard) || link.closest('li') || link.parentElement);
+  });
+  return out;
+}
+
+/**
+ * Build a compact diagnostic summary for one candidate job card.
+ */
+function getJobCardSummary(card) {
+  if (!card) return null;
+  var titleEl = card.querySelector(SELECTORS.jobs.jobName) || card.querySelector('[class*="job-name"]') || card.querySelector('a[href*="/job_detail/"]');
+  var companyEl = card.querySelector(SELECTORS.jobs.company) || card.querySelector('.company-name') || card.querySelector('[class*="company"]') || card.querySelector('.boss-info');
+  var linkEl = card.querySelector('a[href*="/job_detail/"]') || card.querySelector('a');
+  return {
+    title: titleEl ? String(titleEl.textContent || '').trim().slice(0, 80) : '',
+    company: companyEl ? String(companyEl.textContent || '').trim().slice(0, 80) : '',
+    link: linkEl ? String(linkEl.getAttribute('href') || linkEl.href || '').slice(0, 160) : '',
+  };
+}
 
 // ── 消息类型常量（popup ↔ background ↔ content） ──
 // 必须与 src/shared/constants.js 的 MSG 完全一致：content script 不加载 constants.js，此处为镜像

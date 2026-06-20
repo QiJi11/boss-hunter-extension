@@ -467,7 +467,7 @@ const JobSender = {
       }
     } catch (e) { /* 诊断失败不影响发送 */ }
     if (status !== 'delivery') {
-      console.warn('[即投] sendImage: 图片未确认，status=' + status + ' seen=' + r.seen);
+      console.warn('[猎职] sendImage: 图片未确认，status=' + status + ' seen=' + r.seen);
     }
     return { success: status === 'delivery', status: status };
   },
@@ -578,7 +578,7 @@ const JobSender = {
             imageError = (imgResult && imgResult.status) ? ('image_' + imgResult.status) : 'image_send_failed';
           }
         } catch (e) {
-          console.warn('[即投] 发送 per-job 图片失败:', e.message);
+          console.warn('[猎职] 发送 per-job 图片失败:', e.message);
           imageFailed = true;
           imageError = 'image_send_failed';
         }

@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════
-// 即投 — Popup 入口（路由 + 消息监听）
+// 猎职 — Popup 入口（路由 + 消息监听）
 // ════════════════════════════════════════════════════════════
 // Depends on: constants.js, tag-data.js, helpers.js, state.js
 // Depends on: render-a.js, render-b.js, render-review.js
@@ -1023,7 +1023,7 @@ function downloadBackupSnapshot(snapshot){
   var link=document.createElement('a');
   var stamp=new Date().toISOString().replace(/[:.]/g,'-');
   link.href=url;
-  link.download='boss-hunter-backup-'+stamp+'.json';
+  link.download='liezhi-backup-'+stamp+'.json';
   document.body.appendChild(link);
   link.click();
   link.remove();

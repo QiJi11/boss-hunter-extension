@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════
-// 即投 — 诊断包导出（popup 设置抽屉「问题反馈」区）— 纯新增模块
+// 猎职 — 诊断包导出（popup 设置抽屉「问题反馈」区）— 纯新增模块
 // 主入口：复制诊断信息（精简文本进剪贴板，微信可直接粘贴）
 // 次入口：下载完整诊断文件（全量 JSON，复杂 case 用）
 // 脱敏红线：不含简历内容/图片、招呼语全文(截断≤20字)、手机号、cookie/token、API key
@@ -174,7 +174,7 @@
       try { manifest = chrome.runtime.getManifest(); } catch (e) {}
       return {
         env: {
-          extension: (manifest.name || '即投') + ' v' + (manifest.version || '?'),
+          extension: (manifest.name || '猎职') + ' v' + (manifest.version || '?'),
           ua: (typeof navigator !== 'undefined' ? navigator.userAgent : ''),
           time: fmtTime(Date.now()),
         },
@@ -193,7 +193,7 @@
   // ── 精简文本（人能扫读 / AI 能解析） ──
   function buildText(b) {
     var L = [];
-    L.push('═══ 即投诊断信息 ═══');
+    L.push('═══ 猎职诊断信息 ═══');
     L.push('');
     L.push('【环境】');
     L.push('扩展: ' + b.env.extension);

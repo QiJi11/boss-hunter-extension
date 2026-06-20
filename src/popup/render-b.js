@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════
-// 即投 — B 页（结果页）四级增量 DOM 渲染
+// 猎职 — B 页（结果页）四级增量 DOM 渲染
 // ════════════════════════════════════════════════════════════
 // Depends on: E, Store, $/$$/esc (global)
 // Depends on: CONFIG (from constants.js)
@@ -29,9 +29,17 @@ function renderCollectionDiag(){
   if(!c.startedAt&&!a.status&&!jobs.length)return '';
   var reason=a.reason?('，原因：'+a.reason):'';
   var aiStatus=a.status||'idle';
+  var reduceParts=[];
+  if(Number(c.positionFilteredJobs||0))reduceParts.push('岗位匹配过滤 '+Number(c.positionFilteredJobs||0));
+  if(Number(c.duplicateJobs||0))reduceParts.push('重复岗位 '+Number(c.duplicateJobs||0));
+  if(Number(c.postRuleFilteredJobs||0))reduceParts.push('排除/历史 '+Number(c.postRuleFilteredJobs||0));
+  if(Number(c.emptyTasks||0))reduceParts.push('空结果任务 '+Number(c.emptyTasks||0));
+  if(Number(c.failedTasks||0))reduceParts.push('失败任务 '+Number(c.failedTasks||0));
+  var reduceText=reduceParts.length?reduceParts.join('，'):'未发现明显减少项';
   var items=[
     '采集：原始 '+Number(c.rawJobs||0)+'，匹配 '+Number(c.matchedJobs||0)+'，可见 '+Number(c.visibleJobs||jobs.length)+'，选中 '+Number(c.checkedJobs||0),
     '过滤：排除词 '+Number(c.excludedJobs||0)+'，同 HR 历史 '+Number(c.historySkippedJobs||0)+'，分组 '+Number(c.groups||0),
+    '减少原因：'+reduceText,
     'AI 总结：'+aiStatus+reason,
     'JD：'+Number(a.jobsWithJD||jd.success||0)+'/'+Number(a.totalJobs||jd.total||jobs.length)+'，失败 '+Number(a.failedJdJobs||jd.failed||0)+'，剩余 '+Number(a.pendingJobs||jd.pending||0)
   ];
@@ -457,7 +465,7 @@ window.toggleJobCheck=function(jobId){
   for(var i=0;i<jobs.length;i++){
     if(jobs[i].id===jobId){jobs[i].checked=!jobs[i].checked;found=true;break}
   }
-  if(!found){console.warn('[即投] toggleJobCheck: 岗位不在 Store.jobs，已忽略点击 id=',jobId);return}
+  if(!found){console.warn('[猎职] toggleJobCheck: 岗位不在 Store.jobs，已忽略点击 id=',jobId);return}
   var cb=document.querySelector('.job-checkbox[data-job-id="'+jobId+'"]');
   if(cb)cb.classList.toggle('checked');
   Store.set('jobs',jobs);
@@ -767,7 +775,7 @@ window.syncGroupsWithJobs=function(){
   var domItems=document.querySelectorAll('#groupedContent .job-item[data-job-id]');
   for(var d=0;d<domItems.length;d++){
     var did=domItems[d].dataset.jobId;
-    if(!jobById[did])console.warn('[即投] syncGroupsWithJobs 断言失败：DOM 残留幽灵卡 id=',did);
+    if(!jobById[did])console.warn('[猎职] syncGroupsWithJobs 断言失败：DOM 残留幽灵卡 id=',did);
   }
 };
 

@@ -1,4 +1,4 @@
-# 即投增强版扩展加载测试
+# 猎职增强版扩展加载测试
 
 ## 加载方式
 
@@ -8,12 +8,14 @@
 4. 点击“加载已解压的扩展程序”。
 5. 选择解压后的目录，目录根部必须能看到 `manifest.json`。
 6. 打开 BOSS 直聘岗位页：`https://www.zhipin.com/web/geek/jobs`。
-7. 点击浏览器工具栏里的“即投”扩展图标，打开右侧 side panel。
+7. 点击浏览器工具栏里的“猎职”扩展图标，打开右侧 side panel。
 
 ## 验收点
 
+0. 发布前品牌防回归检查通过：
+   `pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-brand.ps1`
 1. 扩展页没有 manifest 加载错误。
-2. BOSS 岗位页打开后，点击扩展图标能出现右侧“即投”面板。
+2. BOSS 岗位页打开后，点击扩展图标能出现右侧“猎职”面板。
 3. 能进入设置页配置 AI：`baseUrl`、`apiKey`、`model`、`provider`、筛选阈值。
 4. 能配置简历、城市、岗位并开始采集。
 5. 采集后岗位卡片能显示 AI 分数、理由、风险和建议状态。

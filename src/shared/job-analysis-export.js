@@ -127,7 +127,7 @@
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'boss-hunter-job-analysis-' + nameRange + '.json';
+    link.download = 'liezhi-job-analysis-' + nameRange + '.json';
     document.body.appendChild(link);
     link.click();
     link.remove();
