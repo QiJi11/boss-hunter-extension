@@ -660,6 +660,62 @@ window.initEventsA=function(){
       setFilterSuggestionStatus('已放弃本次建议','');
     });
   }
+
+  // ── 首页 AI 求职助手对话框 ──
+  if(E.aiChatToggle){
+    E.aiChatToggle.addEventListener('click',function(){
+      var box=E.aiChatBox;
+      if(!box)return;
+      var hidden=box.classList.toggle('hidden');
+      E.aiChatToggle.textContent=hidden?'▸':'▾';
+      if(!hidden&&E.aiChatInput)E.aiChatInput.focus();
+    });
+  }
+  if(E.aiChatSend){
+    E.aiChatSend.addEventListener('click',function(){sendAiChat();});
+  }
+  if(E.aiChatInput){
+    E.aiChatInput.addEventListener('keydown',function(e){
+      if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendAiChat();}
+    });
+  }
+  // Enter 快捷键：Alt+Shift+A 聚焦 AI 输入框
+  document.addEventListener('keydown',function(e){
+    if(e.altKey&&e.shiftKey&&(e.key==='a'||e.key==='A')){
+      if(E.aiChatInput){E.aiChatBox&&E.aiChatBox.classList.remove('hidden');E.aiChatInput.focus();}
+    }
+  });
+  if(typeof window.sendAiChat!=='function'){
+    window.sendAiChat=function(){
+      if(!E.aiChatInput)return;
+      var q=String(E.aiChatInput.value||'').trim();
+      if(!q)return;
+      E.aiChatInput.value='';
+      appendAiChatMessage('user',q);
+      var sendBtn=E.aiChatSend;
+      if(sendBtn){sendBtn.disabled=true;sendBtn.textContent='思考中…';}
+      chrome.runtime.sendMessage({type:MSG.AI_CHAT,question:q,history:window._aiChatHistory||[]},function(resp){
+        if(sendBtn){sendBtn.disabled=false;sendBtn.textContent='发送';}
+        if(chrome.runtime.lastError||!resp||!resp.success){
+          appendAiChatMessage('assistant','⚠️ '+(resp&&resp.error||(chrome.runtime.lastError&&chrome.runtime.lastError.message)||'AI 调用失败'));
+          return;
+        }
+        appendAiChatMessage('assistant',resp.reply);
+      });
+    };
+  }
+  if(typeof window.appendAiChatMessage!=='function'){
+    window.appendAiChatMessage=function(role,text){
+      if(!E.aiChatHistory)return;
+      var div=document.createElement('div');
+      div.className='ai-chat-msg '+role;
+      div.textContent=text;
+      E.aiChatHistory.appendChild(div);
+      E.aiChatHistory.scrollTop=E.aiChatHistory.scrollHeight;
+      window._aiChatHistory=window._aiChatHistory||[];
+      window._aiChatHistory.push({role:role,content:text});
+    };
+  }
 };
 
 // ── Collect params builder ──

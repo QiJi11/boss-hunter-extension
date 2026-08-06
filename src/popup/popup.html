@@ -66,6 +66,22 @@
     <div id="settingsPanel">
 
       <div class="section">
+        <div class="section-title ai-chat-section-title">
+          <span>AI 求职助手</span>
+          <button type="button" class="ai-chat-toggle" id="aiChatToggle" title="展开/收起 AI 对话">▾</button>
+        </div>
+        <div id="aiChatBox" class="ai-chat-box hidden">
+          <div class="ai-chat-history" id="aiChatHistory">
+            <div class="ai-chat-tip">可以向 AI 咨询岗位筛选、简历优化、投递策略等问题。</div>
+          </div>
+          <div class="ai-chat-input-row">
+            <textarea id="aiChatInput" class="ai-chat-input" rows="2" placeholder="例如：帮我分析简历适合投什么方向的 AI 岗位" autocomplete="off"></textarea>
+            <button class="btn btn-primary" id="aiChatSend" type="button">发送</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
         <div class="section-title">图片版简历</div>
         <div class="univ-thumb-area" id="resumeThumbArea">
           <div class="univ-thumb-add" data-gact="addImg">+</div>

@@ -272,6 +272,35 @@ body{
 }
 .job-jd-open:hover{background:rgba(217,119,6,.06)}
 
+/* ── 首页 AI 求职助手 ── */
+.ai-chat-section-title{display:flex;align-items:center;justify-content:space-between;cursor:pointer}
+.ai-chat-toggle{
+  font-size:12px;color:var(--text-weak);background:transparent;border:none;
+  cursor:pointer;padding:2px 6px;font-family:inherit;
+}
+.ai-chat-box{
+  margin-top:8px;border:1px solid var(--border-light);border-radius:6px;
+  background:var(--bg);display:flex;flex-direction:column;overflow:hidden;
+}
+.ai-chat-box.hidden{display:none}
+.ai-chat-history{
+  max-height:180px;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px;
+}
+.ai-chat-msg{
+  font-size:12px;line-height:1.5;padding:6px 8px;border-radius:6px;word-break:break-word;
+  white-space:pre-wrap;
+}
+.ai-chat-msg.user{background:rgba(217,119,6,.08);align-self:flex-end;max-width:92%}
+.ai-chat-msg.assistant{background:#fff;border:1px solid var(--border-light);align-self:flex-start;max-width:92%}
+.ai-chat-tip{font-size:11px;color:var(--text-weak);text-align:center;padding:4px}
+.ai-chat-input-row{display:flex;gap:6px;padding:8px;border-top:1px solid var(--border-light);align-items:flex-end}
+.ai-chat-input{
+  flex:1;min-height:30px;padding:5px 8px;font-size:12px;font-family:inherit;
+  border:1px solid var(--border-light);border-radius:6px;resize:vertical;outline:none;
+  color:var(--text);background:var(--card);line-height:1.5;
+}
+.ai-chat-input:focus{border-color:var(--accent)}
+
 .job-custom-toggle{
   display:inline-flex;align-items:center;gap:4px;margin-top:10px;
   font-size:12px;font-weight:500;color:var(--accent);cursor:pointer;

@@ -1633,6 +1633,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ success: true });
       break;
 
+    case MSG.AI_CHAT: {
+      // 首页 AI 对话框：复用已配置的 OpenAI-compatible 接口，附加简历/目标上下文。
+      const question = String(msg.question || '').trim();
+      if (!question) { sendResponse({ success: false, error: '问题不能为空' }); return false; }
+      aiHomeChat(question, msg.history || [])
+        .then((reply) => sendResponse({ success: true, reply }))
+        .catch((e) => {
+          ErrorLogger.logError(e.message, e.stack, 'AI_CHAT failed');
+          sendResponse({ success: false, error: e.message });
+        });
+      return true;
+    }
+
     case 'GET_API_KEY':
       getAiConfig().then((cfg) => sendResponse({ success: true, apiKey: cfg.apiKey || '' }));
       return true;
@@ -3833,6 +3846,35 @@ async function doRewriteGreeting(originalGreeting, instruction) {
   const apiKey = await getApiKey();
   if (!apiKey) throw new Error('请先在设置中配置 API Key');
   return rewriteGreeting(apiKey, originalGreeting, instruction);
+}
+
+// ── 首页 AI 对话框：通用求职/岗位/简历咨询，复用已配置的 OpenAI-compatible 接口 ──
+async function aiHomeChat(question, history) {
+  const cfg = await getAiConfig();
+  const resumeText = await getTextResume();
+  const filterState = state.filterState || {};
+  const positions = (filterState.selectedPositions || []).concat(filterState.customPositions || []).slice(0, 8);
+  const systemPrompt = '你是「猎职」扩展的求职助手，帮助用户在 BOSS 直聘上优化求职策略。'
+    + '你可以结合用户提供的文字简历、目标城市和期望职位给出具体建议。'
+    + '回答要简洁实用，中文，避免空话套话，必要时分点。';
+  const contextBlock =
+    '[文字简历]\n' + (resumeText || '未提供文字简历。') + '\n\n'
+    + '[当前求职配置]\n'
+    + '期望职位：' + (positions.join('、') || '未设置') + '\n'
+    + '目标城市：' + (filterState.selectedCities || []).join('、') || '未设置' + '\n'
+    + '工作年限：' + (filterState.experience || []).join('、') || '不限' + '\n'
+    + '学历要求：' + (filterState.education || []).join('、') || '不限' + '\n';
+  const messages = [
+    { role: 'system', content: systemPrompt },
+  ];
+  if (resumeText || positions.length) messages.push({ role: 'user', content: contextBlock });
+  const recent = Array.isArray(history) ? history.slice(-6) : [];
+  recent.forEach((m) => {
+    const role = m && m.role === 'assistant' ? 'assistant' : 'user';
+    messages.push({ role, content: String(m.content || '') });
+  });
+  messages.push({ role: 'user', content: question });
+  return callOpenAICompatible(cfg, messages, 800, 60000, 'home-ai-chat');
 }
 
 // ════════════════════════════════════════════════════════════════
