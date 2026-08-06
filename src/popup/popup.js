@@ -83,6 +83,10 @@ function initDomRefs(){
   E.singleSendRewriteInput=$('#singleSendRewriteInput');E.singleSendRewriteBtn=$('#singleSendRewriteBtn');
   E.aiChatToggle=$('#aiChatToggle');E.aiChatBox=$('#aiChatBox');E.aiChatHistory=$('#aiChatHistory');
   E.aiChatInput=$('#aiChatInput');E.aiChatSend=$('#aiChatSend');
+  E.resumeScoreBtn=$('#resumeScoreBtn');E.resumeRewriteBtn=$('#resumeRewriteBtn');
+  E.resumeScoreCard=$('#resumeScoreCard');E.resumeScoreNum=$('#resumeScoreNum');
+  E.resumeScoreSummary=$('#resumeScoreSummary');E.resumeScoreDims=$('#resumeScoreDims');
+  E.resumeRewriteBtn2=$('#resumeRewriteBtn2');E.resumeRewriteResult=$('#resumeRewriteResult');
 }
 
 // ════════════════════════════════════════════════════════════
@@ -656,6 +660,7 @@ function handleStateUpdate(state){
   if(state.collectionSummary)Store.set('collectionSummary',state.collectionSummary);
   if(state.jdHydrationProgress)Store.set('jdHydrationProgress',state.jdHydrationProgress);
   if(state.aiScreeningProgress)updateAiScreeningProgress(state.aiScreeningProgress);
+  if(state.resumeScore)renderResumeScoreCard(state.resumeScore);
 
   // 排除 'review'：投完的旧批 state.jobs 不该重渲 B 页岗位列表/底部计数（这是 18→3 残留的根）
   if(state.jobs&&state.jobs.length&&state.phase!=='review'){
@@ -1257,6 +1262,7 @@ function init(){
   });
   wireCompositeDrawer();
   wireAiChat();
+  wireResumeTools();
   document.addEventListener('change',function(e){
     if(e.target&&e.target.id==='jobAnalysisRange'){
       syncJobAnalysisCustomRange();
@@ -1424,6 +1430,110 @@ function wireAiChat(){
     if(e.altKey&&e.shiftKey&&(e.key==='a'||e.key==='A')){
       if(E.aiChatInput){E.aiChatBox&&E.aiChatBox.classList.remove('hidden');if(E.aiChatToggle)E.aiChatToggle.textContent='▾';E.aiChatInput.focus();}
     }
+  });
+}
+
+// ── 简历打分 / 改写建议：独立分数卡 + 建议列表 ──
+function renderResumeScoreCard(result){
+  if(!E.resumeScoreCard)return;
+  if(!result||typeof result.score!=='number'){
+    if(E.resumeScoreCard)E.resumeScoreCard.classList.add('hidden');
+    return;
+  }
+  var score=result.score;
+  if(E.resumeScoreNum)E.resumeScoreNum.textContent=score;
+  if(E.resumeScoreSummary)E.resumeScoreSummary.textContent=result.summary||'';
+  if(E.resumeScoreCard)E.resumeScoreCard.classList.remove('hidden');
+  if(E.resumeScoreDims){
+    var dims=(result.dimensions||[]);
+    E.resumeScoreDims.innerHTML=dims.map(function(d){
+      var cls=Number(d.score)>=80?' dim-good':(Number(d.score)>=60?' dim-mid':' dim-low');
+      return '<div class="resume-dim'+cls+'"><div class="resume-dim-name">'+esc(d.name||'')+'</div>'
+        +'<div class="resume-dim-bar"><div class="resume-dim-fill" style="width:'+Math.max(0,Math.min(100,Number(d.score||0)))+'%"></div></div>'
+        +'<div class="resume-dim-score">'+esc(String(d.score||0))+'</div>'
+        +'<div class="resume-dim-comment">'+esc(d.comment||'')+'</div></div>';
+    }).join('');
+  }
+}
+
+function renderResumeRewriteResult(suggestions){
+  if(!E.resumeRewriteResult)return;
+  var list=(suggestions||[]);
+  E.resumeRewriteResult.innerHTML=list.length
+    ? '<div class="resume-rewrite-list">'+list.map(function(s,i){
+        return '<div class="resume-rewrite-item"><div class="resume-rewrite-title">'+(i+1)+'. '+esc(s.title||'')+'</div>'
+          +'<div class="resume-rewrite-detail">'+esc(s.detail||'')+'</div></div>';
+      }).join('')+'</div>'
+    : '<div class="resume-rewrite-empty">暂无建议</div>';
+}
+
+function wireResumeTools(){
+  // 事件委托：不依赖 E 的按钮引用（页面重渲染后 E 可能失效），
+  // 通过 closest 匹配按钮，动态获取当前 DOM 元素。
+
+  function scoreResume(){
+    var btn=document.getElementById('resumeScoreBtn');
+    if(!btn)return;
+    var old=btn.textContent;
+    btn.disabled=true;btn.textContent='打分中…';
+    try{
+      chrome.runtime.sendMessage({type:MSG.SCORE_RESUME},function(resp){
+        var b=document.getElementById('resumeScoreBtn');
+        if(b){b.disabled=false;b.textContent=old;}
+        if(resp&&resp.success){
+          renderResumeScoreCard(resp.result);
+          if(resp.result&&typeof resp.result.score==='number'){
+            var card=document.getElementById('resumeScoreCard');
+            if(card)card.classList.remove('hidden');
+          }
+        }else{
+          renderResumeScoreCard(null);
+          var sum=document.getElementById('resumeScoreSummary');
+          if(sum)sum.textContent='打分失败：'+((resp&&resp.error)||'无响应');
+        }
+      });
+    }catch(e){
+      var b=document.getElementById('resumeScoreBtn');
+      if(b){b.disabled=false;b.textContent=old;}
+      var sum=document.getElementById('resumeScoreSummary');
+      if(sum)sum.textContent='打分失败：'+e.message;
+    }
+  }
+
+  function rewriteResume(){
+    var btn=document.getElementById('resumeRewriteBtn');
+    var btn2=document.getElementById('resumeRewriteBtn2');
+    if(btn){btn.disabled=true;btn.textContent='分析中…';}
+    if(btn2){btn2.disabled=true;btn2.textContent='分析中…';}
+    try{
+      chrome.runtime.sendMessage({type:MSG.REWRITE_RESUME},function(resp){
+        var b=document.getElementById('resumeRewriteBtn');
+        var b2=document.getElementById('resumeRewriteBtn2');
+        if(b){b.disabled=false;b.textContent='改写建议';}
+        if(b2){b2.disabled=false;b2.textContent='生成改写建议';}
+        if(resp&&resp.success){
+          renderResumeRewriteResult(resp.result&&resp.result.suggestions);
+        }else{
+          var r=document.getElementById('resumeRewriteResult');
+          if(r)r.innerHTML='<div class="resume-rewrite-empty">建议生成失败：'+esc((resp&&resp.error)||'无响应')+'</div>';
+        }
+      });
+    }catch(e){
+      var b=document.getElementById('resumeRewriteBtn');
+      var b2=document.getElementById('resumeRewriteBtn2');
+      if(b){b.disabled=false;b.textContent='改写建议';}
+      if(b2){b2.disabled=false;b2.textContent='生成改写建议';}
+      var r=document.getElementById('resumeRewriteResult');
+      if(r)r.innerHTML='<div class="resume-rewrite-empty">建议生成失败：'+esc(e.message)+'</div>';
+    }
+  }
+
+  // 事件委托到 document，适配按钮被重建的场景
+  document.addEventListener('click',function(e){
+    var t=e.target;
+    if(!t||!t.closest)return;
+    if(t.closest('#resumeScoreBtn')){scoreResume();}
+    else if(t.closest('#resumeRewriteBtn')||t.closest('#resumeRewriteBtn2')){rewriteResume();}
   });
 }
 

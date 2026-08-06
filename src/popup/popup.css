@@ -307,6 +307,28 @@ body{
   color:var(--text);background:var(--card);line-height:1.5;
 }
 .ai-chat-input:focus{border-color:var(--accent)}
+.ai-resume-tools{display:flex;gap:6px;padding:6px 8px;border-top:1px solid var(--border-light)}
+.ai-resume-tools .btn{flex:1;font-size:12px}
+.ai-resume-score{margin:8px;padding:10px;border:1px solid var(--border-light);border-radius:8px;background:var(--card)}
+.resume-score-header{display:flex;align-items:baseline;gap:6px;margin-bottom:8px}
+.resume-score-num{font-size:32px;font-weight:700;color:var(--accent)}
+.resume-score-label{font-size:14px;color:var(--text-secondary)}
+.resume-score-summary{font-size:12px;color:var(--text-secondary);flex:1;line-height:1.4}
+.resume-score-dims{margin-bottom:8px}
+.resume-dim{margin-bottom:6px;padding:6px;background:var(--bg);border-radius:6px}
+.resume-dim-name{font-size:11px;font-weight:600;margin-bottom:3px}
+.resume-dim-bar{height:6px;background:var(--border-light);border-radius:3px;overflow:hidden;margin-bottom:3px}
+.resume-dim-fill{height:100%;background:var(--accent);border-radius:3px}
+.resume-dim-good .resume-dim-fill{background:#2e7d32}
+.resume-dim-mid .resume-dim-fill{background:#f9a825}
+.resume-dim-low .resume-dim-fill{background:#c62828}
+.resume-dim-score{font-size:11px;font-weight:600;color:var(--text-secondary)}
+.resume-dim-comment{font-size:11px;color:var(--text-weak);line-height:1.4}
+.resume-rewrite-list{margin-top:6px}
+.resume-rewrite-item{margin-bottom:8px;padding:6px;background:var(--bg);border-radius:6px}
+.resume-rewrite-title{font-size:12px;font-weight:600;margin-bottom:3px;color:var(--text)}
+.resume-rewrite-detail{font-size:11px;color:var(--text-secondary);line-height:1.5}
+.resume-rewrite-empty{font-size:11px;color:var(--text-weak);text-align:center;padding:8px}
 
 /* ── 招呼语 AI 润色 ── */
 .greet-rewrite-row{display:flex;gap:6px;margin-top:6px;align-items:center}

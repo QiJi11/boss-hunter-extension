@@ -1466,6 +1466,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         });
         saveCollectedJobRecords(state.jobs, 'ai-screen');
         pushState();
+        // 采集完成后自动给简历打分（不阻塞主流程，失败静默）
+        autoScoreResumeAfterCollect();
         return refreshBatchOverview(true);
       }).catch(function(e) {
         chrome.runtime.sendMessage({ type: 'ERROR', message: 'AI 筛选失败，请人工确认岗位' }).catch(() => {});
@@ -1662,6 +1664,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         });
       return true;
     }
+
+    case MSG.SCORE_RESUME:
+      scoreResume()
+        .then((result) => sendResponse({ success: true, result }))
+        .catch((e) => {
+          ErrorLogger.logError(e.message, e.stack, 'SCORE_RESUME failed');
+          sendResponse({ success: false, error: e.message });
+        });
+      return true;
+
+    case MSG.REWRITE_RESUME:
+      rewriteResume()
+        .then((result) => sendResponse({ success: true, result }))
+        .catch((e) => {
+          ErrorLogger.logError(e.message, e.stack, 'REWRITE_RESUME failed');
+          sendResponse({ success: false, error: e.message });
+        });
+      return true;
 
     case 'GET_API_KEY':
       getAiConfig().then((cfg) => sendResponse({ success: true, apiKey: cfg.apiKey || '' }));
@@ -3894,6 +3914,121 @@ async function aiHomeChat(question, history) {
   });
   messages.push({ role: 'user', content: question });
   return callOpenAICompatible(cfg, messages, 800, 60000, 'home-ai-chat');
+}
+
+// ── 简历打分：评估简历与当前筛选配置的匹配度 ──
+// 读 storage 的 ui:filterState（SW state.filterState 恒空，不能依赖）。
+async function buildResumeContext() {
+  const result = await chrome.storage.local.get([STORAGE_KEYS.UI.FILTER_STATE]);
+  const raw = result[STORAGE_KEYS.UI.FILTER_STATE] || {};
+  const fs = typeof normalizeFilterStateDefaults === 'function' ? normalizeFilterStateDefaults(raw) : raw;
+  const positions = (fs.selectedPositions || []).concat(fs.customPositions || []).slice(0, 8);
+  const cities = fs.selectedCities || [];
+  return {
+    positions: positions.join('、') || '未设置',
+    cities: (Array.isArray(cities) ? cities : []).join('、') || '未设置',
+    experience: (fs.experience || []).join('、') || '不限',
+    education: (fs.education || []).join('、') || '不限',
+  };
+}
+
+function buildScoreResumeMessages(resumeText, ctx) {
+  const systemPrompt = '你是资深求职顾问，根据求职者的文字简历和其目标岗位配置，评估简历的综合匹配度。'
+    + '严格输出一个 JSON 对象，字段：score(0-100 整数)、summary(不超过 60 字的整体评价)、dimensions(数组，每项 {name, score, comment})。'
+    + 'dimensions 建议含：技能匹配、经验匹配、学历匹配、期望匹配。';
+  const user = '[文字简历]\n' + (resumeText || '未提供文字简历。') + '\n\n'
+    + '[目标岗位配置]\n'
+    + '期望职位：' + ctx.positions + '\n'
+    + '目标城市：' + ctx.cities + '\n'
+    + '工作年限：' + ctx.experience + '\n'
+    + '学历要求：' + ctx.education + '\n\n'
+    + '请按上述格式返回 JSON，评价该简历是否足以进入这些目标岗位。';
+  return [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: user },
+  ];
+}
+
+async function scoreResume() {
+  const cfg = await getAiConfig();
+  const resumeText = await getTextResume();
+  const ctx = await buildResumeContext();
+  const messages = buildScoreResumeMessages(resumeText, ctx);
+  let text;
+  try {
+    text = await callOpenAICompatible(cfg, messages, 1200, 60000, 'score-resume', { type: 'json_object' });
+  } catch (err) {
+    if (!/response_format|json_object|400/i.test(String(err.message || ''))) throw err;
+    text = await callOpenAICompatible(cfg, messages, 1200, 60000, 'score-resume');
+  }
+  const parsed = extractJsonObject(text);
+  return {
+    score: Math.max(0, Math.min(100, Number(parsed.score || 0))),
+    summary: String(parsed.summary || '').slice(0, 200),
+    dimensions: Array.isArray(parsed.dimensions)
+      ? parsed.dimensions.map(function (d) {
+          return {
+            name: String(d.name || ''),
+            score: Math.max(0, Math.min(100, Number(d.score || 0))),
+            comment: String(d.comment || '').slice(0, 120),
+          };
+        }).slice(0, 8)
+      : [],
+  };
+}
+
+// ── 采集后自动打分（防重复：一次采集周期内只跑一次，失败不阻塞） ──
+function autoScoreResumeAfterCollect() {
+  if (state.resumeScorePending) return;
+  state.resumeScorePending = true;
+  scoreResume()
+    .then(function(result) {
+      state.resumeScore = result;
+      state.resumeScorePending = false;
+      pushState();
+    })
+    .catch(function(e) {
+      state.resumeScorePending = false;
+      ErrorLogger.logError(e.message || String(e), e?.stack, 'auto score resume failed');
+    });
+}
+
+// ── 简历改写建议：基于简历 + 目标岗位给出优化建议 ──
+async function rewriteResume() {
+  const cfg = await getAiConfig();
+  const resumeText = await getTextResume();
+  const ctx = await buildResumeContext();
+  const systemPrompt = '你是资深简历优化顾问。根据求职者的文字简历和目标岗位配置，给出具体可操作的改写建议。'
+    + '严格输出一个 JSON 对象，字段：suggestions(数组，每项 {title, detail})，每项 title 不超过 15 字，detail 不超过 100 字。';
+  const user = '[文字简历]\n' + (resumeText || '未提供文字简历。') + '\n\n'
+    + '[目标岗位配置]\n'
+    + '期望职位：' + ctx.positions + '\n'
+    + '目标城市：' + ctx.cities + '\n'
+    + '工作年限：' + ctx.experience + '\n'
+    + '学历要求：' + ctx.education + '\n\n'
+    + '请给出 4-6 条最能提升匹配度的简历改写建议，返回 JSON。';
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: user },
+  ];
+  let text;
+  try {
+    text = await callOpenAICompatible(cfg, messages, 1200, 60000, 'rewrite-resume', { type: 'json_object' });
+  } catch (err) {
+    if (!/response_format|json_object|400/i.test(String(err.message || ''))) throw err;
+    text = await callOpenAICompatible(cfg, messages, 1200, 60000, 'rewrite-resume');
+  }
+  const parsed = extractJsonObject(text);
+  return {
+    suggestions: Array.isArray(parsed.suggestions)
+      ? parsed.suggestions.map(function (s) {
+          return {
+            title: String(s.title || '').slice(0, 40),
+            detail: String(s.detail || '').slice(0, 300),
+          };
+        }).slice(0, 8)
+      : [],
+  };
 }
 
 // ════════════════════════════════════════════════════════════════

@@ -78,6 +78,19 @@
             <textarea id="aiChatInput" class="ai-chat-input" rows="2" placeholder="例如：帮我分析简历适合投什么方向的 AI 岗位" autocomplete="off"></textarea>
             <button class="btn btn-primary" id="aiChatSend" type="button">发送</button>
           </div>
+          <div class="ai-resume-tools">
+            <button class="btn btn-ghost" id="resumeScoreBtn" type="button">打分简历</button>
+            <button class="btn btn-ghost" id="resumeRewriteBtn" type="button">改写建议</button>
+          </div>
+          <div id="resumeScoreCard" class="ai-resume-score hidden">
+            <div class="resume-score-header">
+              <span class="resume-score-num" id="resumeScoreNum">0</span><span class="resume-score-label">分</span>
+              <div class="resume-score-summary" id="resumeScoreSummary"></div>
+            </div>
+            <div class="resume-score-dims" id="resumeScoreDims"></div>
+            <button class="btn btn-ghost" id="resumeRewriteBtn2" type="button">生成改写建议</button>
+            <div class="resume-rewrite-result" id="resumeRewriteResult"></div>
+          </div>
         </div>
       </div>
 
