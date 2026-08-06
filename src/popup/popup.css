@@ -301,6 +301,14 @@ body{
 }
 .ai-chat-input:focus{border-color:var(--accent)}
 
+/* ── 招呼语 AI 润色 ── */
+.greet-rewrite-row{display:flex;gap:6px;margin-top:6px;align-items:center}
+.greet-rewrite-row input{
+  flex:1;min-height:26px;padding:4px 8px;font-size:11px;font-family:inherit;
+  border:1px solid var(--border-light);border-radius:6px;outline:none;color:var(--text);background:var(--card);
+}
+.greet-rewrite-row input:focus{border-color:var(--accent)}
+
 .job-custom-toggle{
   display:inline-flex;align-items:center;gap:4px;margin-top:10px;
   font-size:12px;font-weight:500;color:var(--accent);cursor:pointer;

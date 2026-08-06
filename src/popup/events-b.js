@@ -402,6 +402,8 @@ window.initEventsB=function(){
       :'未发现已有沟通记录';
     E.singleSendStatus.textContent='';
     E.singleSendConfirm.disabled=!finalGreetingForJob(job);
+    if(E.singleSendRewriteInput){E.singleSendRewriteInput.value='';}
+    if(E.singleSendRewriteBtn){E.singleSendRewriteBtn.disabled=false;E.singleSendRewriteBtn.textContent='AI 润色';}
     E.singleSendOverlay.classList.remove('hidden');
   }
 
@@ -415,6 +417,34 @@ window.initEventsB=function(){
     });
   }
 
+  // 招呼语 AI 润色：基于当前岗位最终招呼语 + 指令，重写后写回 jobCustom（确认发送时用润色结果）
+  if(E.singleSendRewriteBtn){
+    E.singleSendRewriteBtn.addEventListener('click',function(){
+      if(!pendingSingleSend||!pendingSingleSend.job)return;
+      var job=pendingSingleSend.job;
+      var original=finalGreetingForJob(job);
+      if(!original){E.singleSendStatus.textContent='当前岗位没有招呼语可润色';return;}
+      var instruction=String(E.singleSendRewriteInput.value||'').trim()||'更专业、更真诚、语感更自然';
+      E.singleSendRewriteBtn.disabled=true;E.singleSendRewriteBtn.textContent='润色中…';
+      chrome.runtime.sendMessage({type:MSG.REWRITE_GREETING,greeting:original,instruction:instruction},function(resp){
+        E.singleSendRewriteBtn.disabled=false;E.singleSendRewriteBtn.textContent='AI 润色';
+        if(chrome.runtime.lastError||!resp||!resp.success){
+          E.singleSendStatus.textContent='润色失败：'+(resp&&resp.error||(chrome.runtime.lastError&&chrome.runtime.lastError.message)||'');
+          return;
+        }
+        var custom=Store.get('jobCustom')||{};
+        custom[job.id]=Object.assign({},custom[job.id]||{},{customGreeting:resp.greeting});
+        Store.set('jobCustom',custom);
+        E.singleSendGreeting.textContent=resp.greeting;
+        E.singleSendStatus.textContent='已用润色后的招呼语（覆盖原内容）';
+      });
+    });
+  }
+  if(E.singleSendRewriteInput){
+    E.singleSendRewriteInput.addEventListener('keydown',function(e){
+      if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(E.singleSendRewriteBtn)E.singleSendRewriteBtn.click();}
+    });
+  }
   if(E.singleSendClose)E.singleSendClose.addEventListener('click',closeSingleSend);
   if(E.singleSendSkip)E.singleSendSkip.addEventListener('click',function(){
     if(pendingSingleSend&&pendingSingleSend.job){

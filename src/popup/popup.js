@@ -78,6 +78,7 @@ function initDomRefs(){
   E.singleSendGreeting=$('#singleSendGreeting');E.singleSendResume=$('#singleSendResume');
   E.singleSendHistory=$('#singleSendHistory');E.singleSendStatus=$('#singleSendStatus');
   E.singleSendSkip=$('#singleSendSkip');E.singleSendConfirm=$('#singleSendConfirm');
+  E.singleSendRewriteInput=$('#singleSendRewriteInput');E.singleSendRewriteBtn=$('#singleSendRewriteBtn');
   E.aiChatToggle=$('#aiChatToggle');E.aiChatBox=$('#aiChatBox');E.aiChatHistory=$('#aiChatHistory');
   E.aiChatInput=$('#aiChatInput');E.aiChatSend=$('#aiChatSend');
 }

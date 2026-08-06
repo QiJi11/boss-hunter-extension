@@ -267,7 +267,12 @@
       <div class="settings-body">
         <div class="single-send-job" id="singleSendJob"></div>
         <div class="single-send-section"><strong>AI 分数、理由与风险</strong><div id="singleSendAi"></div></div>
-        <div class="single-send-section"><strong>待发送招呼语</strong><div id="singleSendGreeting"></div></div>
+        <div class="single-send-section"><strong>待发送招呼语</strong><div id="singleSendGreeting"></div>
+          <div class="greet-rewrite-row">
+            <input type="text" id="singleSendRewriteInput" placeholder="润色要求，如：更活泼、突出 AI 经验" autocomplete="off">
+            <button class="btn btn-ghost" id="singleSendRewriteBtn" type="button">AI 润色</button>
+          </div>
+        </div>
         <div class="single-send-section"><strong>待发送简历</strong><div id="singleSendResume"></div></div>
         <div class="single-send-section"><strong>历史沟通</strong><div id="singleSendHistory"></div></div>
         <div class="ai-status" id="singleSendStatus"></div>
