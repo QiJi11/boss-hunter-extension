@@ -185,7 +185,7 @@ function toResults(){
   // 重置投递按钮到初始态——杜绝上一批「已发送完成」(disabled+绿底)+sending=true 残留带进本批，
   // 否则进 B 页按钮显示「已发送完成」、首点命中停止分支(if sending)只重置文案、需点两次才开投。
   Store.set('sending',false);
-  if(E.btnSend){E.btnSend.textContent='一键发送';E.btnSend.classList.remove('sending');E.btnSend.disabled=false;E.btnSend.style.background='';}
+  if(E.btnSend){E.btnSend.textContent='逐岗复核';E.btnSend.classList.remove('sending');E.btnSend.disabled=false;E.btnSend.style.background='';}
   E.hdrTitle.classList.add('hidden');E.btnBack.classList.remove('hidden');
   E.settingsPanel.classList.add('hidden');E.resultsPanel.classList.remove('hidden');
   E.resultsContent.classList.add('hidden');E.progressSection.classList.remove('hidden');
@@ -310,7 +310,7 @@ window.returnToExistingJobListFromReview=function(){
     if(rp){rp.style.display='none';rp.innerHTML='';rp._expandWired=false;}
 
     if(E.btnSend){
-      E.btnSend.textContent='一键发送';
+      E.btnSend.textContent='逐岗复核';
       E.btnSend.classList.remove('sending');
       E.btnSend.disabled=false;
       E.btnSend.style.background='';
@@ -415,7 +415,7 @@ function updateAiScreeningProgress(progress){
     E.btnSend.disabled=running;
     if(running)E.btnSend.textContent='AI筛选中';
     else if(!Store.get('sending')){
-      E.btnSend.textContent='一键发送';
+      E.btnSend.textContent='逐岗复核';
       if(window.updResCnt)window.updResCnt();
     }
   }
@@ -701,7 +701,7 @@ function handleStateUpdate(state){
   // CAPTCHA 暂停发送
   if(state.phase==='captcha_paused'){
     Store.set('sending',false);
-    E.btnSend.textContent='一键发送';
+    E.btnSend.textContent='逐岗复核';
     E.btnSend.classList.remove('sending');
     E.btnSend.disabled=false;
     E.btnSend.style.background='';
@@ -712,6 +712,12 @@ function handleStateUpdate(state){
   if(state.phase==='review'&&state.sendResults&&state.sendResults.length){
     Store.set('lastReview',{sendResults:state.sendResults,duration:state.sendDuration||0,missedCount:(state._v6MissedJobs||[]).length});
     updateLastReviewEntry();
+  }
+
+  // review 阶段清理残留的验证码警告（任务已终结，不应再显示"继续发送"）
+  if(state.phase==='review'){
+    var cw=document.getElementById('captchaWarning');
+    if(cw)cw.remove();
   }
 
   // 仅结果流程中自动展示 review；设置页里的旧结果只通过显式入口查看。
@@ -1356,7 +1362,7 @@ function init(){
         }
         if(Store.get('sending')){
           Store.set('sending',false);
-          E.btnSend.textContent='一键发送';
+          E.btnSend.textContent='逐岗复核';
           E.btnSend.classList.remove('sending');
           E.btnSend.disabled=false;
           E.btnSend.style.background='';

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "default_locale": "zh_CN",
   "name": "猎职",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "description": "BOSS 直聘 AI 岗位采集、筛选与逐岗确认沟通助手",
   "icons": {
     "16": "icons/icon16.png",

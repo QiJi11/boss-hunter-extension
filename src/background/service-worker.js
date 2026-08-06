@@ -1029,10 +1029,15 @@ const pendingSingleSendConfirmations = new Map();
 let singleSendLaunchInProgress = false;
 
 function createSingleSendConfirmation(jobId) {
+  var now = Date.now();
+  // 顺带清理已过期 token（防 Map 无限增长）
+  pendingSingleSendConfirmations.forEach(function(rec, key) {
+    if (rec && rec.expiresAt < now) pendingSingleSendConfirmations.delete(key);
+  });
   var token = crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(36).slice(2));
   pendingSingleSendConfirmations.set(token, {
     jobId: String(jobId),
-    expiresAt: Date.now() + 5 * 60 * 1000,
+    expiresAt: now + 5 * 60 * 1000,
   });
   return token;
 }
@@ -1064,7 +1069,15 @@ function consumeSingleSendConfirmation(token, jobId) {
 }
 
 function isTrustedPopupSender(sender) {
-  return String(sender && sender.url || '') === chrome.runtime.getURL('src/popup/popup.html');
+  if (!sender) return false;
+  if (sender.id && sender.id !== chrome.runtime.id) return false;
+  var url = String(sender.url || '');
+  if (url !== chrome.runtime.getURL('src/popup/popup.html')) return false;
+  try {
+    var extOrigin = new URL(chrome.runtime.getURL('')).origin;
+    if (new URL(url).origin !== extOrigin) return false;
+  } catch (_) { return false; }
+  return true;
 }
 
 // ── #39 阶段1跳转恢复环（纯内存，SW 若死整个任务走既有 resume 路径） ──
@@ -1521,24 +1534,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         });
       return true;
 
-      // sender.tab 在 side panel 场景下为 undefined，fallback 到 lastFocused 窗口
-      if (sender && sender.tab && sender.tab.windowId) {
-        state.originalMainWindowId = sender.tab.windowId;
-      } else {
-        chrome.windows.getLastFocused().then(win => {
-          if (win && win.id) state.originalMainWindowId = win.id;
-        }).catch(() => {});
-      }
-      state.hrActiveFilter = msg.hrActiveFilter || '不限';
-      startSendV6(msg.jobIds).then(() => {
-        sendResponse({ success: true });
-      }).catch((e) => {
-        ErrorLogger.logError(e.message, e.stack, 'START_SEND failed');
-        chrome.runtime.sendMessage({ type: 'ERROR', message: e.message }).catch(() => {});
-        sendResponse({ success: false, error: e.message, errorCode: e.errorCode || null });
-      });
-      return true;
-
     case 'STOP_SEND':
       stopSend().then(() => sendResponse({ success: true })).catch((e) => sendResponse({ success: false, error: e.message }));
       return true;
@@ -1739,12 +1734,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({ success: false, error: '单岗确认只能从扩展侧边面板发起' });
         return false;
       }
-      if (!consumeSingleSendConfirmation(msg.token, msg.jobId)) {
-        sendResponse({ success: false, error: '确认已过期，请重新打开岗位确认弹层', errorCode: 'CONFIRMATION_REQUIRED' });
+      if (state.phase === 'sending' || singleSendLaunchInProgress) {
+        // 并发判断提前：避免烧掉已消耗的确认 token
+        sendResponse({ success: false, error: '当前已有岗位正在沟通' });
         return false;
       }
-      if (state.phase === 'sending' || singleSendLaunchInProgress) {
-        sendResponse({ success: false, error: '当前已有岗位正在沟通' });
+      if (!consumeSingleSendConfirmation(msg.token, msg.jobId)) {
+        sendResponse({ success: false, error: '确认已过期，请重新打开岗位确认弹层', errorCode: 'CONFIRMATION_REQUIRED' });
         return false;
       }
       singleSendLaunchInProgress = true;
