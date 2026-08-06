@@ -594,6 +594,10 @@ async function applyAiScreeningToJobs(jobs) {
       unconfigured: !cfg.apiKey || !cfg.model,
     };
     pushState();
+    // 未配置 AI：默认全勾选（排除词/公司风险岗位在 applyPostCollectRules 中再取消）。
+    (jobs || []).forEach(function(job) {
+      if (job.checked === undefined) job.checked = true;
+    });
     return jobs || [];
   }
   const threshold = cfg.scoreThreshold;
