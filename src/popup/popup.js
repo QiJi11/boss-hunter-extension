@@ -1254,6 +1254,7 @@ function init(){
     if(e.target===E.settingsOverlay)hideSettings();
   });
   wireCompositeDrawer();
+  wireAiChat();
   document.addEventListener('change',function(e){
     if(e.target&&e.target.id==='jobAnalysisRange'){
       syncJobAnalysisCustomRange();
@@ -1359,6 +1360,69 @@ function init(){
       }
     });
   }
+}
+
+// ── 首页 AI 对话框：设置面板内展开/收起，发送 MSG.AI_CHAT 并渲染回复 ──
+// MVP 版：聊天历史仅内存保存（popup 重开即清空），SW 端 aiHomeChat 复用 AI 配置。
+function wireAiChat(){
+  if(!E.aiChatToggle||!E.aiChatBox||!E.aiChatSend)return;
+  var history=[];
+
+  function renderAiMsg(role,text){
+    if(!E.aiChatHistory)return;
+    var div=document.createElement('div');
+    div.className='ai-chat-msg '+role;
+    div.textContent=text||'';
+    E.aiChatHistory.appendChild(div);
+    E.aiChatHistory.scrollTop=E.aiChatHistory.scrollHeight;
+  }
+
+  E.aiChatToggle.addEventListener('click',function(){
+    var hidden=E.aiChatBox.classList.toggle('hidden');
+    E.aiChatToggle.textContent=hidden?'▸':'▾';
+    if(!hidden&&E.aiChatInput)E.aiChatInput.focus();
+  });
+
+  E.aiChatSend.addEventListener('click',function(){
+    var q=(E.aiChatInput.value||'').trim();
+    if(!q)return;
+    E.aiChatInput.value='';
+    history.push({role:'user',content:q});
+    renderAiMsg('user',q);
+
+    var btn=E.aiChatSend;
+    var oldText=btn.textContent;
+    btn.disabled=true;
+    btn.textContent='思考中…';
+    try{
+      chrome.runtime.sendMessage({type:MSG.AI_CHAT,question:q,history:history.slice(0,-1)},function(resp){
+        btn.disabled=false;
+        btn.textContent=oldText;
+        if(resp&&resp.success&&resp.reply){
+          history.push({role:'assistant',content:resp.reply});
+          renderAiMsg('assistant',resp.reply);
+        }else{
+          renderAiMsg('assistant','出错了：'+(resp&&resp.error?resp.error:'无响应'));
+        }
+      });
+    }catch(e){
+      btn.disabled=false;
+      btn.textContent=oldText;
+      renderAiMsg('assistant','发送失败：'+(e&&e.message?e.message:e));
+    }
+  });
+
+  // Enter 发送 / Shift+Enter 换行；Alt+Shift+A 聚焦输入框
+  if(E.aiChatInput){
+    E.aiChatInput.addEventListener('keydown',function(e){
+      if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(E.aiChatSend)E.aiChatSend.click();}
+    });
+  }
+  document.addEventListener('keydown',function(e){
+    if(e.altKey&&e.shiftKey&&(e.key==='a'||e.key==='A')){
+      if(E.aiChatInput){E.aiChatBox&&E.aiChatBox.classList.remove('hidden');if(E.aiChatToggle)E.aiChatToggle.textContent='▾';E.aiChatInput.focus();}
+    }
+  });
 }
 
 document.addEventListener('DOMContentLoaded',init);
