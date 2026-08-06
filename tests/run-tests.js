@@ -51,7 +51,7 @@ function loadSharedScripts(storageSeed = {}) {
 
 async function main() {
   const manifest = JSON.parse(read('manifest.json'));
-  assert.equal(manifest.version, '1.3.5');
+  assert.equal(manifest.version, '1.3.6');
   assert.deepEqual(manifest.host_permissions, ['*://*.zhipin.com/*', 'https://*/*', 'http://*/*']);
   assert.deepEqual(manifest.optional_host_permissions, ['https://*/*', 'http://*/*']);
 
@@ -181,6 +181,33 @@ async function main() {
   assert.equal(sourceEvidence.sources.length, 2);
   assert.equal(sourceEvidence.sources[0].fileCount, 38);
   assert.equal(sourceEvidence.sources[1].fileCount, 43);
+
+  // ── 核心纯函数：matchJobToExpected（岗位归类"单一真相源"） ──
+  const ctx2 = loadSharedScripts().context;
+  // 正常归类：岗位名含 custom 词
+  assert.equal(ctx2.matchJobToExpected({ name: 'AI Agent开发工程师', tags: ['AI', '后端'] }, [], ['AI Agent']), 'AI Agent');
+  // picker 严格：完整分词命中
+  assert.equal(ctx2.matchJobToExpected({ name: 'AI产品经理', tags: ['产品'] }, ['AI 产品经理'], []), 'AI 产品经理');
+  // 跨组误纳保护：picker「AI产品经理」不应被 tag「产品」蹭进纯产品岗
+  assert.notEqual(ctx2.matchJobToExpected({ name: '后端工程师', tags: ['产品'] }, ['AI 产品经理'], []), 'AI 产品经理');
+  // 无期望 → 其他
+  assert.equal(ctx2.matchJobToExpected({ name: 'Java工程师' }, [], []), '其他');
+
+  // ── detectCompanyRisk（外包/疑似机构/正常） ──
+  assert.equal(ctx2.detectCompanyRisk({ name: 'Python开发', company: '软通动力', tags: ['外包'] }).type, 'outsource');
+  assert.equal(ctx2.detectCompanyRisk({ name: 'AI 全栈工程师', company: '安徽亮剑文化传媒', salary: '35-50K' }).type, 'suspicious');
+  assert.equal(ctx2.detectCompanyRisk({ name: 'AI漫剧全栈制作', company: '杭州承影载文文化' }).type, 'suspicious');
+  assert.equal(ctx2.detectCompanyRisk({ name: '后端开发', company: '阿里巴巴' }), null);
+
+  // ── findExcludeKeywordHit（排除词命中） ──
+  assert.equal(ctx2.findExcludeKeywordHit({ name: '销售专员', company: 'X公司' }, ['销售']), '销售');
+  assert.equal(ctx2.findExcludeKeywordHit({ name: 'Java工程师', company: 'X公司' }, ['销售']), '');
+
+  // ── extractExperienceFromTags（年限识别） ──
+  assert.equal(ctx2.extractExperienceFromTags(['1-3年', '本科']), '1-3年');
+  assert.equal(ctx2.extractExperienceFromTags(['经验不限', '本科']), '经验不限');
+  assert.equal(ctx2.extractExperienceFromTags(['10年以上', '硕士']), '10年以上');
+  assert.equal(ctx2.extractExperienceFromTags(['本科', 'Java']), '');
 
   console.log('All extension policy tests passed.');
 }

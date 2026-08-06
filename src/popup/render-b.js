@@ -271,6 +271,11 @@ function _buildGroupCardEl(g,gi){
       +'<span class="greet-refresh" data-g="'+gi+'" data-gact="rewrite">'
       +'<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
       +'<path d="M2 8a6 6 0 0 1 11.3-3.3M14 8a6 6 0 0 1-11.3 3.3"/><path d="M13.5 2v3h-3M2.5 14v-3h3"/></svg></span>'
+      +'<span class="greet-rewrite-ai" data-g="'+gi+'" data-gact="rewrite-ai" title="AI 润色招呼语">✨ 润色</span>'
+      +'<div class="greet-rewrite-ai-box hidden" data-g="'+gi+'">'
+      +'<input type="text" class="greet-rewrite-ai-input" data-g="'+gi+'" placeholder="如：更活泼些 / 突出项目经验" autocomplete="off">'
+      +'<button class="btn btn-ghost greet-rewrite-ai-go" data-g="'+gi+'" type="button">润色</button>'
+      +'</div>'
       +'</div>';
     card.appendChild(greetSec);
 

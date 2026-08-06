@@ -66,7 +66,8 @@ window.renderReview=function(sendResults,duration,missedCount){
   for(var pi=0;pi<posKeys.length;pi++){
     var gg=groupMap[posKeys[pi]];
     var gSuccess=gg.items.filter(function(i){return i.success}).length;
-    var gFail=gg.items.filter(function(i){return !i.success}).length;
+    // 与顶部 failCount 同口径：alreadyChatted/skipped 不计入失败
+    var gFail=gg.items.filter(function(i){return !i.success && !i.alreadyChatted && !i.skipped}).length;
     html+='<div class="review-group-card">'
       +'<div class="review-group-header">'
       +'<span class="review-group-title">'+esc(gg.position)+'</span>'

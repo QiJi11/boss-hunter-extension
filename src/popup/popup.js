@@ -1380,6 +1380,29 @@ function wireAiChat(){
   if(!E.aiChatToggle||!E.aiChatBox||!E.aiChatSend)return;
   var history=[];
 
+  // ── AI 对话历史持久化：popup 重开恢复多轮上下文 ──
+  var AI_HISTORY_KEY = (typeof STORAGE_KEYS !== 'undefined' && STORAGE_KEYS.UI) ? STORAGE_KEYS.UI.AI_CHAT_HISTORY : 'ui:aiChatHistory';
+  function persistAiHistory(){
+    try{
+      var recent=history.slice(-20);
+      chrome.storage.local.set({ [AI_HISTORY_KEY]: recent }).catch(function(){});
+    }catch(e){}
+  }
+  function loadAiHistory(){
+    try{
+      chrome.storage.local.get(AI_HISTORY_KEY,function(items){
+        var saved=items&&items[AI_HISTORY_KEY];
+        if(Array.isArray(saved)&&saved.length){
+          history=saved.slice(-20);
+          history.forEach(function(m){
+            if(m&&m.role&&m.content)renderAiMsg(m.role,m.content);
+          });
+        }
+      });
+    }catch(e){}
+  }
+  loadAiHistory();
+
   function renderAiMsg(role,text){
     if(!E.aiChatHistory)return;
     var div=document.createElement('div');
@@ -1401,6 +1424,7 @@ function wireAiChat(){
     E.aiChatInput.value='';
     history.push({role:'user',content:q});
     renderAiMsg('user',q);
+    persistAiHistory();
 
     var btn=E.aiChatSend;
     var oldText=btn.textContent;
@@ -1413,6 +1437,7 @@ function wireAiChat(){
         if(resp&&resp.success&&resp.reply){
           history.push({role:'assistant',content:resp.reply});
           renderAiMsg('assistant',resp.reply);
+          persistAiHistory();
         }else{
           renderAiMsg('assistant','出错了：'+(resp&&resp.error?resp.error:'无响应'));
         }

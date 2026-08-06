@@ -115,6 +115,7 @@ const STORAGE_KEYS = {
     FILTER_STATE: 'ui:filterState',
     GROUP_EXPANDED: 'ui:groupExpanded',
     JOB_CUSTOM: 'ui:jobCustom',
+    AI_CHAT_HISTORY: 'ui:aiChatHistory',
   },
 };
 

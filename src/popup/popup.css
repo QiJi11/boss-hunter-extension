@@ -385,6 +385,12 @@ body{
 .greet-refresh{position:absolute;bottom:8px;right:8px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:50%;background:rgba(217,119,6,.1);transition:all .12s}
 .greet-refresh:hover{background:rgba(217,119,6,.2)}
 .greet-refresh.spinning svg{animation:greetSpin .6s linear infinite}
+.greet-rewrite-ai{position:absolute;bottom:8px;right:36px;font-size:11px;color:var(--accent);cursor:pointer;padding:2px 6px;border-radius:4px;background:rgba(26,115,232,.08);transition:all .12s}
+.greet-rewrite-ai:hover{background:rgba(26,115,232,.18)}
+.greet-rewrite-ai-box{position:absolute;bottom:34px;right:8px;left:8px;display:flex;gap:6px;background:var(--card);border:1px solid var(--border-light);border-radius:6px;padding:6px;z-index:5}
+.greet-rewrite-ai-box.hidden{display:none}
+.greet-rewrite-ai-input{flex:1;font-size:11px;padding:4px 6px;border:1px solid var(--border-light);border-radius:4px;background:var(--bg);color:var(--text)}
+.greet-rewrite-ai-go{font-size:11px;padding:4px 8px}
 @keyframes greetSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 
 .group-card{border:1px solid var(--border-light);border-radius:var(--radius);padding:16px;margin-bottom:16px;background:var(--card)}

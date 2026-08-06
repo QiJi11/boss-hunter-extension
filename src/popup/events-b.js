@@ -88,6 +88,39 @@ window.initEventsB=function(){
             gact.classList.remove('spinning');
           });
         }
+        if(gact.dataset.gact==='rewrite-ai'){
+          // 展开/收起润色指令输入框
+          var box=gact.parentNode.querySelector('.greet-rewrite-ai-box[data-g="'+gi+'"]');
+          if(box)box.classList.toggle('hidden');
+          return
+        }
+        if(gact.dataset.gact==='rewrite-ai-go'){
+          var input=gact.parentNode.querySelector('.greet-rewrite-ai-input[data-g="'+gi+'"]');
+          var instruction=(input&&input.value||'').trim()||'更专业、更真诚、语感更自然';
+          var original=g.greeting&&g.greeting.text||'';
+          if(!original||String(original).indexOf('正在生成')>=0||String(original).indexOf('生成失败')>=0){
+            if(input)input.value='';
+            return
+          }
+          gact.disabled=true;
+          gact.textContent='润色中…';
+          chrome.runtime.sendMessage({type:MSG.REWRITE_GREETING,greeting:original,instruction:instruction},function(resp){
+            gact.disabled=false;
+            gact.textContent='润色';
+            if(resp&&resp.success&&resp.greeting){
+              g.greeting.text=resp.greeting;
+              g.greeting.editing=false;
+              Store.set('groups',groups);
+              window.syncGroupGreeting(gi);
+              window.updateGroupGreeting(gi);
+              var bx=gact.parentNode.querySelector('.greet-rewrite-ai-box[data-g="'+gi+'"]');
+              if(bx)bx.classList.add('hidden');
+              if(input)input.value='';
+            }else{
+              window.updateGroupGreeting(gi);
+            }
+          });
+        }
         return
       }
 
