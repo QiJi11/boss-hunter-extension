@@ -744,10 +744,8 @@ function showCaptchaWarning(){
     E.resultsPanel.appendChild(warning);
   }
   document.getElementById('resumeSendBtn').addEventListener('click',function(){
-    var jobs=Store.get('jobs')||[];
-    var jobIds=jobs.filter(function(j){return j.checked}).map(function(j){return j.id});
     try{
-      chrome.runtime.sendMessage({type:MSG.START_SEND,jobIds:jobIds},function(resp){
+      chrome.runtime.sendMessage({type:MSG.RESUME_SEND},function(resp){
         var w=document.getElementById('captchaWarning');
         if(resp&&resp.success){
           if(w)w.remove();
@@ -759,7 +757,7 @@ function showCaptchaWarning(){
           E.progressSub.textContent='';
         }else{
           E.progressText.textContent='继续投递失败';
-          E.progressSub.textContent=(resp&&resp.error)||'请确保BOSS直聘聊天页已打开';
+          E.progressSub.textContent=(resp&&resp.error)||'没有可恢复的暂停任务，请重新逐岗确认';
         }
       });
     }catch(e){

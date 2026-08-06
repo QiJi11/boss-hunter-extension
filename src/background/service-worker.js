@@ -1507,6 +1507,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ success: false, error: '当前插件包已禁用投递，只允许采集岗位。', errorCode: 'SEND_DISABLED' });
       return true;
 
+    case MSG.RESUME_SEND:
+      // CAPTCHA 暂停后恢复投递：续跑之前保留的发送队列，不重新逐岗确认
+      if (state.phase !== 'captcha_paused' || !state.sendQueueV6 || !state.sendQueueV6.length) {
+        sendResponse({ success: false, error: '没有可恢复的暂停任务', errorCode: 'NO_PAUSED_TASK' });
+        return true;
+      }
+      resumeFromCaptchaPause()
+        .then(() => sendResponse({ success: true }))
+        .catch((e) => {
+          ErrorLogger.logError(e.message, e.stack, 'RESUME_SEND failed');
+          sendResponse({ success: false, error: e.message, errorCode: e.errorCode || null });
+        });
+      return true;
+
       // sender.tab 在 side panel 场景下为 undefined，fallback 到 lastFocused 窗口
       if (sender && sender.tab && sender.tab.windowId) {
         state.originalMainWindowId = sender.tab.windowId;
@@ -1738,11 +1752,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         state.originalMainWindowId = sender.tab.windowId;
       }
       state.hrActiveFilter = msg.hrActiveFilter || '不限';
-      startSendV6([msg.jobId]).then(() => {
-        sendResponse({ success: true });
-      }).catch((e) => {
+      // 立即受理：先同步响应，让 popup 进入 sending 态（可停止）；发送进度走 STATE_UPDATE 推送。
+      sendResponse({ success: true, accepted: true });
+      startSendV6([msg.jobId]).catch((e) => {
         ErrorLogger.logError(e.message, e.stack, 'CONFIRM_SINGLE_SEND failed');
-        sendResponse({ success: false, error: e.message, errorCode: e.errorCode || null });
+        try { chrome.runtime.sendMessage({ type: MSG.ERROR, message: e.message }).catch(() => {}); } catch (_) {}
+        state.phase = 'ready';
+        state.sendPhase = '';
+        pushState();
       }).finally(() => {
         singleSendLaunchInProgress = false;
       });
@@ -3059,6 +3076,19 @@ async function startSendV6(jobIds) {
   if (sentJobIds.has(jobIds[0])) {
     throw new Error('该岗位已有本机送达记录，已阻止重复沟通');
   }
+  // 每日投递上限（风控保护）：超过 DAILY_SEND_LIMIT 硬拦
+  try {
+    var todayCount = await getDailySendCount();
+    if (todayCount >= CONFIG.DAILY_SEND_LIMIT) {
+      var err = new Error('今日投递已达上限（' + CONFIG.DAILY_SEND_LIMIT + '），请明日再试');
+      err.errorCode = 'SEND_DAILY_LIMIT';
+      throw err;
+    }
+  } catch (e) {
+    if (e && e.errorCode === 'SEND_DAILY_LIMIT') throw e;
+    // 计数读取失败不阻塞投递，仅记录
+    try { DiagLogger.warn('sw.dailyLimit', '每日计数读取失败: ' + (e && e.message || e)); } catch (_) {}
+  }
 
   try { DiagLogger.userEvent('sw.send', '任务启动：开始投递 jobs=' + ((jobIds && jobIds.length) || 0) + ' hrActiveFilter=' + (state.hrActiveFilter || '不限')); } catch (_) {}
   sendAborted = false;        // 新批次开始，清掉上一轮的停止标记
@@ -3185,6 +3215,13 @@ async function startSendV6(jobIds) {
   await persistState();
   await runStage2();
   await teardownWorkerWindows();
+  // CAPTCHA 暂停时不 finalize：保留任务状态，等 RESUME_SEND 恢复
+  if (state.phase === 'captcha_paused') {
+    // 保留 state.sendQueueV6 供恢复，标记暂停位置
+    state.sendPhase = 'captcha_paused';
+    pushState();
+    return;
+  }
   await finalizeTask('done');
   await cleanupV6();
 }
@@ -3991,6 +4028,25 @@ function autoScoreResumeAfterCollect() {
       state.resumeScorePending = false;
       ErrorLogger.logError(e.message || String(e), e?.stack, 'auto score resume failed');
     });
+}
+
+// ── CAPTCHA 暂停后恢复投递：续跑保留的发送队列（state.sendQueueV6） ──
+async function resumeFromCaptchaPause() {
+  if (state.phase !== 'captcha_paused') throw new Error('当前不在暂停状态');
+  var queue = Array.isArray(state.sendQueueV6) ? state.sendQueueV6 : [];
+  if (!queue.length) throw new Error('暂停任务无待发岗位');
+  sendAborted = false;
+  state.captchaError = false;
+  state.phase = 'sending';
+  state.sendPhase = 'stage2';
+  pushState();
+  // 重新跑 stage2 发送剩余队列（runWorkerLoop 会跳过已 sentJobIds 的岗位）
+  await runStage2();
+  await teardownWorkerWindows();
+  if (state.phase !== 'captcha_paused') {
+    await finalizeTask('done');
+    await cleanupV6();
+  }
 }
 
 // ── 简历改写建议：基于简历 + 目标岗位给出优化建议 ──
