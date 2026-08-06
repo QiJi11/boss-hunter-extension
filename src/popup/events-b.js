@@ -150,6 +150,35 @@ window.initEventsB=function(){
         return
       }
 
+      // JD expand/collapse inside job card (stopPropagation so it does not toggle the checkbox)
+      var jdToggle=e.target.closest('.job-jd-toggle');
+      if(jdToggle){
+        e.stopPropagation();
+        var jdCard=e.target.closest('.job-jd-preview[data-jd-job-id]');
+        if(jdCard){
+          jdCard.classList.toggle('open');
+          var full=jdCard.querySelector('.job-jd-full');
+          var btn=jdCard.querySelector('.job-jd-toggle');
+          if(jdCard.classList.contains('open')){
+            if(full)full.style.display='block';
+            if(btn)btn.textContent='收起';
+          }else{
+            if(full)full.style.display='none';
+            if(btn)btn.textContent='展开';
+          }
+        }
+        return
+      }
+
+      // Open BOSS job detail page in a new tab (stopPropagation so it does not toggle the checkbox)
+      var jdOpen=e.target.closest('.job-jd-open');
+      if(jdOpen){
+        e.stopPropagation();
+        var jid=jdOpen.dataset.jobId;
+        if(jid)chrome.tabs.create({url:'https://www.zhipin.com/job_detail/'+jid+'.html'});
+        return
+      }
+
       // Help tip: click ? to open full-size help image in new tab
       var helpTip=e.target.closest('.help-tip');
       if(helpTip){

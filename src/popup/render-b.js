@@ -359,13 +359,29 @@ function renderJobSkipReasonHTML(job){
   return parts.length?'<div class="job-skip-reason">'+esc(parts.join(' · '))+'</div>':'';
 }
 
-function renderJobItemHTML(job){
+function renderJdBlockHTML(job){
   var jdText=String(job.detail||job.desc||job.description||'').trim();
-  var jdEmptyText='暂无JD详情，后台补拉中';
-  if(job&&job.jdStatus==='failed')jdEmptyText='暂无JD详情，自动补拉已暂停';
-  var jdHtml=jdText
-    ? '<div class="job-jd-preview">'+esc(jdText.slice(0,120))+(jdText.length>120?'...':'')+'</div>'
-    : '<div class="job-jd-empty">'+esc(jdEmptyText)+'</div>';
+  if(!jdText){
+    var emptyText='暂无JD详情，后台补拉中';
+    if(job&&job.jdStatus==='failed')emptyText='暂无JD详情，自动补拉已暂停';
+    return '<div class="job-jd-empty">'+esc(emptyText)+'</div>';
+  }
+  var collapsed=jdText.length>160;
+  var preview=collapsed?jdText.slice(0,160):jdText;
+  var open=esc(job.jdExpanded)?' open':'';
+  var body=collapsed
+    ? '<div class="job-jd-preview-body">'+esc(preview)+'<span class="job-jd-ellipsis">…</span></div>'
+        +'<div class="job-jd-full" style="display:none">'+esc(jdText)+'</div>'
+        +'<button type="button" class="job-jd-toggle" data-job-id="'+job.id+'">展开</button>'
+    : '<div class="job-jd-preview-body">'+esc(jdText)+'</div>';
+  return '<div class="job-jd-preview'+open+'" data-jd-job-id="'+job.id+'">'
+    +body
+    +'<button type="button" class="job-jd-open" data-job-id="'+job.id+'" title="在新标签页查看 BOSS 岗位详情">查看 BOSS 详情 ↗</button>'
+    +'</div>';
+}
+
+function renderJobItemHTML(job){
+  var jdHtml=renderJdBlockHTML(job);
   return '<div class="job-item" data-job-id="'+job.id+'"><div class="job-top-row">'
     +'<div class="job-checkbox'+(job.checked?' checked':'')+'" data-job-id="'+job.id+'"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2.5 6l2.5 3 4.5-5"/></svg></div>'
     +'<div class="job-info">'
@@ -401,12 +417,7 @@ function syncRenderedJobItem(job){
     info.insertBefore(skipWrap.firstElementChild,beforeSkip||null);
   }
   var jdWrap=document.createElement('div');
-  var jdText=String(job.detail||job.desc||job.description||'').trim();
-  var jdEmptyText='暂无JD详情，后台补拉中';
-  if(job&&job.jdStatus==='failed')jdEmptyText='暂无JD详情，自动补拉已暂停';
-  jdWrap.innerHTML=jdText
-    ? '<div class="job-jd-preview">'+esc(jdText.slice(0,120))+(jdText.length>120?'...':'')+'</div>'
-    : '<div class="job-jd-empty">'+esc(jdEmptyText)+'</div>';
+  jdWrap.innerHTML=renderJdBlockHTML(job);
   var beforeJd=info.querySelector('.job-custom-toggle');
   info.insertBefore(jdWrap.firstElementChild,beforeJd||null);
   var aiHtml=renderJobAiHTML(job);

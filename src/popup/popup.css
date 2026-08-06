@@ -257,6 +257,20 @@ body{
   border:1px solid var(--border-light);background:#fff;color:var(--text-secondary);word-break:break-word;
 }
 .job-jd-empty{color:var(--text-weak);background:#fafafa}
+.job-jd-preview-body{white-space:pre-wrap}
+.job-jd-ellipsis{color:var(--text-weak)}
+.job-jd-toggle{
+  display:inline-flex;align-items:center;margin-top:5px;padding:2px 8px;
+  font-size:11px;color:var(--accent);background:transparent;border:1px solid var(--border-light);
+  border-radius:10px;cursor:pointer;font-family:inherit;transition:background .12s;
+}
+.job-jd-toggle:hover{background:rgba(217,119,6,.06)}
+.job-jd-open{
+  display:inline-flex;align-items:center;gap:2px;margin-left:6px;padding:2px 8px;
+  font-size:11px;color:var(--accent);background:transparent;border:1px solid var(--border-light);
+  border-radius:10px;cursor:pointer;font-family:inherit;transition:background .12s;
+}
+.job-jd-open:hover{background:rgba(217,119,6,.06)}
 
 .job-custom-toggle{
   display:inline-flex;align-items:center;gap:4px;margin-top:10px;
