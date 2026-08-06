@@ -17,7 +17,7 @@
   },
   "options_page": "src/options/options.html",
   "permissions": ["storage", "activeTab", "scripting", "sidePanel", "alarms"],
-  "host_permissions": ["*://*.zhipin.com/*"],
+  "host_permissions": ["*://*.zhipin.com/*", "https://*/*", "http://*/*"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],
   "content_scripts": [
     {
