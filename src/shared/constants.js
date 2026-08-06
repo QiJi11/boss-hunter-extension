@@ -180,6 +180,31 @@ const CONFIG = {
   SOFT_BATCH_LIMIT: 75,    // 单批软提示阈值：单批选中 > 75 时提示但允许继续
 };
 
+// ── 工作经验年限识别（BOSS 岗位卡片 tag 列表里提取） ──
+// 单一真相源：采集 parseCard 用它从 tags 提年限、渲染层用它高亮展示。
+// 匹配优先级从长到短（「10年以上」要在「1年」前匹配，避免误吞）。
+const EXPERIENCE_PATTERNS = [
+  { label: '在校生(实习)', re: /在校生|实习生/ },
+  { label: '应届生(校招)', re: /应届生/ },
+  { label: '经验不限', re: /经验不限|经验不限/ },
+  { label: '1年以内', re: /1\s*年以内|一年以内/ },
+  { label: '1-3年', re: /[1一二]\s*[-~至到]\s*[3三]\s*年/ },
+  { label: '3-5年', re: /[3三]\s*[-~至到]\s*[5五]\s*年/ },
+  { label: '5-10年', re: /[5五]\s*[-~至到]\s*10\s*年/ },
+  { label: '10年以上', re: /10\s*年?以上|[1一][0〇]年[以之]上/ },
+  { label: '5年以上', re: /5\s*年?以上|5年[以之]上/ },
+];
+function extractExperienceFromTags(tags) {
+  if (!Array.isArray(tags)) return '';
+  for (var i = 0; i < tags.length; i++) {
+    var tag = String(tags[i] || '').trim();
+    for (var j = 0; j < EXPERIENCE_PATTERNS.length; j++) {
+      if (EXPERIENCE_PATTERNS[j].re.test(tag)) return EXPERIENCE_PATTERNS[j].label;
+    }
+  }
+  return '';
+}
+
 const DEFAULT_EXCLUDE_KEYWORDS = [
   '实习',
   '外包',

@@ -388,6 +388,7 @@ function renderJobItemHTML(job){
     +'<div class="job-title">'+esc(job.name)+'</div>'
     +'<div class="job-company">'+esc(job.company)+'</div>'
     +'<div class="job-salary">'+esc(job.salary||'')+'</div>'
+    +(job.experience ? '<div class="job-experience">&#127919; '+esc(job.experience)+'</div>' : '')
     +'<div class="job-tags">'+(job.tags||[]).map(function(t){return'<span class="job-tag">'+esc(t)+'</span>'}).join('')+'</div>'
     +renderJobSkipReasonHTML(job)
     +jdHtml

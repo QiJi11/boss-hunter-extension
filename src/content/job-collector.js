@@ -12,6 +12,36 @@ function extractHrName(card, companyText) {
   return cleaned.split(/[·|｜\s]/).filter(Boolean)[0] || '';
 }
 
+// ── 工作经验年限提取（自包含，content script 不加载 constants.js） ──
+// 从岗位卡片 tags 里识别年限项（如「1-3年」「经验不限」），返回独立 experience 字段。
+// 匹配优先级从长到短（「10年以上」要先于「1年」匹配）。
+const EXPERIENCE_TAG_RES = [
+  { label: '在校生(实习)', re: /在校生|实习生/ },
+  { label: '应届生(校招)', re: /应届生/ },
+  { label: '经验不限', re: /经验不限/ },
+  { label: '1年以内', re: /1\s*年以内|一年以内/ },
+  { label: '1-3年', re: /[1一二]\s*[-~至到]\s*[3三]\s*年/ },
+  { label: '3-5年', re: /[3三]\s*[-~至到]\s*[5五]\s*年/ },
+  { label: '5-10年', re: /[5五]\s*[-~至到]\s*10\s*年/ },
+  { label: '10年以上', re: /10\s*年?以上|[1一][0〇]年[以之]上/ },
+  { label: '5年以上', re: /5\s*年?以上|5年[以之]上/ },
+];
+function extractExperienceFromTags(tags) {
+  if (!Array.isArray(tags)) return '';
+  for (let i = 0; i < tags.length; i++) {
+    const tag = String(tags[i] || '').trim();
+    for (let j = 0; j < EXPERIENCE_TAG_RES.length; j++) {
+      if (EXPERIENCE_TAG_RES[j].re.test(tag)) return EXPERIENCE_TAG_RES[j].label;
+    }
+  }
+  return '';
+}
+// 从 tags 里移除已识别的年限项，避免卡片上重复显示
+function stripExperienceFromTags(tags, experience) {
+  if (!experience || !Array.isArray(tags)) return tags;
+  return tags.filter((t) => t.trim() !== experience);
+}
+
 const JobCollector = {
   collected: new Map(), // id → job
   stopped: false,
@@ -28,6 +58,8 @@ const JobCollector = {
     const id = link.match(/job_detail\/([^.]+)\.html/)?.[1] || link;
     const companyText = companyEl?.textContent.trim() || '';
     const hrName = extractHrName(card, companyText);
+    const experience = extractExperienceFromTags(tags);
+    const cleanTags = stripExperienceFromTags(tags, experience);
 
     return {
       id,
@@ -35,7 +67,8 @@ const JobCollector = {
       salary: decodeSalary(salaryEl?.textContent || ''),
       company: companyText,
       hrName,
-      tags,
+      experience,
+      tags: cleanTags,
       link,
     };
   },
