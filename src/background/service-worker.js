@@ -3796,8 +3796,13 @@ async function stopSend() {
 
 // ── 读取 API Key（从 storage 读取，首次启动由 ensureApiKey 预置） ──
 async function getApiKey() {
-  const { apiKey } = await chrome.storage.local.get('apiKey');
-  return apiKey || '';
+  // 兼容两种存储：裸 apiKey（旧） + sw:aiConfig.apiKey（当前 AI 配置主通道）
+  const result = await chrome.storage.local.get(['apiKey', STORAGE_KEYS.SW.AI_CONFIG]);
+  if (result.apiKey) return String(result.apiKey);
+  if (result[STORAGE_KEYS.SW.AI_CONFIG] && result[STORAGE_KEYS.SW.AI_CONFIG].apiKey) {
+    return String(result[STORAGE_KEYS.SW.AI_CONFIG].apiKey);
+  }
+  return '';
 }
 
 // ── 招呼语并发生成 ──
