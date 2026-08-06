@@ -389,6 +389,7 @@ function renderJobItemHTML(job){
     +'<div class="job-company">'+esc(job.company)+'</div>'
     +'<div class="job-salary">'+esc(job.salary||'')+'</div>'
     +(job.experience ? '<div class="job-experience">&#127919; '+esc(job.experience)+'</div>' : '')
+    +(job.companyRisk ? '<div class="job-risk" data-risk-type="'+esc(job.companyRisk.type)+'">&#9888; '+esc(job.companyRisk.label)+'</div>' : '')
     +'<div class="job-tags">'+(job.tags||[]).map(function(t){return'<span class="job-tag">'+esc(t)+'</span>'}).join('')+'</div>'
     +renderJobSkipReasonHTML(job)
     +jdHtml

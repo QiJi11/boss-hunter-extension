@@ -205,6 +205,48 @@ function extractExperienceFromTags(tags) {
   return '';
 }
 
+// ── 公司风险识别（外包 / 疑似培训机构） ──
+// 单一真相源：SW 过滤、popup 卡片徽章共用。
+// 外包特征：公司名含人力外包商特征词，或岗位名/标签直接标"外包/派遣/驻场"。
+const OUTSOURCE_COMPANY_WORDS = [
+  '外包', '人力', '派遣', '人力资源', '服务外包', '人才服务',
+  '德科', '万宝', '中软', '软通', '博彦', '文思', '东软', '汉得', '金桥', '仕瑞',
+];
+const OUTSOURCE_JOB_WORDS = ['外包', '派遣', '驻场', '人力外包'];
+// 疑似机构/骗局：传媒/贸易/文化/教育咨询类公司挂 AI 开发高薪岗。
+const SUSPICIOUS_INDUSTRY_WORDS = ['文化', '传媒', '贸易', '广告', '影视', '教育', '咨询', '电商', '网络科技'];
+// AI 相关岗位名（用于判断行业与岗位是否不符）。
+const AI_JOB_WORDS = ['ai', 'agent', '大模型', '算法', '人工智能', 'llm', 'rag', '机器学习', '开发'];
+const SCAM_JOB_WORDS = ['漫剧', '带教', '0基础', '零基础', '包教', '招转培', '培训费', '交费', '先学'];
+function detectCompanyRisk(job) {
+  if (!job) return null;
+  var name = String(job.name || '');
+  var company = String(job.company || '');
+  var tags = Array.isArray(job.tags) ? job.tags.join(' ') : '';
+  var hay = (name + ' ' + company + ' ' + tags).toLowerCase();
+
+  // 1) 外包：公司名或岗位名含外包特征
+  var isOutsource = OUTSOURCE_COMPANY_WORDS.some(function(w) {
+    return company.indexOf(w) >= 0;
+  }) || OUTSOURCE_JOB_WORDS.some(function(w) {
+    return name.indexOf(w) >= 0 || tags.indexOf(w) >= 0;
+  });
+
+  // 2) 疑似机构：传媒/贸易/文化公司 + AI 岗 + 高薪；或岗位名含骗局特征词
+  var industrySus = SUSPICIOUS_INDUSTRY_WORDS.some(function(w) { return company.indexOf(w) >= 0; });
+  var isAiJob = AI_JOB_WORDS.some(function(w) { return name.toLowerCase().indexOf(w) >= 0; });
+  var isScamWord = SCAM_JOB_WORDS.some(function(w) { return hay.indexOf(w) >= 0; });
+  var isSuspicious = (industrySus && isAiJob) || isScamWord;
+
+  var risk = null;
+  if (isOutsource) {
+    risk = { type: 'outsource', label: '外包', color: '#e67e22' };
+  } else if (isSuspicious) {
+    risk = { type: 'suspicious', label: '疑似机构', color: '#e74c3c' };
+  }
+  return risk;
+}
+
 const DEFAULT_EXCLUDE_KEYWORDS = [
   '实习',
   '外包',

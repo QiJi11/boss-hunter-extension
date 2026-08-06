@@ -49,6 +49,8 @@ window.initEventsA=function(){
       companySizes:[].concat(Store.get('companySizes')||[]),
       fundingStages:[].concat(Store.get('fundingStages')||[]),
       excludeKeywords:[].concat(Store.get('excludeKeywords')||[]),
+      excludeOutsource:Store.get('excludeOutsource')!==false,
+      excludeSuspicious:Store.get('excludeSuspicious')!==false,
       skipHistoryEnabled:Store.get('skipHistoryEnabled')!==false,
       skipHistoryScope:'hr',
     };
@@ -451,6 +453,20 @@ window.initEventsA=function(){
       markConfigEdit();
       Store.set('skipHistoryEnabled',!!E.skipHistoryToggle.checked);
       Store.set('skipHistoryScope','hr');
+      persistFilterState();
+    });
+  }
+  if(E.excludeOutsourceToggle){
+    E.excludeOutsourceToggle.addEventListener('change',function(){
+      markConfigEdit();
+      Store.set('excludeOutsource',!!E.excludeOutsourceToggle.checked);
+      persistFilterState();
+    });
+  }
+  if(E.excludeSuspiciousToggle){
+    E.excludeSuspiciousToggle.addEventListener('change',function(){
+      markConfigEdit();
+      Store.set('excludeSuspicious',!!E.excludeSuspiciousToggle.checked);
       persistFilterState();
     });
   }

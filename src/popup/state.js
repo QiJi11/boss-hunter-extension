@@ -24,6 +24,8 @@
     companySizes: ['不限'],
     fundingStages: ['不限'],
     excludeKeywords: typeof DEFAULT_EXCLUDE_KEYWORDS !== 'undefined' ? DEFAULT_EXCLUDE_KEYWORDS.slice() : [],
+    excludeOutsource: true,
+    excludeSuspicious: true,
     skipHistoryEnabled: true,
     skipHistoryScope: 'hr',
     aiScreeningEnabled: true,

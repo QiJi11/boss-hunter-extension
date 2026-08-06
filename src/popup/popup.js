@@ -47,6 +47,8 @@ function initDomRefs(){
   E.sizeChips=$('#sizeChips');E.stageChips=$('#stageChips');
   E.excludeKeywordInput=$('#excludeKeywordInput');E.addExcludeKeywordBtn=$('#addExcludeKeywordBtn');E.excludeKeywordTags=$('#excludeKeywordTags');
   E.skipHistoryToggle=$('#skipHistoryToggle');
+  E.excludeOutsourceToggle=$('#excludeOutsourceToggle');
+  E.excludeSuspiciousToggle=$('#excludeSuspiciousToggle');
   E.aiFilterBox=$('#aiFilterBox');E.aiFilterPrompt=$('#aiFilterPrompt');
   E.aiFilterGenerateBtn=$('#aiFilterGenerateBtn');E.aiFilterApplyBtn=$('#aiFilterApplyBtn');
   E.aiFilterDiscardBtn=$('#aiFilterDiscardBtn');E.aiFilterStatus=$('#aiFilterStatus');E.aiFilterPreview=$('#aiFilterPreview');

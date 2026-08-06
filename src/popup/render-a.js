@@ -213,6 +213,10 @@ window.renderExcludeKeywords=function(){
 window.renderSkipHistoryToggle=function(){
   var el=document.getElementById('skipHistoryToggle');
   if(el)el.checked=Store.get('skipHistoryEnabled')!==false;
+  var out=document.getElementById('excludeOutsourceToggle');
+  if(out)out.checked=Store.get('excludeOutsource')!==false;
+  var sus=document.getElementById('excludeSuspiciousToggle');
+  if(sus)sus.checked=Store.get('excludeSuspicious')!==false;
 };
 window.renderChipSecs=function(){
   var areas=getWorkAreas();

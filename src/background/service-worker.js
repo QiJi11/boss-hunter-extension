@@ -348,6 +348,8 @@ async function applyPostCollectRules(jobs, options) {
   var opts = options || {};
   var excludeKeywords = uniqueStrings(opts.excludeKeywords || state.excludeKeywords || []);
   var skipHistoryEnabled = opts.skipHistoryEnabled !== false;
+  var excludeOutsource = opts.excludeOutsource !== false;
+  var excludeSuspicious = opts.excludeSuspicious !== false;
   var handledHrSet = skipHistoryEnabled ? await buildHandledHrSet() : {};
   return (Array.isArray(jobs) ? jobs : []).map(function(job) {
     var excludeHit = findExcludeKeywordHit(job, excludeKeywords);
@@ -356,6 +358,17 @@ async function applyPostCollectRules(jobs, options) {
       job.excludeReason = '命中排除词：' + excludeHit;
     } else {
       job.excludeReason = '';
+    }
+    // 公司风险：外包 / 疑似机构。按开关决定是否排除 + 打标记供卡片展示。
+    var risk = (typeof detectCompanyRisk === 'function') ? detectCompanyRisk(job) : null;
+    if (risk) {
+      job.companyRisk = risk;
+      if ((risk.type === 'outsource' && excludeOutsource) || (risk.type === 'suspicious' && excludeSuspicious)) {
+        job.checked = false;
+        if (!job.excludeReason) job.excludeReason = '命中公司风险：' + risk.label;
+      }
+    } else {
+      job.companyRisk = null;
     }
     var hr = normalizeJobIdentityText(job && (job.hrName || job.bossName));
     var company = normalizeJobIdentityText(job && (job.companyName || job.company));
@@ -1951,6 +1964,8 @@ async function startCollect(params) {
   state.excludeKeywords = uniqueStrings(params && params.excludeKeywords || state.excludeKeywords || DEFAULT_EXCLUDE_KEYWORDS);
   state.skipHistoryEnabled = !params || params.skipHistoryEnabled !== false;
   state.skipHistoryScope = 'hr';
+  state.excludeOutsource = !params || params.excludeOutsource !== false;
+  state.excludeSuspicious = !params || params.excludeSuspicious !== false;
   if(params && params.urlParams) state.searchUrlParams = params.urlParams;
   else state.searchUrlParams = null;
   pushState();
