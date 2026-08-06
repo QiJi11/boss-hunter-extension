@@ -142,10 +142,10 @@ const DEFAULT_TARGET_POSITIONS = [
 const CONFIG = {
   // 每组分组的最大岗位数
   MAX_JOBS_PER_GROUP: 6,
-  // AI 招呼语生成超时（ms）
-  GREETING_TIMEOUT_MS: 8000,
+  // AI 招呼语生成超时（ms）— 实测 Grok 单次需 40s+，8s 太短致并发全超时失败
+  GREETING_TIMEOUT_MS: 120000,
   // AI 招呼语并发数
-  GREETING_CONCURRENCY: 3,
+  GREETING_CONCURRENCY: 2,
   // JD 自动补拉单批岗位数
   JD_HYDRATION_BATCH_SIZE: 12,
   // JD 自动补拉并发数
