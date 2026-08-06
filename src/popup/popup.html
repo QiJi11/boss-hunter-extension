@@ -238,7 +238,28 @@
       <span class="count-unit">/ <span id="resultCountTotal">0</span>个岗位已选</span>
     </div>
     <div class="bottom-actions">
-      <button class="btn btn-send" id="btnSend">一键发送</button>
+      <button class="btn btn-send" id="btnSend">逐岗复核</button>
+    </div>
+  </div>
+
+  <div class="settings-overlay hidden" id="singleSendOverlay">
+    <div class="settings-drawer single-send-drawer">
+      <div class="settings-header">
+        <div class="ai-drawer-title">确认当前岗位</div>
+        <button class="settings-close" id="singleSendClose" title="关闭">×</button>
+      </div>
+      <div class="settings-body">
+        <div class="single-send-job" id="singleSendJob"></div>
+        <div class="single-send-section"><strong>AI 分数、理由与风险</strong><div id="singleSendAi"></div></div>
+        <div class="single-send-section"><strong>待发送招呼语</strong><div id="singleSendGreeting"></div></div>
+        <div class="single-send-section"><strong>待发送简历</strong><div id="singleSendResume"></div></div>
+        <div class="single-send-section"><strong>历史沟通</strong><div id="singleSendHistory"></div></div>
+        <div class="ai-status" id="singleSendStatus"></div>
+        <div class="ai-actions">
+          <button class="btn btn-ghost" id="singleSendSkip" type="button">跳过该岗</button>
+          <button class="btn btn-primary" id="singleSendConfirm" type="button">确认并沟通当前岗位</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -302,6 +323,10 @@
         <div class="ai-drawer-hint">这里可直接保存 AI 设置、文字简历，并导入或导出完整快照。</div>
         <div class="settings-section">
           <div class="settings-section-title">OpenAI-compatible 接口</div>
+          <label class="send-greeting-toggle">
+            <input type="checkbox" id="compositeAiScreeningEnabled" checked>
+            <span>采集后自动运行 AI 岗位筛选</span>
+          </label>
           <div class="ai-field">
             <label for="compositeAiProvider">Provider</label>
             <input id="compositeAiProvider" type="text" placeholder="openai-compatible" autocomplete="off">
@@ -320,7 +345,7 @@
           </div>
           <div class="ai-field">
             <label for="compositeAiScoreThreshold">AI 筛选阈值</label>
-            <input id="compositeAiScoreThreshold" type="number" min="0" max="100" step="1" placeholder="60">
+            <input id="compositeAiScoreThreshold" type="number" min="0" max="100" step="1" placeholder="80">
           </div>
         </div>
         <div class="settings-section">
@@ -328,9 +353,21 @@
           <textarea id="compositeTextResume" class="ai-textarea" rows="7" placeholder="粘贴你的文字简历，AI 会用它判断岗位是否符合。"></textarea>
         </div>
         <div class="settings-section">
+          <div class="settings-section-title">自动回复在线简历</div>
+          <label class="send-greeting-toggle">
+            <input type="checkbox" id="compositeAutoResumeReplyEnabled">
+            <span>HR 索要简历时自动发送</span>
+          </label>
+          <div class="ai-field">
+            <label for="compositeAutoResumeId">已确认的在线简历名称或 ID</label>
+            <input id="compositeAutoResumeId" type="text" placeholder="开启前必须填写并确认" autocomplete="off">
+          </div>
+        </div>
+        <div class="settings-section">
           <div class="settings-section-title">完整备份</div>
           <div class="composite-import-actions">
             <button class="btn btn-ghost" id="compositeExportBtn" type="button">导出配置</button>
+            <button class="btn btn-ghost" id="compositeSensitiveExportBtn" type="button">导出含密钥和简历</button>
             <button class="btn btn-ghost" id="compositeImportBtn" type="button">导入配置</button>
             <input type="file" id="compositeImportFileInput" accept=".json,application/json" hidden>
           </div>

@@ -12,7 +12,8 @@ window.renderReview=function(sendResults,duration,missedCount){
   Store.set('lastReview',{sendResults:results,duration:duration||0,missedCount:missed});
   var successCount=0,failCount=0;
   results.forEach(function(r){
-    if(r.success)successCount++;else failCount++;
+    if(r.success)successCount++;
+    else if(!r.alreadyChatted&& !r.skipped)failCount++;
   });
 
   var total=successCount+failCount;
@@ -43,11 +44,10 @@ window.renderReview=function(sendResults,duration,missedCount){
     +'</div>'
     +'</div>'
 
-    // A1 漏发提示行：已建联（停止/中断前点过「立即沟通」）但未发 AI 招呼语+简历图的岗位 → 一键补发
+    // 已建联但未确认送达的岗位只提示人工核对，不提供自动补发入口。
     +(missed>0
-      ?'<div class="review-missed-hint" style="margin:0 16px 12px;padding:10px 12px;background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.25);border-radius:8px;font-size:12px;color:var(--accent);display:flex;align-items:center;gap:8px;">'
-        +'<span style="flex:1;line-height:1.5">⚠️ '+missed+' 个岗位已建立沟通但未发送 AI 招呼语+简历图</span>'
-        +'<button class="btn btn-primary" id="btnRepairMissed" style="flex:none;padding:5px 12px;font-size:12px;">一键补发</button>'
+      ?'<div class="review-missed-hint" style="margin:0 16px 12px;padding:10px 12px;background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.25);border-radius:8px;font-size:12px;color:var(--accent);">'
+        +'⚠️ '+missed+' 个岗位状态不确定。请逐岗打开复核，确认失败后再人工补发。'
       +'</div>'
       :'')
 
@@ -141,23 +141,4 @@ window.renderReview=function(sendResults,duration,missedCount){
     });
   }
 
-  // Wire 「一键补发」→ SW 把漏发清单入 _v6RepairQueue、startRepairMissed 启动 runRepairV6 单 tab 补发。
-  // 进度/结果复用现有机制：SW phase=sending→review，STATE_UPDATE / SEND_COMPLETE 自动重渲 review（补发后 missed=0 提示行消失）。
-  var repairBtn=document.getElementById('btnRepairMissed');
-  if(repairBtn){
-    repairBtn.addEventListener('click',function(){
-      repairBtn.disabled=true;repairBtn.textContent='补发中…';
-      try{
-        chrome.runtime.sendMessage({type:MSG.REPAIR_MISSED},function(resp){
-          if(chrome.runtime.lastError||!resp||!resp.success){
-            repairBtn.disabled=false;
-            repairBtn.textContent='补发失败，点击重试';
-            repairBtn.title=(resp&&resp.error)||(chrome.runtime.lastError&&chrome.runtime.lastError.message)||'';
-          }
-        });
-      }catch(e){
-        repairBtn.disabled=false;repairBtn.textContent='补发失败，点击重试';
-      }
-    });
-  }
 };

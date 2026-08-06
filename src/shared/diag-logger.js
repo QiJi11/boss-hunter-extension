@@ -42,6 +42,11 @@
       s = s.replace(/sk-[A-Za-z0-9]{16,}/g, 'sk-[已脱敏]');
       // 中国大陆手机号
       s = s.replace(/(^|[^\d])1[3-9]\d{9}(?!\d)/g, '$11**********');
+      s = s.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[邮箱已脱敏]');
+      s = s.replace(/(^|[^\d])\d{17}[\dXx](?!\d)/g, '$1[身份证已脱敏]');
+      s = s.replace(/([?&])([^=\s&#]{1,40})=([^&#\s]+)/g, '$1$2=[查询参数已脱敏]');
+      s = s.replace(/\b(api[_-]?key|access[_-]?token|secret|authorization)\b\s*[:=]\s*[^\s,;]+/gi, '$1=[密钥已脱敏]');
+      s = s.replace(/(?:住址|地址|现居地|家庭地址)\s*[:：]\s*[^,，;；\n]{4,80}/g, '地址：[地址已脱敏]');
       return s;
     } catch (e) { return '[sanitize failed]'; }
   }

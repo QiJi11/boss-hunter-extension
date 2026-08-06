@@ -6,15 +6,19 @@
     baseUrl: 'https://api.openai.com/v1',
     apiKey: '',
     model: 'gpt-4.1-mini',
-    scoreThreshold: 60,
+    scoreThreshold: 80,
   };
 
   /**
    * 读取当前完整备份快照。
    */
-  async function readBackupSnapshot() {
+  async function readBackupSnapshot(options) {
+    const sensitive = !!(options && options.sensitive);
     const [storageItems, storedImages] = await Promise.all([
-      chrome.storage.local.get(['resumeImages', 'apiKey', 'textResume', AI_CONFIG_KEY, FILTER_STATE_KEY]),
+      chrome.storage.local.get([
+        'resumeImages', 'apiKey', 'textResume', AI_CONFIG_KEY, FILTER_STATE_KEY,
+        'aiScreeningEnabled', 'autoResumeReplyEnabled', 'autoResumeId', 'backupVersion',
+      ]),
       global.getResumeImages().catch(() => []),
     ]);
 
@@ -25,14 +29,31 @@
     const aiConfig = normalizeAiConfig(storageItems[AI_CONFIG_KEY] || {});
     if (storageItems.apiKey && !aiConfig.apiKey) aiConfig.apiKey = storageItems.apiKey;
 
-    return {
-      version: 1,
+    const featureSettings = typeof global.normalizeFeatureSettings === 'function'
+      ? global.normalizeFeatureSettings(storageItems)
+      : {
+          aiScreeningEnabled: storageItems.aiScreeningEnabled !== false,
+          autoResumeReplyEnabled: storageItems.autoResumeReplyEnabled === true,
+          autoResumeId: typeof storageItems.autoResumeId === 'string' ? storageItems.autoResumeId : '',
+          backupVersion: 2,
+        };
+    const publicAiConfig = Object.assign({}, aiConfig);
+    delete publicAiConfig.apiKey;
+    if (!sensitive) delete featureSettings.autoResumeId;
+    const snapshot = {
+      version: 2,
+      backupVersion: 2,
+      sensitive,
       exportedAt: new Date().toISOString(),
       filterState: normalizeFilterStateForBackup(storageItems[FILTER_STATE_KEY] || null),
-      resumeImages: images.length ? images : null,
-      textResume: typeof storageItems.textResume === 'string' ? storageItems.textResume : null,
-      aiConfig,
+      featureSettings,
+      aiConfig: sensitive ? aiConfig : publicAiConfig,
     };
+    if (sensitive) {
+      snapshot.resumeImages = images.length ? images : null;
+      snapshot.textResume = typeof storageItems.textResume === 'string' ? storageItems.textResume : null;
+    }
+    return snapshot;
   }
 
   /**
@@ -50,6 +71,7 @@
       resumeImages: undefined,
       textResume: undefined,
       aiConfig: undefined,
+      featureSettings: undefined,
     };
 
     if (Object.prototype.hasOwnProperty.call(raw, 'filterState')) {
@@ -79,12 +101,34 @@
       }
       draft.aiConfig = normalizeAiConfig(raw.aiConfig || {});
     }
+    if (Object.prototype.hasOwnProperty.call(raw, 'featureSettings')) {
+      if (raw.featureSettings !== null && typeof raw.featureSettings !== 'object') {
+        throw new Error('featureSettings 类型错误');
+      }
+      const featurePatch = {};
+      const rawFeatures = raw.featureSettings || {};
+      if (Object.prototype.hasOwnProperty.call(rawFeatures, 'aiScreeningEnabled')) {
+        featurePatch.aiScreeningEnabled = rawFeatures.aiScreeningEnabled !== false;
+      }
+      if (Object.prototype.hasOwnProperty.call(rawFeatures, 'autoResumeReplyEnabled')) {
+        featurePatch.autoResumeReplyEnabled = rawFeatures.autoResumeReplyEnabled === true;
+      }
+      if (Object.prototype.hasOwnProperty.call(rawFeatures, 'autoResumeId')) {
+        featurePatch.autoResumeId = typeof rawFeatures.autoResumeId === 'string' ? rawFeatures.autoResumeId.trim() : '';
+      }
+      featurePatch.backupVersion = 2;
+      draft.featureSettings = featurePatch;
+    }
+    if (draft.featureSettings?.autoResumeReplyEnabled === true && !draft.featureSettings.autoResumeId) {
+      draft.featureSettings.autoResumeReplyEnabled = false;
+    }
 
     if (
       draft.filterState === undefined &&
       draft.resumeImages === undefined &&
       draft.textResume === undefined &&
-      draft.aiConfig === undefined
+      draft.aiConfig === undefined &&
+      draft.featureSettings === undefined
     ) {
       throw new Error('导入文件未包含可导入的分组');
     }
@@ -105,8 +149,15 @@
       storagePatch.textResume = draft.textResume;
     }
     if (draft.aiConfig !== undefined) {
-      storagePatch[AI_CONFIG_KEY] = draft.aiConfig;
-      storagePatch.apiKey = draft.aiConfig.apiKey || '';
+      const current = await chrome.storage.local.get([AI_CONFIG_KEY, 'apiKey']);
+      const currentCfg = normalizeAiConfig(current[AI_CONFIG_KEY] || {});
+      const imported = normalizeAiConfig(draft.aiConfig);
+      if (!imported.apiKey) imported.apiKey = currentCfg.apiKey || current.apiKey || '';
+      storagePatch[AI_CONFIG_KEY] = imported;
+      storagePatch.apiKey = imported.apiKey;
+    }
+    if (draft.featureSettings !== undefined) {
+      Object.assign(storagePatch, draft.featureSettings, { backupVersion: 2 });
     }
     if (draft.filterState !== undefined) {
       storagePatch[FILTER_STATE_KEY] = draft.filterState;
@@ -167,7 +218,34 @@
     if (typeof cfg.scoreThreshold !== 'number' || Number.isNaN(cfg.scoreThreshold)) {
       throw new Error('aiConfig.scoreThreshold 类型错误');
     }
+    cfg.scoreThreshold = Math.max(0, Math.min(100, cfg.scoreThreshold));
     return cfg;
+  }
+
+  function getProviderOriginPattern(baseUrl) {
+    var parsed;
+    try {
+      parsed = new URL(String(baseUrl || '').trim());
+    } catch (_) {
+      throw new Error('Provider URL 格式错误');
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      throw new Error('Provider 仅支持 HTTP/HTTPS');
+    }
+    return parsed.origin + '/*';
+  }
+
+  async function requestProviderPermission(baseUrl) {
+    var origin = getProviderOriginPattern(baseUrl);
+    var granted = await chrome.permissions.contains({ origins: [origin] });
+    if (granted) return { granted: true, origin: origin };
+    granted = await chrome.permissions.request({ origins: [origin] });
+    return { granted: !!granted, origin: origin };
+  }
+
+  async function requestImportProviderPermission(draft) {
+    if (!draft || draft.aiConfig === undefined) return null;
+    return requestProviderPermission(draft.aiConfig.baseUrl);
   }
 
   /**
@@ -196,6 +274,13 @@
     }
     if (draft.aiConfig !== undefined) {
       items.push({ label: 'AI 设置', value: summarizeAiConfig(draft.aiConfig) });
+    }
+    if (draft.featureSettings !== undefined) {
+      items.push({
+        label: '功能开关',
+        value: 'AI筛选：' + (draft.featureSettings.aiScreeningEnabled === false ? '关闭' : '开启')
+          + '；自动回复简历：' + (draft.featureSettings.autoResumeReplyEnabled === true ? '开启' : '关闭'),
+      });
     }
     return items;
   }
@@ -295,5 +380,8 @@
     normalizeAiConfig,
     buildImportPreviewMeta,
     buildImportPreviewItems,
+    getProviderOriginPattern,
+    requestProviderPermission,
+    requestImportProviderPermission,
   };
 })(window);

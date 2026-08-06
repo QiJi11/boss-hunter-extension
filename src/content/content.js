@@ -20,7 +20,6 @@ function _persistDiag(prefix, info) {
     el.setAttribute('data-diag-sync', JSON.stringify(arr));
   } catch (e) {}
 }
-
 // Self-test 入口：main world (osascript inject) 通过 CustomEvent 跨 world 触发 CS 自己调
 // _persistDiag N 次，用于验证「修改后 content.js 已被加载 + 同步诊断写无丢失」。
 // 用法：document.dispatchEvent(new CustomEvent('ZITOU_DIAG_TEST', {detail:{n:100}}))
@@ -289,7 +288,7 @@ var JobClicker = {
   },
 
   _closeGreetDialog: async function() {
-    // 委托给共用函数（stage1 提取 与 stage2 发送/补发 单一来源）
+    // 委托给 stage1 提取与 stage2 发送共用的弹窗清理函数。
     await closeBlockingDialogs(3);
   },
 };
@@ -596,7 +595,7 @@ function findChatConversation(hrName, hrCompany) {
     }
   }
   if (nameOnlyHits.length > 1) {
-    console.warn('[猎职] findChatConversation: 兜底命中 ' + nameOnlyHits.length + ' 个同名HR（歧义）→ 不返回，转定位失败/补发');
+    console.warn('[猎职] findChatConversation: 兜底命中 ' + nameOnlyHits.length + ' 个同名HR（歧义）→ 不返回，按定位失败处理');
     try {
       if (typeof ErrorLogger !== 'undefined' && ErrorLogger.logError) {
         ErrorLogger.logError('[findConv:ambiguous] ' + JSON.stringify({
@@ -640,14 +639,14 @@ function findChatConversation(hrName, hrCompany) {
 // 读「当前激活对话」的 HR名+公司，跟目标 job 比；HR名匹配 且 公司归一化后匹配 才放行。
 // ⚠️ 真机实证：聊天详情顶栏根本不显示公司名，原顶栏候选选择器全失效（已删）。
 // 可靠数据源 = 当前激活列表项 `.friend-content.selected`（真机 outerHTML 实证，
-// 同时带 HR名 .name-text + 公司名，连猎头对话也带）。读不到一律 cannotVerify 转补发，不再猜顶栏。
+// 同时带 HR名 .name-text + 公司名，连猎头对话也带）。读不到一律 cannotVerify，不再猜顶栏。
 function assertOpenConversationIdentity(targetHrName, targetHrCompany) {
   var hrName = (targetHrName || '').trim();
 
-  // 边界兜底：必须恰好 1 个激活对话，否则无法确定当前打开的是哪个 → cannotVerify 转补发
+  // 边界兜底：必须恰好 1 个激活对话，否则无法确定当前打开的是哪个。
   var sels = document.querySelectorAll('.friend-content.selected');
   if (sels.length !== 1) {
-    console.warn('[猎职] assertOpenConversationIdentity: .friend-content.selected 数量=' + sels.length + '（非唯一）→ cannotVerify，转补发');
+    console.warn('[猎职] assertOpenConversationIdentity: .friend-content.selected 数量=' + sels.length + '（非唯一）→ cannotVerify');
     return { ok: false, cannotVerify: true, openName: '', openCompany: '' };
   }
   var sel = sels[0];
@@ -672,9 +671,9 @@ function assertOpenConversationIdentity(targetHrName, targetHrCompany) {
     }
   }
 
-  // 取不到名或公司 → 无法核验，按核心原则（错投 >> 漏发）当失败转补发
+  // 取不到名或公司 → 无法核验，按核心原则（错投 >> 漏发）当失败。
   if (!openName || !openCompany) {
-    console.warn('[猎职] assertOpenConversationIdentity: .selected 取不到 name/company（name="' + openName + '" company="' + openCompany + '"）→ cannotVerify，转补发');
+    console.warn('[猎职] assertOpenConversationIdentity: .selected 取不到 name/company（name="' + openName + '" company="' + openCompany + '"）→ cannotVerify');
     return { ok: false, cannotVerify: true, openName: openName, openCompany: openCompany };
   }
   var nameOk = openName.indexOf(hrName) !== -1 || hrName.indexOf(openName) !== -1 || openName === hrName;
@@ -682,7 +681,7 @@ function assertOpenConversationIdentity(targetHrName, targetHrCompany) {
   if (nameOk && companyOk) {
     return { ok: true, openName: openName, openCompany: openCompany };
   }
-  console.warn('[猎职] assertOpenConversationIdentity: 身份断言失败 target="' + hrName + '/' + (targetHrCompany || '') + '" open="' + openName + '/' + openCompany + '" nameOk=' + nameOk + ' companyOk=' + companyOk + ' → 转补发');
+  console.warn('[猎职] assertOpenConversationIdentity: 身份断言失败 target="' + hrName + '/' + (targetHrCompany || '') + '" open="' + openName + '/' + openCompany + '" nameOk=' + nameOk + ' companyOk=' + companyOk);
   try {
     if (typeof ErrorLogger !== 'undefined' && ErrorLogger.logError) {
       ErrorLogger.logError('[identityAssert:fail] ' + JSON.stringify({
@@ -1032,13 +1031,6 @@ function assertOpenConversationIdentity(targetHrName, targetHrCompany) {
         );
         return true;
 
-      case MSG.WORKER_REPAIR:
-        handleWorkerRepair(msg).then(
-          (result) => sendResponse(result),
-          (e) => sendResponse({ complete: false, error: e.message })
-        );
-        return true;
-
       case MSG.CONFIRM_CHANGE_JOB_DIALOG:
         // #39 阶段1跳转恢复：SW 指派消息页 CS 点「沟通新职位」确认弹窗
         confirmChangeJobDialog().then(
@@ -1090,6 +1082,21 @@ function assertOpenConversationIdentity(targetHrName, targetHrCompany) {
   if (href.includes('/web/geek/jobs')) {
   } else if (href.includes('/web/geek/chat')) {
     if (typeof ChatListMonitor !== 'undefined') ChatListMonitor.start();
+    if (typeof ChatMonitor !== 'undefined') {
+      function syncAutoResumeMonitor(items) {
+        if (items.autoResumeReplyEnabled === true && String(items.autoResumeId || '').trim()) {
+          ChatMonitor.start(items.autoResumeId);
+        } else {
+          ChatMonitor.stop();
+        }
+      }
+      chrome.storage.local.get(['autoResumeReplyEnabled', 'autoResumeId'], syncAutoResumeMonitor);
+      chrome.storage.onChanged.addListener(function(changes, areaName) {
+        if (areaName !== 'local'
+          || (!changes.autoResumeReplyEnabled && !changes.autoResumeId)) return;
+        chrome.storage.local.get(['autoResumeReplyEnabled', 'autoResumeId'], syncAutoResumeMonitor);
+      });
+    }
   } else if (href.includes('/job_detail/')) {
   }
 
@@ -1442,20 +1449,20 @@ async function handleWorkerActivate(msg) {
   }
 
   // 进对话后可能弹「同HR多岗位（选之前岗位/新岗位）」「打招呼」等弹窗，挡住输入框 →
-  // 不关掉 sendText 会卡住。stage2 发送与补发都经此函数，统一在这里关弹窗。
+  // 不关掉 sendText 会卡住，统一在这里关弹窗。
   // closeBlockingDialogs 多轮轮询（~2s），能接住延迟弹出的弹窗；持续不灭也不阻塞，
   // 让后续 sendText 去如实失败，而不是在这里死等。
   await closeBlockingDialogs(3);
 
   // 投递错位止血 #2：fallback 命中（公司未经主循环验证）→ 发送前身份断言。
-  // 读详情顶栏 HR名+公司核对目标；不匹配或无法核验一律不放行，转补发，杜绝同名错投。
+  // 读当前激活对话的 HR名+公司核对目标；不匹配或无法核验一律不放行，杜绝同名错投。
   // exact 命中（绝大多数正常岗）跳过断言，零回归。
   if (matchMode === 'fallback') {
     var idn = assertOpenConversationIdentity(job.hrName, job.hrCompany);
     if (!idn.ok) {
       return {
         success: false, jobId: jobId,
-        error: idn.cannotVerify ? '兜底命中无法核验对话身份（顶栏选择器缺失），转补发' : '兜底命中身份断言失败（疑同名错投）：当前对话=' + (idn.openName || '?') + '/' + (idn.openCompany || '?'),
+        error: idn.cannotVerify ? '兜底命中无法核验对话身份' : '兜底命中身份断言失败（疑同名错投）：当前对话=' + (idn.openName || '?') + '/' + (idn.openCompany || '?'),
         identityAssertFailed: true,
         positionName: positionName, companyName: companyName,
       };
@@ -1473,9 +1480,9 @@ async function handleWorkerSend(msg) {
   var job = msg.job || {};
   var jobId = job.jobId;
   try {
-    // worker 阶段 fail-fast：文字 3s 图片 4s 各单次不重试，未确认即转补发队列。
+    // worker 阶段 fail-fast：文字 3s、图片 4s，各单次不重试；未确认即记失败并交给人工复核。
     // 旧版 sendText 死等 8s + 重试 3 次 = ~28s/岗位 → 招呼语发 3 次（errorLog 实证 baseline=4）；
-    // sendImage 同款 3 次重试。worker 阶段抢同账号 WS，重试纯浪费——补发兜底（单连接干净环境）。
+    // sendImage 同款 3 次重试。worker 阶段抢同账号 WS，重复发送风险更高，因此只尝试一次。
     var sendResult = await JobSender.sendSingle(
       job.greeting, jobId,
       { timeoutMs: 4000, maxAttempts: 1 },  // imgOpts
@@ -1549,40 +1556,5 @@ async function handleEnableGreetingSetting(templateId) {
     return { ok: !!g.enabled, enabled: g.enabled };
   } catch (e) {
     return { ok: false, error: e.message };
-  }
-}
-
-// ── v6 补发：在全新沟通页里重进对话、核对服务器历史、缺啥补啥（单连接、安静期）──
-async function handleWorkerRepair(msg) {
-  var job = msg.job || {};
-  var jobId = job.jobId;
-  // 复用 activate 的导航逻辑：找到并进入该 HR 对话，等历史加载
-  var act = await handleWorkerActivate(msg);
-  if (!act || !act.success) {
-    // 对话没建起来 → 补不了（属「未找到对话」独立 bug），如实回报
-    return {
-      complete: false, foundConv: false, jobId: jobId,
-      error: (act && act.error) || '补发时未找到对话',
-      positionName: job.positionName, companyName: job.companyName,
-    };
-  }
-  // 等服务器历史 AJAX 渲染稳定再 hasTextInHistory/hasImageInHistory，否则 DOM 没渲染完
-  // 误判 hadText:false → 重发招呼语（双发）。上轮 1000→500 过激进引入回归，本轮回退到 1500。
-  await sleep(1500);
-  try {
-    // 补发阶段单连接干净环境无 WS 风暴：5s 单图超时 + 最多 2 次重试 + 600ms 重连间隔，比 worker 耐心
-    // 但比 legacy 默认（15s×3）激进得多。补发还会先查服务器历史，已成功的图不会重发（天然防双发）。
-    var r = await JobSender.repairSingle(
-      job.greeting, jobId,
-      { timeoutMs: 5000, maxAttempts: 2, retryDelayMs: 600 }, // imgOpts
-      { timeoutMs: 5000, maxAttempts: 2, retryDelayMs: 600 }  // textOpts (跟 imgOpts 同保守值)
-    );
-    return {
-      jobId: jobId, foundConv: true,
-      positionName: job.positionName, companyName: job.companyName,
-      ...r,
-    };
-  } catch (e) {
-    return { complete: false, foundConv: true, jobId: jobId, error: e.message };
   }
 }

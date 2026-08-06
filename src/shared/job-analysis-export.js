@@ -1,6 +1,6 @@
 (function (global) {
   const DEFAULT_RANGE = 'last7';
-  const STATUS_KEYS = ['collected', 'selected', 'sent', 'alreadyChatted', 'skipped', 'failed', 'unsent'];
+  const STATUS_KEYS = ['collected', 'recommended', 'manualReview', 'sending', 'sent', 'alreadyChatted', 'failed', 'skipped', 'unsent'];
 
   /**
    * 根据岗位记录的处理、最近出现或首次采集时间，返回用于时间筛选的时间戳。

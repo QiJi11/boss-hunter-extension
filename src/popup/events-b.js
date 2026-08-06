@@ -329,7 +329,114 @@ window.initEventsB=function(){
     })(todo[ti]);
   });
 
-  // ── Send button ──
+  var pendingSingleSend=null;
+
+  function findGroupForJob(jobId){
+    var groups=Store.get('groups')||[];
+    for(var i=0;i<groups.length;i++){
+      var jobs=groups[i].jobs||[];
+      for(var j=0;j<jobs.length;j++)if(String(jobs[j].id)===String(jobId))return groups[i];
+    }
+    return null;
+  }
+
+  function finalGreetingForJob(job){
+    var custom=(Store.get('jobCustom')||{})[job.id]||{};
+    var group=findGroupForJob(job.id);
+    return String(custom.customGreeting||job.aiGreeting||(group&&group.greeting&&group.greeting.text)||'').trim();
+  }
+
+  function finalResumeNamesForJob(job){
+    var custom=(Store.get('jobCustom')||{})[job.id]||{};
+    var group=findGroupForJob(job.id);
+    var images=(custom.images&&custom.images.length)?custom.images:
+      (group&&group.images&&group.images.length?group.images:(Store.get('resumeImages')||[]));
+    return (images||[]).map(function(img){return img.name||'图片简历'}).filter(Boolean);
+  }
+
+  function closeSingleSend(){
+    pendingSingleSend=null;
+    if(E.singleSendOverlay)E.singleSendOverlay.classList.add('hidden');
+  }
+
+  function renderSingleSend(job,token){
+    pendingSingleSend={job:job,token:token};
+    var ai=job.aiScreen||{};
+    var risks=Array.isArray(ai.risks)&&ai.risks.length?ai.risks.join('；'):'无明确风险';
+    var names=finalResumeNamesForJob(job);
+    E.singleSendJob.textContent=(job.company||'')+'｜'+(job.name||'')+'｜'+(job.city||job.location||'城市未标注')+'｜'+(job.salary||'薪资未标注');
+    E.singleSendAi.textContent='AI '+Number(ai.score||0)+' 分；'+(ai.reason||'未完成 AI 筛选')+'；风险：'+risks;
+    E.singleSendGreeting.textContent=finalGreetingForJob(job)||'未配置招呼语，无法发送';
+    E.singleSendResume.textContent=names.length?names.join('、'):'不发送图片简历';
+    E.singleSendHistory.textContent=(job.historySkipReason||job.alreadyChatted)
+      ?'已有沟通记录，请谨慎确认'
+      :'未发现已有沟通记录';
+    E.singleSendStatus.textContent='';
+    E.singleSendConfirm.disabled=!finalGreetingForJob(job);
+    E.singleSendOverlay.classList.remove('hidden');
+  }
+
+  function prepareSingleSend(job){
+    chrome.runtime.sendMessage({type:MSG.PREPARE_SINGLE_SEND,jobId:job.id},function(resp){
+      if(chrome.runtime.lastError||!resp||!resp.success){
+        alert((resp&&resp.error)||chrome.runtime.lastError?.message||'无法准备岗位确认');
+        return;
+      }
+      renderSingleSend(job,resp.token);
+    });
+  }
+
+  if(E.singleSendClose)E.singleSendClose.addEventListener('click',closeSingleSend);
+  if(E.singleSendSkip)E.singleSendSkip.addEventListener('click',function(){
+    if(pendingSingleSend&&pendingSingleSend.job){
+      pendingSingleSend.job.checked=false;
+      pendingSingleSend.job.status='skipped';
+      Store.set('jobs',Store.get('jobs')||[]);
+      window.syncGroupsWithJobs&&window.syncGroupsWithJobs();
+      window.updResCnt();
+    }
+    closeSingleSend();
+  });
+  if(E.singleSendConfirm)E.singleSendConfirm.addEventListener('click',function(){
+    if(!pendingSingleSend)return;
+    E.singleSendConfirm.disabled=true;
+    E.singleSendStatus.textContent='正在启动当前岗位沟通...';
+    window.syncGroupImagesToJobCustom&&window.syncGroupImagesToJobCustom();
+    var payload=pendingSingleSend;
+    var storagePatch={};
+    storagePatch[STORAGE_KEYS.UI.JOB_CUSTOM]=Store.get('jobCustom')||{};
+    chrome.storage.local.set(storagePatch,function(){
+      if(chrome.runtime.lastError){
+        E.singleSendConfirm.disabled=false;
+        E.singleSendStatus.textContent='保存当前岗位配置失败';
+        return;
+      }
+      chrome.runtime.sendMessage({
+        type:MSG.CONFIRM_SINGLE_SEND,
+        jobId:payload.job.id,
+        token:payload.token,
+        hrActiveFilter:Store.get('hrActiveFilter')||'不限'
+      },function(resp){
+        if(chrome.runtime.lastError||!resp||!resp.success){
+          E.singleSendConfirm.disabled=false;
+          E.singleSendStatus.textContent=(resp&&resp.error)||chrome.runtime.lastError?.message||'启动失败';
+          return;
+        }
+        closeSingleSend();
+        Store.set('sending',true);
+        Store.set('progressDone',false);
+        Store.set('reviewDismissed',false);
+        E.progressSection.classList.remove('hidden');
+        E.btnSend.textContent='停止发送';
+        E.btnSend.classList.add('sending');
+        E.btnSend.disabled=false;
+        E.progressText.textContent='正在沟通当前岗位...';
+        E.progressSub.textContent=payload.job.company+' · '+payload.job.name;
+      });
+    });
+  });
+
+  // ── Send button：勾选只形成复核队列，每次只确认一个岗位 ──
   E.btnSend.addEventListener('click',function(){
     var sending=Store.get('sending');
     if(sending){
@@ -346,114 +453,11 @@ window.initEventsB=function(){
       return
     }
     var jobs=Store.get('jobs')||[];
-    var jobIds=jobs.filter(function(j){return j.checked}).map(function(j){return j.id});
-    // 防御：Store 无勾选岗位（如 UI 勾选与 Store 脱节的幽灵卡场景）→ 不发 START_SEND，给用户可见提示
-    if(jobIds.length===0){
+    var firstJob=jobs.find(function(j){return j.checked});
+    if(!firstJob){
       alert('当前没有已勾选的岗位，请重新勾选岗位后再投递');
       return
     }
-    // ── 投递数量闸门（gate）：在投递入口前置，向 SW 读当天已成功投递数后决策 ──
-    // 规则：日上限 150（本地自然日）。remaining=150-当天已投，本批 N=jobIds.length。
-    //   ① N+已投 > 150（超日上限）→ 硬拦：只投前 remaining 个，弹窗提示官方限制。
-    //   ② 75 < N ≤ 150 且不触发日上限 → 软提示（confirm，允许继续）。
-    //   ③ N ≤ 75 且不触发日上限 → 正常投，无提示。
-    // 读取失败（SW 异常）放行（count=0），不阻断核心发送链。
-    var DAILY_LIMIT=150, SOFT_LIMIT=75;
-    chrome.runtime.sendMessage({type:MSG.GET_DAILY_SEND_COUNT},function(gateResp){
-      var alreadyToday=0;
-      var gateCountOk=!chrome.runtime.lastError&&gateResp&&gateResp.success&&typeof gateResp.count==='number';
-      if(gateCountOk)alreadyToday=gateResp.count;
-      if(gateResp&&typeof gateResp.limit==='number')DAILY_LIMIT=gateResp.limit;
-      var remaining=Math.max(0,DAILY_LIMIT-alreadyToday);
-      var N=jobIds.length;
-      // 诊断包：读计数失败 → SW 异常放行（count=0），记一条 warn
-      try{if(!gateCountOk&&typeof DiagLogger!=='undefined')DiagLogger.warn('popup.limitGate','读当天投递计数失败，放行(count=0) lastError='+(chrome.runtime.lastError?String(chrome.runtime.lastError.message||chrome.runtime.lastError):'none')+' N='+N)}catch(_){}
-      // 诊断包：gate 决策分支记录（脱敏，只记数值+分支名+slice后数量）
-      var gateBranch=(N+alreadyToday>DAILY_LIMIT)?(remaining<=0?'硬拦-额度已满':'硬拦-截断'):(N>SOFT_LIMIT?'软提示':'正常');
-
-      if(N+alreadyToday>DAILY_LIMIT){
-        // ① 硬拦：今日已投 alreadyToday，剩余可投 remaining；超出部分不投
-        if(remaining<=0){
-          try{if(typeof DiagLogger!=='undefined')DiagLogger.userEvent('popup.limitGate','gate分支='+gateBranch+' 今日已投='+alreadyToday+' 本批N='+N+' 上限='+DAILY_LIMIT+' slice后='+jobIds.length)}catch(_){}
-          alert('Boss 官方不支持一天沟通数量大于 150 个，不建议超额投递');
-          return; // 今日额度已满，整批拦下
-        }
-        alert('Boss 官方不支持一天沟通数量大于 150 个，不建议超额投递');
-        jobIds=jobIds.slice(0,remaining); // 只投前 remaining 个
-      }else if(N>SOFT_LIMIT){
-        // ② 软提示：允许继续（取消则不投）
-        if(!confirm('单批投递数量太大容易引起卡顿，建议控制岗位数小于等于 75 个'))return;
-      }
-      // ③ N ≤ 75 且不触发日上限：直接走
-      try{if(typeof DiagLogger!=='undefined')DiagLogger.userEvent('popup.limitGate','gate分支='+gateBranch+' 今日已投='+alreadyToday+' 本批N='+N+' 上限='+DAILY_LIMIT+' slice后='+jobIds.length)}catch(_){}
-
-      startSendAfterGate(jobIds);
-    });
-    return; // 实际启动在 gate 回调里
+    prepareSingleSend(firstJob);
   });
-
-  // ── gate 通过后的真正投递启动（原 Send 逻辑整体下沉，核心发送链零改动）──
-  function startSendAfterGate(jobIds){
-    // 诊断包：用户点一键发送（任务启动 USER_EVENT，popup 侧）
-    try{if(typeof DiagLogger!=='undefined')DiagLogger.userEvent('popup','用户点击「一键发送」 jobs='+jobIds.length)}catch(_){}
-    // 组图片下沉到组内岗位的 jobCustom.images，发送链路（job-sender 读 ui:jobCustom）才能按组生效
-    window.syncGroupImagesToJobCustom&&window.syncGroupImagesToJobCustom();
-    // per-job 自定义招呼语：强制把最新 jobCustom 落盘（绕过 persistUIState 300ms 防抖），
-    // 保证 SW buildSendQueueV6 灌入时读到的是用户刚输入的 customGreeting，而非陈旧值。
-    try{
-      if(typeof STORAGE_KEYS!=='undefined'&&typeof chrome!=='undefined'&&chrome.storage){
-        var _jc=Store.get('jobCustom')||{};
-        var _save={};_save[STORAGE_KEYS.UI.JOB_CUSTOM]=_jc;
-        chrome.storage.local.set(_save);
-      }
-    }catch(_e){}
-    Store.set('sending',true);
-    Store.set('progressDone',false);
-    Store.set('reviewDismissed',false); // 新一批开投 → 解除抑制，本批投完正常弹 review
-    E.progressSection.classList.remove('hidden');
-    try{E.progressSection.scrollIntoView({behavior:'smooth',block:'start'})}catch(ex){}
-    E.btnSend.textContent='停止发送';
-    E.btnSend.classList.add('sending');
-    E.btnSend.disabled=false;
-    E.progressText.textContent='正在启动投递...';
-    E.progressSub.textContent='请稍候';
-    E.progressFill.style.width='0%';
-    try{
-      chrome.runtime.sendMessage({type:MSG.START_SEND,jobIds:jobIds,hrActiveFilter:Store.get('hrActiveFilter')||'不限'},function(resp){
-        if(chrome.runtime.lastError||!resp||!resp.success){
-          Store.set('sending',false);
-          E.btnSend.textContent='一键发送';
-          E.btnSend.classList.remove('sending');
-          E.btnSend.disabled=false;
-          E.btnSend.style.background='';
-          if(resp&&resp.errorCode==='NO_QUOTA'){
-            // 无免费额度：不报"启动失败"（非故障），换成额度提示 + 内联购买入口
-            E.progressText.textContent='免费额度已用完';
-            E.progressSub.textContent='';
-            E.progressSub.classList.add('hidden');
-            showNoQuotaBuy(true);
-          }else{
-            showNoQuotaBuy(false);
-            E.progressText.textContent='投递启动失败';
-            E.progressSub.classList.remove('hidden');
-            E.progressSub.textContent=(resp&&resp.error)||'请确保BOSS直聘聊天页已打开';
-          }
-        }else{
-          showNoQuotaBuy(false);
-          E.progressText.textContent='正在投递...';
-          E.progressSub.classList.remove('hidden');
-          E.progressSub.textContent='共 '+jobIds.length+' 个岗位';
-        }
-      });
-    }catch(ex){
-      Store.set('sending',false);
-      E.btnSend.textContent='一键发送';
-      E.btnSend.classList.remove('sending');
-      E.btnSend.disabled=false;
-      E.btnSend.style.background='';
-      E.progressText.textContent='投递启动失败';
-      E.progressSub.classList.remove('hidden');
-      E.progressSub.textContent='扩展上下文异常，请刷新页面重试';
-    }
-  }
 };

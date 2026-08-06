@@ -10,6 +10,8 @@ const MSG = {
   START_COLLECT: 'START_COLLECT',
   STOP_COLLECT: 'STOP_COLLECT',
   START_SEND: 'START_SEND',
+  PREPARE_SINGLE_SEND: 'PREPARE_SINGLE_SEND',
+  CONFIRM_SINGLE_SEND: 'CONFIRM_SINGLE_SEND',
   STOP_SEND: 'STOP_SEND',
   REGENERATE_GREETING: 'REGENERATE_GREETING',
   UPDATE_GREETING: 'UPDATE_GREETING',
@@ -21,7 +23,6 @@ const MSG = {
   TEST_AI_CONFIG: 'TEST_AI_CONFIG',
   GENERATE_FILTER_SUGGESTION: 'GENERATE_FILTER_SUGGESTION',
   RETRY_JOB_DETAILS: 'RETRY_JOB_DETAILS',
-  REPAIR_MISSED: 'REPAIR_MISSED',   // A1：review 页「一键补发」漏发岗位（popup→SW 专用，CS 不用，无需镜像 selectors.js）
 
   // SW → Popup
   STATE_UPDATE: 'STATE_UPDATE',
@@ -59,7 +60,6 @@ const MSG = {
   EXTRACT_COMPLETE: 'EXTRACT_COMPLETE',
   WORKER_SEND: 'WORKER_SEND',
   WORKER_RESULT: 'WORKER_RESULT',
-  WORKER_REPAIR: 'WORKER_REPAIR',       // SW -> 补发 tab: 重进对话核对历史、缺啥补啥
 
   // #39 阶段1跳转恢复：同 HR 新岗位点立即沟通后 BOSS 整页跳 /web/geek/chat，确认弹窗弹在消息页
   CONFIRM_CHANGE_JOB_DIALOG: 'CONFIRM_CHANGE_JOB_DIALOG', // SW -> 消息页 CS: 点「沟通新职位」确认钮，响应 {clicked, reason}（🔴 必须镜像 selectors.js）
@@ -114,6 +114,26 @@ const STORAGE_KEYS = {
   },
 };
 
+const FEATURE_KEYS = {
+  AI_SCREENING_ENABLED: 'aiScreeningEnabled',
+  AUTO_RESUME_REPLY_ENABLED: 'autoResumeReplyEnabled',
+  AUTO_RESUME_ID: 'autoResumeId',
+  BACKUP_VERSION: 'backupVersion',
+};
+
+const FEATURE_DEFAULTS = {
+  aiScreeningEnabled: true,
+  autoResumeReplyEnabled: false,
+  autoResumeId: '',
+  backupVersion: 2,
+};
+
+const DEFAULT_TARGET_CITIES = ['101210100', '101020100', '101190400', '101210400'];
+const DEFAULT_TARGET_POSITIONS = [
+  'AI Agent', 'RAG', '大模型应用', 'AI 后端',
+  'Python', 'FastAPI', '后端', 'AI 全栈',
+];
+
 // ── 全局配置参数 ──
 const CONFIG = {
   // 每组分组的最大岗位数
@@ -160,6 +180,7 @@ const CONFIG = {
 };
 
 const DEFAULT_EXCLUDE_KEYWORDS = [
+  '实习',
   '外包',
   '驻场',
   '培训',
@@ -168,6 +189,10 @@ const DEFAULT_EXCLUDE_KEYWORDS = [
   '主播',
   '客服',
   '讲师',
+  '博士',
+  '硕士及以上',
+  '5年以上',
+  '3-5年',
   '剪辑',
   '游戏前端',
   '伪AI',
@@ -188,12 +213,28 @@ function uniqueStrings(list) {
 function normalizeFilterStateDefaults(filterState) {
   var raw = filterState && typeof filterState === 'object' ? filterState : {};
   return Object.assign({}, raw, {
+    selectedCities: Array.isArray(raw.selectedCities) ? raw.selectedCities : DEFAULT_TARGET_CITIES.slice(),
+    selectedPositions: Array.isArray(raw.selectedPositions) ? raw.selectedPositions : [],
+    customPositions: Array.isArray(raw.customPositions) ? raw.customPositions : DEFAULT_TARGET_POSITIONS.slice(),
+    jobTypes: Array.isArray(raw.jobTypes) ? raw.jobTypes : ['全职'],
+    experience: Array.isArray(raw.experience) ? raw.experience : ['应届生(校招)', '经验不限', '1年以内', '1-3年'],
+    education: Array.isArray(raw.education) ? raw.education : ['本科'],
     excludeKeywords: uniqueStrings(
       Array.isArray(raw.excludeKeywords) ? raw.excludeKeywords : DEFAULT_EXCLUDE_KEYWORDS
     ),
     skipHistoryEnabled: raw.skipHistoryEnabled !== false,
     skipHistoryScope: 'hr',
   });
+}
+
+function normalizeFeatureSettings(raw) {
+  raw = raw && typeof raw === 'object' ? raw : {};
+  return {
+    aiScreeningEnabled: raw.aiScreeningEnabled !== false,
+    autoResumeReplyEnabled: raw.autoResumeReplyEnabled === true,
+    autoResumeId: typeof raw.autoResumeId === 'string' ? raw.autoResumeId.trim() : '',
+    backupVersion: 2,
+  };
 }
 
 function findExcludeKeywordHit(job, excludeKeywords) {

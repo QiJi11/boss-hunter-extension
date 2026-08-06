@@ -33,7 +33,7 @@ var DEFAULT_AI_CONFIG=SettingsBackupApi.DEFAULT_AI_CONFIG||{
   baseUrl:'https://api.openai.com/v1',
   apiKey:'',
   model:'gpt-4.1-mini',
-  scoreThreshold:60
+  scoreThreshold:80
 };
 function initDomRefs(){
   E.headerLeft=$('#headerLeft');E.hdrTitle=$('#hdrTitle');E.btnBack=$('#btnBack');
@@ -63,13 +63,21 @@ function initDomRefs(){
   E.compositeOpenOptionsBtn=$('#compositeOpenOptionsBtn');
   E.compositeAiProvider=$('#compositeAiProvider');E.compositeAiBaseUrl=$('#compositeAiBaseUrl');E.compositeAiApiKey=$('#compositeAiApiKey');
   E.compositeAiModel=$('#compositeAiModel');E.compositeAiScoreThreshold=$('#compositeAiScoreThreshold');E.compositeTextResume=$('#compositeTextResume');
+  E.compositeAiScreeningEnabled=$('#compositeAiScreeningEnabled');
+  E.compositeAutoResumeReplyEnabled=$('#compositeAutoResumeReplyEnabled');E.compositeAutoResumeId=$('#compositeAutoResumeId');
   E.compositeTestBtn=$('#compositeTestBtn');E.compositeSaveBtn=$('#compositeSaveBtn');E.compositeStatus=$('#compositeStatus');
   E.compositeExportBtn=$('#compositeExportBtn');E.compositeImportBtn=$('#compositeImportBtn');E.compositeImportFileInput=$('#compositeImportFileInput');
+  E.compositeSensitiveExportBtn=$('#compositeSensitiveExportBtn');
   E.compositeImportStatus=$('#compositeImportStatus');E.compositeImportPreviewCard=$('#compositeImportPreviewCard');
   E.compositeImportPreviewMeta=$('#compositeImportPreviewMeta');E.compositeImportPreviewSummary=$('#compositeImportPreviewSummary');
   E.compositeConfirmImportBtn=$('#compositeConfirmImportBtn');E.compositeCancelImportBtn=$('#compositeCancelImportBtn');
   E.gearBtn=$('#gearBtn');E.settingsOverlay=$('#settingsOverlay');
   E.settingsClose=$('#settingsClose');
+  E.singleSendOverlay=$('#singleSendOverlay');E.singleSendClose=$('#singleSendClose');
+  E.singleSendJob=$('#singleSendJob');E.singleSendAi=$('#singleSendAi');
+  E.singleSendGreeting=$('#singleSendGreeting');E.singleSendResume=$('#singleSendResume');
+  E.singleSendHistory=$('#singleSendHistory');E.singleSendStatus=$('#singleSendStatus');
+  E.singleSendSkip=$('#singleSendSkip');E.singleSendConfirm=$('#singleSendConfirm');
 }
 
 // ════════════════════════════════════════════════════════════
@@ -798,7 +806,7 @@ function readAiConfigFromElements(providerEl,baseUrlEl,apiKeyEl,modelEl,scoreEl)
     baseUrl:baseUrlEl?baseUrlEl.value.trim():'',
     apiKey:apiKeyEl?apiKeyEl.value.trim():'',
     model:modelEl?modelEl.value.trim():'',
-    scoreThreshold:scoreEl?Number(scoreEl.value||60):60
+    scoreThreshold:scoreEl?Number(scoreEl.value===''?80:scoreEl.value):80
   };
 }
 
@@ -811,7 +819,7 @@ function fillAiFields(target,cfg,textResume){
   if(target.baseUrl)target.baseUrl.value=cfg.baseUrl||'';
   if(target.apiKey)target.apiKey.value=cfg.apiKey||'';
   if(target.model)target.model.value=cfg.model||'';
-  if(target.scoreThreshold)target.scoreThreshold.value=cfg.scoreThreshold||60;
+  if(target.scoreThreshold)target.scoreThreshold.value=Number.isFinite(Number(cfg.scoreThreshold))?cfg.scoreThreshold:80;
   if(target.textResume)target.textResume.value=textResume||'';
 }
 
@@ -827,6 +835,11 @@ function fillAiDrawer(config,textResume){
   },cfg,textResume);
   if(E.compositeBtn)E.compositeBtn.classList.toggle('configured',!!cfg.apiKey);
   updateAiFilterAssistantState();
+  chrome.storage.local.get(['aiScreeningEnabled','autoResumeReplyEnabled','autoResumeId'],function(items){
+    if(E.compositeAiScreeningEnabled)E.compositeAiScreeningEnabled.checked=items.aiScreeningEnabled!==false;
+    if(E.compositeAutoResumeReplyEnabled)E.compositeAutoResumeReplyEnabled.checked=items.autoResumeReplyEnabled===true;
+    if(E.compositeAutoResumeId)E.compositeAutoResumeId.value=items.autoResumeId||'';
+  });
 }
 
 function loadAiDrawerConfig(done){
@@ -863,7 +876,30 @@ function isSameJobSnapshot(curJob,newJob){
 function saveCompositeConfig(callback){
   var cfg=readCompositeConfig();
   var textResume=E.compositeTextResume?E.compositeTextResume.value.trim():'';
-  saveAiConfig(cfg,textResume,setCompositeStatus,callback);
+  var origin='';
+  try{origin=SettingsBackupApi.getProviderOriginPattern(cfg.baseUrl)}catch(e){
+    setCompositeStatus(e.message,'error');if(callback)callback(false);return;
+  }
+  if(!confirm('将向 '+origin+' 外发：文字简历、岗位标题、公司、薪资、标签和 JD。是否允许该域名权限？')){
+    setCompositeStatus('已取消保存，未申请 Provider 权限','');if(callback)callback(false);return;
+  }
+  SettingsBackupApi.requestProviderPermission(cfg.baseUrl).then(function(permission){
+    if(!permission.granted)throw new Error('未授予 '+permission.origin+' 权限');
+    var autoEnabled=!!(E.compositeAutoResumeReplyEnabled&&E.compositeAutoResumeReplyEnabled.checked);
+    var autoResumeId=E.compositeAutoResumeId?E.compositeAutoResumeId.value.trim():'';
+    if(autoEnabled&&!autoResumeId)throw new Error('开启自动回复前必须填写并确认在线简历名称或 ID');
+    if(autoEnabled&&!confirm('确认自动发送 BOSS 在线简历“'+autoResumeId+'”？')){
+      throw new Error('已取消自动回复简历确认');
+    }
+    return chrome.storage.local.set({
+      aiScreeningEnabled:!E.compositeAiScreeningEnabled||E.compositeAiScreeningEnabled.checked,
+      autoResumeReplyEnabled:autoEnabled,
+      autoResumeId:autoResumeId,
+      backupVersion:2
+    }).then(function(){saveAiConfig(cfg,textResume,setCompositeStatus,callback)});
+  }).catch(function(e){
+    setCompositeStatus('保存失败: '+e.message,'error');if(callback)callback(false);
+  });
 }
 
 function saveAiConfig(cfg,textResume,statusSetter,callback){
@@ -950,6 +986,18 @@ function wireCompositeDrawer(){
       E.compositeExportBtn.disabled=false;
     });
   });
+  if(E.compositeSensitiveExportBtn)E.compositeSensitiveExportBtn.addEventListener('click',function(){
+    if(!confirm('敏感完整备份将包含 API Key、文字简历和图片简历。确认继续？'))return;
+    if(!confirm('请仅保存到可信本机位置。再次确认导出“含密钥和简历”的文件？'))return;
+    E.compositeSensitiveExportBtn.disabled=true;
+    SettingsBackupApi.readBackupSnapshot({sensitive:true}).then(function(snapshot){
+      downloadBackupSnapshot(snapshot,'liezhi-sensitive-含密钥和简历');
+    }).catch(function(err){
+      showCompositeImportStatus('导出失败: '+err.message,'error');
+    }).finally(function(){
+      E.compositeSensitiveExportBtn.disabled=false;
+    });
+  });
   if(E.compositeImportBtn&&E.compositeImportFileInput){
     E.compositeImportBtn.addEventListener('click',function(){E.compositeImportFileInput.click()});
     E.compositeImportFileInput.addEventListener('change',function(){
@@ -973,7 +1021,20 @@ function wireCompositeDrawer(){
     E.compositeConfirmImportBtn.disabled=true;
     if(E.compositeCancelImportBtn)E.compositeCancelImportBtn.disabled=true;
     showCompositeImportStatus('正在写入导入配置...','');
-    SettingsBackupApi.applySnapshotToStorage(pendingCompositeImportDraft).then(function(){
+    var importPermission=Promise.resolve(null);
+    if(pendingCompositeImportDraft.aiConfig!==undefined){
+      var importOrigin=SettingsBackupApi.getProviderOriginPattern(pendingCompositeImportDraft.aiConfig.baseUrl);
+      if(!confirm('导入后将向 '+importOrigin+' 外发文字简历和岗位信息。是否申请该域名权限？')){
+        importPermission=Promise.reject(new Error('已取消 Provider 权限申请，未导入'));
+      }else{
+        importPermission=SettingsBackupApi.requestImportProviderPermission(pendingCompositeImportDraft).then(function(permission){
+          if(!permission||!permission.granted)throw new Error('未授予 '+importOrigin+' 权限');
+        });
+      }
+    }
+    importPermission.then(function(){
+      return SettingsBackupApi.applySnapshotToStorage(pendingCompositeImportDraft);
+    }).then(function(){
       pendingCompositeImportDraft=null;
       hideCompositeImportPreview();
       return hydratePopupFromStorage();
@@ -1017,13 +1078,13 @@ function openFullOptionsPage(){
   fallbackOpen();
 }
 
-function downloadBackupSnapshot(snapshot){
+function downloadBackupSnapshot(snapshot,prefix){
   var blob=new Blob([JSON.stringify(snapshot,null,2)],{type:'application/json'});
   var url=URL.createObjectURL(blob);
   var link=document.createElement('a');
   var stamp=new Date().toISOString().replace(/[:.]/g,'-');
   link.href=url;
-  link.download='liezhi-backup-'+stamp+'.json';
+  link.download=(prefix||'liezhi-backup')+'-'+stamp+'.json';
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -1299,9 +1360,11 @@ function init(){
 
 document.addEventListener('DOMContentLoaded',init);
 
-// ═══ 调试桥：主对话通过 postMessage 操控 popup ═══
+// ═══ 调试桥：仅开发构建可启用；生产构建不注册监听 ═══
 // 注意：popup HTML 中没有 tab 按钮，页面切换通过 toSettings / toResults / renderReview 函数实现
 (function(){
+  var TEST_BRIDGE_ENABLED=false;
+  if(!TEST_BRIDGE_ENABLED)return;
   // 辅助：判断当前可见页面
   function getCurrentPage(){
     var sp=document.getElementById('settingsPanel');
@@ -1314,6 +1377,7 @@ document.addEventListener('DOMContentLoaded',init);
   }
 
   window.addEventListener('message',function(event){
+    if(event.source!==window)return;
     if(!event.data||!event.data.type)return;
     var cmd=event.data.type;
     var result={};

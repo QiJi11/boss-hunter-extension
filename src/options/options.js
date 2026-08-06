@@ -21,12 +21,16 @@ const apiKeyInput = document.getElementById('apiKey');
 const modelInput = document.getElementById('model');
 const scoreThresholdInput = document.getElementById('scoreThreshold');
 const textResumeInput = document.getElementById('textResume');
+const aiScreeningEnabledInput = document.getElementById('aiScreeningEnabled');
+const autoResumeReplyEnabledInput = document.getElementById('autoResumeReplyEnabled');
+const autoResumeIdInput = document.getElementById('autoResumeId');
 const apiSectionToggle = document.getElementById('apiSectionToggle');
 const apiSectionBody = document.getElementById('apiSectionBody');
 const testAiBtn = document.getElementById('testAiBtn');
 const saveBtn = document.getElementById('saveBtn');
 const saveStatus = document.getElementById('saveStatus');
 const exportBtn = document.getElementById('exportBtn');
+const sensitiveExportBtn = document.getElementById('sensitiveExportBtn');
 const importBtn = document.getElementById('importBtn');
 const importFileInput = document.getElementById('importFileInput');
 const importStatus = document.getElementById('importStatus');
@@ -102,10 +106,31 @@ function bindEvents() {
     try {
       const newAiConfig = readAiConfigFromForm();
       const newTextResume = textResumeInput ? textResumeInput.value.trim() : '';
+      const origin = getProviderOriginPattern(newAiConfig.baseUrl);
+      if (!confirm(`将向 ${origin} 外发文字简历和岗位信息。是否申请该域名权限并保存？`)) {
+        setStatus('已取消保存', '');
+        return;
+      }
+      const permission = await requestProviderPermission(newAiConfig.baseUrl);
+      if (!permission.granted) throw new Error(`未授予 ${permission.origin} 权限`);
+      const autoResumeId = autoResumeIdInput ? autoResumeIdInput.value.trim() : '';
+      if (autoResumeReplyEnabledInput?.checked && !autoResumeId) {
+        throw new Error('开启自动回复前必须填写并确认在线简历名称或 ID');
+      }
+      if (autoResumeReplyEnabledInput?.checked
+        && !confirm(`确认自动发送 BOSS 在线简历“${autoResumeId}”？`)) {
+        throw new Error('已取消自动回复简历确认');
+      }
       await applySnapshotToStorage({
         resumeImages: await serializeCurrentResumeImages(resumeImages),
         textResume: newTextResume,
         aiConfig: newAiConfig,
+      });
+      await chrome.storage.local.set({
+        aiScreeningEnabled: !aiScreeningEnabledInput || aiScreeningEnabledInput.checked,
+        autoResumeReplyEnabled: !!autoResumeReplyEnabledInput?.checked,
+        autoResumeId,
+        backupVersion: 2,
       });
 
       aiConfig = newAiConfig;
@@ -133,6 +158,20 @@ function bindEvents() {
         showImportStatus('导出失败: ' + e.message, 'error');
       } finally {
         exportBtn.disabled = false;
+      }
+    });
+  }
+  if (sensitiveExportBtn) {
+    sensitiveExportBtn.addEventListener('click', async () => {
+      if (!confirm('该文件将包含 API Key、文字简历和图片简历。确认继续？')) return;
+      if (!confirm('再次确认：只应保存到可信本机位置。')) return;
+      sensitiveExportBtn.disabled = true;
+      try {
+        downloadBackup(await readBackupSnapshot({ sensitive: true }), 'liezhi-sensitive-含密钥和简历');
+      } catch (e) {
+        showImportStatus('导出失败: ' + e.message, 'error');
+      } finally {
+        sensitiveExportBtn.disabled = false;
       }
     });
   }
@@ -167,6 +206,14 @@ function bindEvents() {
       cancelImportBtn.disabled = true;
       showImportStatus('正在写入导入配置...', '');
       try {
+        if (pendingImportDraft.aiConfig !== undefined) {
+          const origin = getProviderOriginPattern(pendingImportDraft.aiConfig.baseUrl);
+          if (!confirm(`导入后将向 ${origin} 外发文字简历和岗位信息。是否申请该域名权限？`)) {
+            throw new Error('已取消 Provider 权限申请，未导入');
+          }
+          const permission = await requestImportProviderPermission(pendingImportDraft);
+          if (!permission?.granted) throw new Error(`未授予 ${origin} 权限`);
+        }
         await applySnapshotToStorage(pendingImportDraft);
         pendingImportDraft = null;
         hideImportPreview();
@@ -197,7 +244,7 @@ async function hydratePageFromStorage() {
   const [storedImages, storedResumeData, storedConfig] = await Promise.all([
     getResumeImages().catch(() => []),
     chrome.storage.local.get(['resumeImages', 'apiKey', 'textResume', AI_CONFIG_KEY, FILTER_STATE_KEY]).catch(() => ({})),
-    chrome.storage.local.get(['apiKey', 'textResume', AI_CONFIG_KEY]).catch(() => ({})),
+    chrome.storage.local.get(['apiKey', 'textResume', AI_CONFIG_KEY, 'aiScreeningEnabled', 'autoResumeReplyEnabled', 'autoResumeId']).catch(() => ({})),
   ]);
 
   aiConfig = normalizeAiConfig(storedConfig[AI_CONFIG_KEY] || {});
@@ -208,8 +255,11 @@ async function hydratePageFromStorage() {
   if (baseUrlInput) baseUrlInput.value = aiConfig.baseUrl || '';
   if (apiKeyInput) apiKeyInput.value = aiConfig.apiKey || '';
   if (modelInput) modelInput.value = aiConfig.model || '';
-  if (scoreThresholdInput) scoreThresholdInput.value = aiConfig.scoreThreshold || DEFAULT_AI_CONFIG.scoreThreshold;
+  if (scoreThresholdInput) scoreThresholdInput.value = Number.isFinite(Number(aiConfig.scoreThreshold)) ? aiConfig.scoreThreshold : DEFAULT_AI_CONFIG.scoreThreshold;
   if (textResumeInput) textResumeInput.value = textResume;
+  if (aiScreeningEnabledInput) aiScreeningEnabledInput.checked = storedConfig.aiScreeningEnabled !== false;
+  if (autoResumeReplyEnabledInput) autoResumeReplyEnabledInput.checked = storedConfig.autoResumeReplyEnabled === true;
+  if (autoResumeIdInput) autoResumeIdInput.value = storedConfig.autoResumeId || '';
 
   if (storedResumeData.resumeImages?.length) {
     resumeImages = deserializeResumeImages(storedResumeData.resumeImages);
@@ -263,7 +313,7 @@ function readAiConfigFromForm() {
     baseUrl: baseUrlInput ? baseUrlInput.value.trim() : '',
     apiKey: apiKeyInput ? apiKeyInput.value.trim() : '',
     model: modelInput ? modelInput.value.trim() : '',
-    scoreThreshold: scoreThresholdInput ? Number(scoreThresholdInput.value || DEFAULT_AI_CONFIG.scoreThreshold) : DEFAULT_AI_CONFIG.scoreThreshold,
+    scoreThreshold: scoreThresholdInput ? Number(scoreThresholdInput.value === '' ? DEFAULT_AI_CONFIG.scoreThreshold : scoreThresholdInput.value) : DEFAULT_AI_CONFIG.scoreThreshold,
   };
 }
 
@@ -303,13 +353,13 @@ function renderImportPreview(draft) {
   });
 }
 
-function downloadBackup(snapshot) {
+function downloadBackup(snapshot, prefix) {
   const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   link.href = url;
-  link.download = `liezhi-backup-${stamp}.json`;
+  link.download = `${prefix || 'liezhi-backup'}-${stamp}.json`;
   document.body.appendChild(link);
   link.click();
   link.remove();

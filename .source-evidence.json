@@ -1,0 +1,428 @@
+{
+  "generatedAt": "2026-08-05",
+  "sources": [
+    {
+      "label": "personalized-1.2.1",
+      "fileName": "boss-hunter-extension-v1.2.1.zip",
+      "bytes": 307350,
+      "sha256": "5D99A3C570DF6F9F73BCBDE9DBDAB355C24750498CFE5663953B825615425272",
+      "fileCount": 38,
+      "files": [
+        {
+          "path": "_locales/zh_CN/messages.json",
+          "bytes": 3,
+          "sha256": "CA3D163BAB055381827226140568F3BEF7EAAC187CEBD76878E0B63E9E442356"
+        },
+        {
+          "path": "icons/icon128.png",
+          "bytes": 5188,
+          "sha256": "DAB6BD193F61610F3FC7475A26DDDD90242BAC063DF03AF2FAA5822ED2415D84"
+        },
+        {
+          "path": "icons/icon16.png",
+          "bytes": 740,
+          "sha256": "4CBFA6E4E3604609B16F5C0D93ABBBE8A50BDC49D78CDE1D4A306FD206ABE090"
+        },
+        {
+          "path": "icons/icon48.png",
+          "bytes": 2071,
+          "sha256": "50ADC76D22E849344630117AC0E46513960E41300D199AF2F7ABE8F8A633AE74"
+        },
+        {
+          "path": "manifest.json",
+          "bytes": 2247,
+          "sha256": "B4A1B0BE6A698995450EF6E35FEC37FE414155827006212DEE7673845A7DE123"
+        },
+        {
+          "path": "src/background/service-worker.js",
+          "bytes": 186490,
+          "sha256": "EDEA1017A3EB0114EC1C3B036CAA379150340192A0A8FCEFF4E9218C11A1F682"
+        },
+        {
+          "path": "src/content/chat-monitor.js",
+          "bytes": 2587,
+          "sha256": "1C27B0777AB9EBA1A177CAC82AD2A46681A01B9A9A08736AEDF27371B9DB92DE"
+        },
+        {
+          "path": "src/content/content.js",
+          "bytes": 79077,
+          "sha256": "2FC69E3DD22EEAA92E20E5CC8E6A47BD64F63DBD8A9D7CDE815B5DAE6D9A1424"
+        },
+        {
+          "path": "src/content/job-clicker.js",
+          "bytes": 196,
+          "sha256": "0C3E2E98949E298AFD9D4FBD431FA22526885DD98EB55F1C0F22646BD21065A9"
+        },
+        {
+          "path": "src/content/job-collector.js",
+          "bytes": 5396,
+          "sha256": "578617ADFEB27A2A410F0329E563A6725D1E6B206C80B48E75DB2A1F0BEA56DF"
+        },
+        {
+          "path": "src/content/job-sender.js",
+          "bytes": 37288,
+          "sha256": "97490ED00EB15ED221A326A4B3A2817FB4B766BEAC719911CD25D0BAB3F600C1"
+        },
+        {
+          "path": "src/content/salary-decoder.js",
+          "bytes": 409,
+          "sha256": "6BFCD07EDA65C1693917C548D76BB86B548A06F415529D064762119C63B7A38F"
+        },
+        {
+          "path": "src/content/selectors.js",
+          "bytes": 4398,
+          "sha256": "E8F7A62E91EB70B3F3BD270C2C59EC93571374D813DFCCF9F1EDFCBF1BA32285"
+        },
+        {
+          "path": "src/content/tag-data.js",
+          "bytes": 141232,
+          "sha256": "FB5B313F103CB744963ED860B95BE542341648E5D661A38EC883C9E7E4737627"
+        },
+        {
+          "path": "src/content/ws-probe.js",
+          "bytes": 2193,
+          "sha256": "7C01AA80E19E1C08DD0DDAF65FF6B17EA2AF4C4C9AC429F02CA945BA210F76C1"
+        },
+        {
+          "path": "src/db/indexeddb.js",
+          "bytes": 9163,
+          "sha256": "1DFC99761D433B81B48477924CD9600592CD11AB94B2D5B7506565CAEB6C5591"
+        },
+        {
+          "path": "src/options/options.css",
+          "bytes": 13166,
+          "sha256": "CBD55DD17C68FC815F1D01CBCC3EACE479F9DCE8AEDCCB9E0A5D2C3A53589EEF"
+        },
+        {
+          "path": "src/options/options.html",
+          "bytes": 7284,
+          "sha256": "279C3E143435056CAA813F38FF088BCB75B2F20A9316B4816A252566AD9B090E"
+        },
+        {
+          "path": "src/options/options.js",
+          "bytes": 17673,
+          "sha256": "DDBDCBC9B3C4782F573BFDF898479F4F59331CC1B86887A569C55A54F68AA3D0"
+        },
+        {
+          "path": "src/popup/auto-reply-help.png",
+          "bytes": 54548,
+          "sha256": "BB159DEA578694E1114AAC5EE530FE40A5A791524850C0DA11B28384FF2BE989"
+        },
+        {
+          "path": "src/popup/diag-export.js",
+          "bytes": 15832,
+          "sha256": "D4043BE3D6F2EA24D83650C4CE81BA52CD283D10937E8D5719517C0245BFFFC9"
+        },
+        {
+          "path": "src/popup/error-bootstrap.js",
+          "bytes": 433,
+          "sha256": "475BD0194E49B73F80C17E49475DD8715FA26C2EEC8CCB9F1CB08E5548BBB142"
+        },
+        {
+          "path": "src/popup/events-a.js",
+          "bytes": 38824,
+          "sha256": "665545CD5F4E4BC46755E0CA0BBE3A479B3F626ECCA1E6AB1C69F671EEE7A39F"
+        },
+        {
+          "path": "src/popup/events-b.js",
+          "bytes": 21301,
+          "sha256": "D70C9FF7164CB01BB424213533E2EDA63ED6901EE311C5D281201C406F101185"
+        },
+        {
+          "path": "src/popup/helpers.js",
+          "bytes": 2456,
+          "sha256": "E5FAAB9612187828E6C9FCDC26C1CC39D132DB4D454D72BDF1CA96D0E2F7D098"
+        },
+        {
+          "path": "src/popup/popup.css",
+          "bytes": 36977,
+          "sha256": "2299255082C95E22C28451DBBF48A8B1778EF4C257FA79BEDE753D99E451BE80"
+        },
+        {
+          "path": "src/popup/popup.html",
+          "bytes": 19969,
+          "sha256": "E325C502BB7DD35D10CE9D44EF7E3F638845FBB0697E3E8627C7D19E2C6216B5"
+        },
+        {
+          "path": "src/popup/popup.js",
+          "bytes": 74221,
+          "sha256": "69BB3ACB0AAB154FF020DB86BF65923F1A135AFE7C25314851F8A253F5F9CF1A"
+        },
+        {
+          "path": "src/popup/render-a.js",
+          "bytes": 15965,
+          "sha256": "6C41DF6936514D57B7E25A6729065302AD94786169B0121AE5533B1441B5B216"
+        },
+        {
+          "path": "src/popup/render-b.js",
+          "bytes": 37210,
+          "sha256": "2A5FB469B7981F75FF1CD4D5B8994AF380A5AEDABB6C49262CC90FDD0055E4EA"
+        },
+        {
+          "path": "src/popup/render-review.js",
+          "bytes": 7827,
+          "sha256": "582BB7F92AD6B2B97828C40325A591FE21BEE228536F48C01499564C83616627"
+        },
+        {
+          "path": "src/popup/state.js",
+          "bytes": 4027,
+          "sha256": "60C561C18F888514E2E23C0F57D708FB9BDCC6AC9F9EF986377C28067A097F96"
+        },
+        {
+          "path": "src/shared/constants.js",
+          "bytes": 17632,
+          "sha256": "6F8C0C9E68039CB956306411BF3B8DC5275C5C72266000E1D812F06803A25279"
+        },
+        {
+          "path": "src/shared/device-id.js",
+          "bytes": 2218,
+          "sha256": "C117306820DCE9D87E6A496FD5D349E6B18707E575189F9F7D141A151C1DBF7F"
+        },
+        {
+          "path": "src/shared/diag-logger.js",
+          "bytes": 6397,
+          "sha256": "5956C0301978E374E981972F86131639B2EF9E142F3C9442AC7C3B4144672034"
+        },
+        {
+          "path": "src/shared/error-logger.js",
+          "bytes": 3903,
+          "sha256": "8DAB724FBD7CE54B18C7F571FF04DD76FFF3B3B9B08392D5310B757E0351D39D"
+        },
+        {
+          "path": "src/shared/job-analysis-export.js",
+          "bytes": 6825,
+          "sha256": "47E676237AC46735A080BE3BDC764D2C4290CA78D69C576412F9E529C024ECA8"
+        },
+        {
+          "path": "src/shared/settings-backup.js",
+          "bytes": 14130,
+          "sha256": "D143EF79A6F058B1F8B02BDD860BE651290BF6CDE48389E85089B61286CC0814"
+        }
+      ]
+    },
+    {
+      "label": "legacy-jitou-1.2.0",
+      "fileName": "boss-hunter-extension-package-20260616.zip",
+      "bytes": 684640,
+      "sha256": "E44D10B586DE92F6B6FEB84A6C763F507602C43DAE0F68CEEB570F798FA94293",
+      "fileCount": 43,
+      "files": [
+        {
+          "path": ".gitignore",
+          "bytes": 190,
+          "sha256": "1B31CA31FC2A3132967C1BA82AED4A9E00D1BC07EBFA5ADCF37ECA8F115893F4"
+        },
+        {
+          "path": "LOAD_TEST.md",
+          "bytes": 1378,
+          "sha256": "FCC23958D3E212F01E3E5D0CD88DBD34C3CECAA9B3B25D2F6D368BDA239DBE7C"
+        },
+        {
+          "path": "TODO.md",
+          "bytes": 2000,
+          "sha256": "4975468C448908B39144C10C7FAB2602420985E58EDCCF99436F8119DDA2C0D6"
+        },
+        {
+          "path": "_locales/zh_CN/messages.json",
+          "bytes": 3,
+          "sha256": "CA3D163BAB055381827226140568F3BEF7EAAC187CEBD76878E0B63E9E442356"
+        },
+        {
+          "path": "icons/icon128.png",
+          "bytes": 670,
+          "sha256": "66570BA9750684F7A2923AFE6A8D86CFB113658ED60D0F2C782417D2E3711361"
+        },
+        {
+          "path": "icons/icon16.png",
+          "bytes": 137,
+          "sha256": "7A83AF88AFC74E90ECC33C3E44358E173F9055339D0FB7F68A4EA033A8D2D5D8"
+        },
+        {
+          "path": "icons/icon48.png",
+          "bytes": 268,
+          "sha256": "B794498A8CE371ABB4B6E5559CE63F23999F2542FF081992BD4CD6273721E2D5"
+        },
+        {
+          "path": "manifest.json",
+          "bytes": 2199,
+          "sha256": "8BF136E9410F2675BA12159733260223F2D115DCCC9E231E34175170B0F4C8B0"
+        },
+        {
+          "path": "process_position.js",
+          "bytes": 879,
+          "sha256": "9D1ADE364A1EE5EAEBABAEDF4158EE51F1DAE5DB8B56D096CB4A430D57BDD0F7"
+        },
+        {
+          "path": "src/background/service-worker.js",
+          "bytes": 159494,
+          "sha256": "817F97C8F09F3C594F7E43BF4719867DE1CCB3ED8D4F5AA296DD85741225CBDD"
+        },
+        {
+          "path": "src/content/chat-monitor.js",
+          "bytes": 2587,
+          "sha256": "1C27B0777AB9EBA1A177CAC82AD2A46681A01B9A9A08736AEDF27371B9DB92DE"
+        },
+        {
+          "path": "src/content/content.js",
+          "bytes": 77518,
+          "sha256": "185B22090EB1D3D276DD6337034AEC155984C69340FB226D7402CF303C6E0747"
+        },
+        {
+          "path": "src/content/job-clicker.js",
+          "bytes": 196,
+          "sha256": "0C3E2E98949E298AFD9D4FBD431FA22526885DD98EB55F1C0F22646BD21065A9"
+        },
+        {
+          "path": "src/content/job-collector.js",
+          "bytes": 4542,
+          "sha256": "84358ED37C77826DFE384A5D08807A0E0B916A1E8E28EFF33CE4AD97540DCEB5"
+        },
+        {
+          "path": "src/content/job-sender.js",
+          "bytes": 36593,
+          "sha256": "B2576137E6BC5026EBC1BD1E725BB2214DDE58F75FF61A4AE9A42391ADF7E025"
+        },
+        {
+          "path": "src/content/salary-decoder.js",
+          "bytes": 409,
+          "sha256": "6BFCD07EDA65C1693917C548D76BB86B548A06F415529D064762119C63B7A38F"
+        },
+        {
+          "path": "src/content/selectors.js",
+          "bytes": 4271,
+          "sha256": "212E2F8DBA67ED88BFE706B00792889C75C8EC260F70B546A5C57DD6E78F44AF"
+        },
+        {
+          "path": "src/content/tag-data.js",
+          "bytes": 141232,
+          "sha256": "FB5B313F103CB744963ED860B95BE542341648E5D661A38EC883C9E7E4737627"
+        },
+        {
+          "path": "src/content/ws-probe.js",
+          "bytes": 2193,
+          "sha256": "7C01AA80E19E1C08DD0DDAF65FF6B17EA2AF4C4C9AC429F02CA945BA210F76C1"
+        },
+        {
+          "path": "src/db/indexeddb.js",
+          "bytes": 2787,
+          "sha256": "A5841D9E46E1ED26B8E659C20173306A8C7A7A294A201BC46DD9179BC27F53CB"
+        },
+        {
+          "path": "src/options/options.css",
+          "bytes": 7977,
+          "sha256": "26A1D115A8F90F9D9B36A0D236AC57697696AA2A849F15C857A1F1614E24B0EF"
+        },
+        {
+          "path": "src/options/options.html",
+          "bytes": 4222,
+          "sha256": "B84AFE932852696F2AB8F199C5446F3BFB1B7726341BC621474840B4B77A3C5E"
+        },
+        {
+          "path": "src/options/options.js",
+          "bytes": 6730,
+          "sha256": "F3FAC430EF02BEAF33F31BEE9894E377EBD0577FF32A1AE4D0C4DA8F8FE2C806"
+        },
+        {
+          "path": "src/popup/alipay-pay.jpg",
+          "bytes": 250785,
+          "sha256": "4DC9642C2188298D34D2673F76F77C72B6824ED0EC3B24BD7FE38E4B4A7574F1"
+        },
+        {
+          "path": "src/popup/auto-reply-help.png",
+          "bytes": 54548,
+          "sha256": "BB159DEA578694E1114AAC5EE530FE40A5A791524850C0DA11B28384FF2BE989"
+        },
+        {
+          "path": "src/popup/diag-export.js",
+          "bytes": 13756,
+          "sha256": "5F670C3437242AB4B5B3CD9C31924AE974412574136B2059BB628314DFD48BA8"
+        },
+        {
+          "path": "src/popup/error-bootstrap.js",
+          "bytes": 433,
+          "sha256": "475BD0194E49B73F80C17E49475DD8715FA26C2EEC8CCB9F1CB08E5548BBB142"
+        },
+        {
+          "path": "src/popup/events-a.js",
+          "bytes": 31963,
+          "sha256": "01474D95F6D3D5D8652A846EDF08AF774182CF4683405A67080554E869784DD3"
+        },
+        {
+          "path": "src/popup/events-b.js",
+          "bytes": 20368,
+          "sha256": "6A0990DFA82B4EDFB05B3E0986C4E0A3E9DB9F78E293D0E0EB376670FBB791CC"
+        },
+        {
+          "path": "src/popup/group-qr.jpg",
+          "bytes": 196238,
+          "sha256": "B7A691D24E0BD1A1804CBF95E01977B1153CC31904D510E162CE65DB89A93081"
+        },
+        {
+          "path": "src/popup/helpers.js",
+          "bytes": 2456,
+          "sha256": "E5FAAB9612187828E6C9FCDC26C1CC39D132DB4D454D72BDF1CA96D0E2F7D098"
+        },
+        {
+          "path": "src/popup/popup.css",
+          "bytes": 31909,
+          "sha256": "072D59785C91B827AC1D3E9AD0E19215F46A5CC3E92ECC3FF53BBFDA2EAEE444"
+        },
+        {
+          "path": "src/popup/popup.html",
+          "bytes": 15139,
+          "sha256": "0C095CFE7B318435F8147247B70101B7FDE6E7A677846C58DFBA57344F6B10E1"
+        },
+        {
+          "path": "src/popup/popup.js",
+          "bytes": 48236,
+          "sha256": "124B1C849302D7DEF68D0F45A34547CF6A406977FE00083670F90BB2B9DF48FE"
+        },
+        {
+          "path": "src/popup/render-a.js",
+          "bytes": 14428,
+          "sha256": "DE85128485794AD1E815CD5991C515195BAEFA8A11156A65F1D91DCCA5B0F0AD"
+        },
+        {
+          "path": "src/popup/render-b.js",
+          "bytes": 36152,
+          "sha256": "12461AF4C0A1A809B8583F3D8B7F6762916F4B019A137B213196772041335CDA"
+        },
+        {
+          "path": "src/popup/render-review.js",
+          "bytes": 7824,
+          "sha256": "F941A6C568A472FC36161554AA6AA531824E37F68723CFB66D6B8C4E7AB34643"
+        },
+        {
+          "path": "src/popup/state.js",
+          "bytes": 2914,
+          "sha256": "3E37DC4B321390A97A0B6840ED77AB7248134D1E5DEBCA34420327B77E77AF8B"
+        },
+        {
+          "path": "src/popup/wechat-pay.jpg",
+          "bytes": 89352,
+          "sha256": "EDE832CC91589146184114A38E6575B1122CFED26DB49CE54A510FF6EF4E62CA"
+        },
+        {
+          "path": "src/shared/constants.js",
+          "bytes": 11247,
+          "sha256": "416967BA866E01AD1254D4746A75449334263D7F272DB0806C086CCBDE93DF80"
+        },
+        {
+          "path": "src/shared/device-id.js",
+          "bytes": 2218,
+          "sha256": "C117306820DCE9D87E6A496FD5D349E6B18707E575189F9F7D141A151C1DBF7F"
+        },
+        {
+          "path": "src/shared/diag-logger.js",
+          "bytes": 6397,
+          "sha256": "5956C0301978E374E981972F86131639B2EF9E142F3C9442AC7C3B4144672034"
+        },
+        {
+          "path": "src/shared/error-logger.js",
+          "bytes": 3903,
+          "sha256": "8DAB724FBD7CE54B18C7F571FF04DD76FFF3B3B9B08392D5310B757E0351D39D"
+        }
+      ]
+    }
+  ]
+}

@@ -30,7 +30,7 @@ function detectCaptcha() {
 //  上传是 page world 的 XHR，我们捕获不到——所以采用「MutationObserver
 //  + change 事件后等 .image-message 出现」组合：见 3.2.c 兜底方案）
 // 实际方案：用 Performance Observer + fetch/XHR 双 hook，注入 page world
-// 通过 web_accessible_resources，已在 manifest:61 配 — 但为最小改动，
+// 通过 web_accessible_resources 暴露给 BOSS 页面，但为最小改动，
 // 这里直接用 MutationObserver 看消息列表里新增 .item-myself 图片气泡。
 const ImageUploadTracker = {
   // 等待新的自己图片气泡出现（替代死等 1500ms）
@@ -377,8 +377,7 @@ const JobSender = {
   // 与图片一致：重试直到 waitForDeliveryStatus 确认本条招呼语 status-delivery 真送达。
   // 防双发：origBaseline 只在首次前取一次；重试前先按内容查是否已送达，有则直接成功不重发。
   // opts: { timeoutMs, maxAttempts, retryDelayMs } — 不传走默认值 = 历史行为（兼容 legacy 串行）。
-  //   worker 阶段：{timeoutMs:3000, maxAttempts:1} — 不死等抢 WS，快速转补发（补发兜底）
-  //   补发阶段：{timeoutMs:5000, maxAttempts:2, retryDelayMs:600} — 单连接干净环境
+  //   worker 阶段：{timeoutMs:3000, maxAttempts:1} — 不死等抢 WS；未确认即交给人工复核
   async sendText(greeting, opts) {
     // 空招呼语：立即失败返回（重试空内容无意义）。
     if (!greeting || !greeting.trim()) {
@@ -477,8 +476,7 @@ const JobSender = {
   // 改为重试直到 waitForImageDelivered 确认「CDN 上传完成 且 status-delivery WS 帧送达」。
   // 防双发：origBaseline 只在首次发送前取一次；每次重试前先查是否已有送达的图，有则直接成功不重发。
   // opts: { timeoutMs, maxAttempts, retryDelayMs } — 不传走默认值 = 历史行为（兼容 legacy 串行）。
-  //   worker 阶段：{timeoutMs:4000, maxAttempts:1} — 不死等抢 WS，快速转补发
-  //   补发阶段：{timeoutMs:5000, maxAttempts:2, retryDelayMs:600} — 单连接干净环境，发不出多半真没救
+  //   worker 阶段：{timeoutMs:4000, maxAttempts:1} — 不死等抢 WS；未确认即交给人工复核
   async sendImage(blob, filename = 'resume.jpg', jobId, opts) {
     opts = opts || {};
     const maxAttempts = opts.maxAttempts || 3;
@@ -504,8 +502,8 @@ const JobSender = {
   },
 
   // ── 发送单个岗位（招呼语 + 简历图片）──
-  // textOpts: 透传给 sendText（worker 阶段传激进值快速 fail-fast 转补发，跟 imgOpts 并列）
-  // imgOpts: 透传给 _sendResumeImages → sendImage（worker 阶段传激进值快速 fail-fast 转补发）
+  // textOpts: 透传给 sendText（worker 阶段使用短超时、单次尝试）
+  // imgOpts: 透传给 _sendResumeImages → sendImage（worker 阶段使用短超时、单次尝试）
   async sendSingle(greeting, jobId, imgOpts, textOpts) {
     // 硬中止：停止后绝不再发文本/图片
     if (this.stopped) return { success: false, stopped: true, error: 'stopped' };
@@ -519,7 +517,7 @@ const JobSender = {
     if (this.stopped) return { success: false, stopped: true, error: 'stopped' };
     await sleep(500);
 
-    // 2. 发送简历图片（抽成 _sendResumeImages 复用：sendSingle 与 repairSingle 共用）
+    // 2. 发送简历图片
     var imgRet = await this._sendResumeImages(jobId, imgOpts);
     var imageFailed = imgRet.imageFailed;
     var imageError = imgRet.imageError;
@@ -541,10 +539,10 @@ const JobSender = {
     return { success: true };
   },
 
-  // ── 发送简历图片（sendSingle 与 repairSingle 共用）──
+  // ── 发送简历图片 ──
   // 返回 { imageFailed, imageError, attempted }
   //   attempted=false 表示根本没有可发的图（storage 里无图）——此时不算失败，调用方据此判断。
-  // imgOpts: 透传给 sendImage（控制单图超时/重试次数/重试间隔，区分 worker vs 补发）
+  // imgOpts: 透传给 sendImage（控制单图超时/重试次数/重试间隔）
   async _sendResumeImages(jobId, imgOpts) {
     // 优先读取 per-job 自定义图片，没有则 fallback 到 group 级别图片
     let imagesData = null;
@@ -603,73 +601,6 @@ const JobSender = {
     }
 
     return { imageFailed: imageFailed, imageError: imageError, attempted: attempted };
-  },
-
-  // ═══════════════════════════════════════════════════════════════════
-  // 补发阶段：核对「服务器历史」里招呼语/图片在不在（只读，不依赖 status-delivery）。
-  // 重进对话加载的是服务器真相——丢帧的消息根本不会出现在历史里。
-  // ⚠️ 仅用于「刚重进对话、尚未自己补发」时的核对；自己补发后本地会插乐观气泡，
-  //    不能再用这两个函数判定，须以 sendText/sendImage 的 status-delivery 结果为准。
-  hasTextInHistory(expectText) {
-    var norm = function (s) { return (s || '').replace(/\s+/g, ''); };
-    var fp = norm(expectText).slice(0, 16);
-    if (!fp) return false; // 空招呼语：按缺失处理（与 repairSingle 空 greeting 语义一致，不掩蔽失败）
-    var items = document.querySelectorAll(SELECTORS.chatDetail.messageSent);
-    for (var i = 0; i < items.length; i++) {
-      if (norm(items[i].textContent).indexOf(fp) >= 0) return true;
-    }
-    return false;
-  },
-
-  hasImageInHistory() {
-    var items = document.querySelectorAll(SELECTORS.chatDetail.messageSent);
-    for (var i = 0; i < items.length; i++) {
-      var img = items[i].querySelector('img');
-      if (img && img.src && img.src.indexOf('https://imgaz.bosszhipin.com/') === 0) return true;
-    }
-    return false;
-  },
-
-  // ── 补发单个岗位：缺招呼语补招呼语、缺图片补图片 ──
-  // 调用前 CS 已重进该对话、历史已加载。返回 { complete, hadText, hadImage, repairedText, repairedImage }
-  async repairSingle(greeting, jobId, imgOpts, textOpts) {
-    // 1. 核对服务器历史（补发前的真相）
-    // 空 greeting：没内容可发也不可能在历史里 → hadText=false 如实记缺失，
-    // 不再默认 true（旧逻辑会把「招呼语压根没生成」掩蔽成补发成功）。
-    var hadText = greeting ? this.hasTextInHistory(greeting) : false;
-    var hadImage = this.hasImageInHistory();
-
-    var textOk = hadText;
-    var imageOk = hadImage;
-    var repairedText = false;
-    var repairedImage = false;
-
-    // 2. 缺招呼语 → 补（单连接安静期，sendText 的 status-delivery 可信）
-    if (!hadText && greeting) {
-      var tr = null;
-      try { tr = await this.sendText(greeting, textOpts); } catch (e) { /* 失败保持 textOk=false */ }
-      textOk = !!(tr && tr.success);
-      repairedText = textOk;
-      await sleep(500);
-    }
-
-    // 3. 缺图片 → 补
-    if (!hadImage) {
-      var ir = await this._sendResumeImages(jobId, imgOpts);
-      if (!ir.attempted) {
-        // 没有可发的图——补不了也不算缺陷（本就无图可发）
-        imageOk = true;
-      } else {
-        imageOk = !ir.imageFailed;
-        repairedImage = imageOk;
-      }
-    }
-
-    return {
-      complete: textOk && imageOk,
-      hadText: hadText, hadImage: hadImage,
-      repairedText: repairedText, repairedImage: repairedImage,
-    };
   },
 
   stop() {

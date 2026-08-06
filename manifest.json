@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "default_locale": "zh_CN",
   "name": "猎职",
-  "version": "1.2.3",
-  "description": "BOSS 直聘 AI 自动投递助手 — 一键海投，智能招呼语",
+  "version": "1.3.0",
+  "description": "BOSS 直聘 AI 岗位采集、筛选与逐岗确认沟通助手",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -17,7 +17,8 @@
   },
   "options_page": "src/options/options.html",
   "permissions": ["storage", "activeTab", "scripting", "sidePanel", "alarms"],
-  "host_permissions": ["*://*.zhipin.com/*", "https://*/*", "http://*/*"],
+  "host_permissions": ["*://*.zhipin.com/*"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
   "content_scripts": [
     {
       "matches": ["*://*.zhipin.com/web/geek/chat*"],
@@ -70,7 +71,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["src/db/*", "src/utils/*", "src/popup/auto-reply-help.png"],
+      "resources": ["src/db/*", "src/popup/auto-reply-help.png"],
       "matches": ["*://*.zhipin.com/*"]
     }
   ]

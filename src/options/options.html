@@ -47,6 +47,9 @@
       </div>
       <div class="card-body-collapsible" id="apiSectionBody">
         <div class="form-group">
+          <label><input type="checkbox" id="aiScreeningEnabled" checked> 采集后自动运行 AI 岗位筛选</label>
+        </div>
+        <div class="form-group">
           <label class="form-label" for="provider">Provider</label>
           <input type="text" id="provider" class="form-input" placeholder="openai-compatible" autocomplete="off">
         </div>
@@ -64,7 +67,7 @@
         </div>
         <div class="form-group">
           <label class="form-label" for="scoreThreshold">AI 筛选阈值</label>
-          <input type="number" id="scoreThreshold" class="form-input" min="0" max="100" step="1" placeholder="60">
+          <input type="number" id="scoreThreshold" class="form-input" min="0" max="100" step="1" placeholder="80">
         </div>
         <button type="button" id="testAiBtn" class="btn-save" style="width:100%;margin-bottom:12px">测试 AI 连接</button>
         <div class="form-group">
@@ -76,6 +79,15 @@
     </section>
 
     <section class="card">
+      <h2 class="card-title">自动回复在线简历</h2>
+      <label><input type="checkbox" id="autoResumeReplyEnabled"> HR 索要简历时自动发送</label>
+      <div class="form-group">
+        <label class="form-label" for="autoResumeId">已确认的在线简历名称或 ID</label>
+        <input type="text" id="autoResumeId" class="form-input" placeholder="开启前必须填写并确认">
+      </div>
+    </section>
+
+    <section class="card">
       <h2 class="card-title">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         完整资料备份
@@ -83,6 +95,7 @@
       <p class="card-desc">导出或导入筛选配置、简历图片、文字简历与 AI 设置。导入会先预览，再确认覆盖。</p>
       <div class="backup-actions">
         <button type="button" id="exportBtn" class="btn-secondary">导出配置</button>
+        <button type="button" id="sensitiveExportBtn" class="btn-secondary">导出含密钥和简历</button>
         <button type="button" id="importBtn" class="btn-secondary">导入配置</button>
         <input type="file" id="importFileInput" accept="application/json,.json" hidden>
       </div>

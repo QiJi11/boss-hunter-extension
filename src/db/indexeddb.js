@@ -1,10 +1,12 @@
 // IndexedDB 封装 — 简历图片 + 设置 + 岗位记录存储
 const DB_NAME = 'zitou';
 const DB_VERSION = 2;
-const HANDLED_JOB_STATUSES = ['selected', 'sent', 'alreadyChatted', 'skipped', 'failed', 'unsent'];
+const HANDLED_JOB_STATUSES = ['recommended', 'manualReview', 'sending', 'sent', 'alreadyChatted', 'skipped', 'failed', 'unsent'];
 const JOB_STATUS_PRIORITY = {
   collected: 0,
-  selected: 10,
+  recommended: 5,
+  manualReview: 10,
+  sending: 15,
   skipped: 20,
   failed: 20,
   unsent: 20,
@@ -169,6 +171,8 @@ function normalizeJobRecord(record) {
   if (!record || typeof record !== 'object') return null;
   var now = new Date().toISOString();
   var status = String(record.status || 'collected').trim() || 'collected';
+  if (status === 'selected') status = 'manualReview';
+  if (!Object.prototype.hasOwnProperty.call(JOB_STATUS_PRIORITY, status)) status = 'collected';
   var jobKey = String(record.jobKey || buildJobKey(record)).trim();
   if (!jobKey) return null;
   var normalized = {

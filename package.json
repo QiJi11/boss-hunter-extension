@@ -1,0 +1,9 @@
+{
+  "name": "liezhi-browser-extension",
+  "private": true,
+  "version": "1.3.0",
+  "scripts": {
+    "test": "node tests/run-tests.js",
+    "check": "node tests/run-tests.js"
+  }
+}
