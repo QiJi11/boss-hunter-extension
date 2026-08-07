@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "default_locale": "zh_CN",
   "name": "猎职",
-  "version": "1.3.8",
+  "version": "1.3.9",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAz6Q8c/XDYuUIS5u+m+2D5YkoDKrVhhx7MVaV7sI0iMrUl1RBHq2xa3vNjpu9GFLEo27N2Vtv5sK066eQtpZiMNcN1Bysz5Ic8XelD7b6cL92JSrKBtHHdWatQ+CDhf8Gp+E3E7JD3CC8oJEhuDvz/2mG+G5GHxo16/+pcI36RTkK851c45Nkgy9mzX2eJgy5yf4MrxHAY8kxMXSsqMSI2WEWiIEymw8mqpxM5jpzdOz4GspUMS7apd1WePrrmVvTb0AOqS1dw+pUwWPb8nfUKyTdqIVl4j2h8gEpyC4zaZfoqahyzawuNSuj3KLHy6o/nY95ByrnRJ1oO9nxJH6aMQIDAQAB",
   "description": "BOSS 直聘 AI 岗位采集、筛选与逐岗确认沟通助手",
   "icons": {

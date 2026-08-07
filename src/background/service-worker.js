@@ -607,45 +607,57 @@ async function applyAiScreeningToJobs(jobs) {
   const threshold = cfg.scoreThreshold;
   const expected = allExpectedPositions(state).join(' / ');
   const CONCURRENCY = 2;
-  let idx = 0;
-  let done = 0;
-  state.aiScreeningProgress = { done: 0, total: jobs.length };
+  const BATCH_SIZE = 6; // 每批岗位数：批间持久化 + 短暂延迟，避免长时间高负载导致 SW 挂起/浏览器崩溃
+  // 断点续筛：从已完成的 done 开始（SW 重启后 state 恢复，继续未完成部分）
+  let done = state.aiScreeningProgress && typeof state.aiScreeningProgress.done === 'number'
+    ? Math.min(state.aiScreeningProgress.done, jobs.length)
+    : 0;
+  state.aiScreeningProgress = { done: done, total: jobs.length };
   pushState();
 
-  async function worker() {
-    while (idx < jobs.length) {
-      const current = jobs[idx++];
-      try {
-        const screening = await screenSingleJob(cfg, current, resumeText, expected);
-        current.aiScreen = screening;
-        current.checked = screening.score >= threshold;
-        current.status = screening.score >= threshold ? 'recommended' : 'manualReview';
-        if (screening.greeting) current.aiGreeting = screening.greeting;
-      } catch (err) {
-        current.aiScreen = {
-          score: 0,
-          score: 0,
-          applyScore: 0,
-          applyReason: 'AI筛选失败',
-          interviewScore: 0,
-          interviewReason: 'AI筛选失败',
-          reason: 'AI筛选失败，请人工确认',
-          greeting: '',
-          risks: [err.message || 'AI error'],
-          failed: true,
-        };
-        if (current.checked === undefined) current.checked = true;
-        current.status = 'manualReview';
-        ErrorLogger.logError(err.message || String(err), err?.stack, 'AI screening failed');
-      }
-      done++;
-      state.aiScreeningProgress = { done: done, total: jobs.length };
-      state.jobs = jobs;
-      pushState();
-    }
-  }
+  for (let start = done; start < jobs.length; start += BATCH_SIZE) {
+    const batchEnd = Math.min(start + BATCH_SIZE, jobs.length);
+    const batch = jobs.slice(start, batchEnd);
+    let idx = start;
 
-  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, jobs.length) }, () => worker()));
+    async function worker() {
+      while (idx < batchEnd) {
+        const current = jobs[idx++];
+        try {
+          const screening = await screenSingleJob(cfg, current, resumeText, expected);
+          current.aiScreen = screening;
+          current.checked = screening.score >= threshold;
+          current.status = screening.score >= threshold ? 'recommended' : 'manualReview';
+          if (screening.greeting) current.aiGreeting = screening.greeting;
+        } catch (err) {
+          current.aiScreen = {
+            score: 0,
+            applyScore: 0,
+            applyReason: 'AI筛选失败',
+            interviewScore: 0,
+            interviewReason: 'AI筛选失败',
+            reason: 'AI筛选失败，请人工确认',
+            greeting: '',
+            risks: [err.message || 'AI error'],
+            failed: true,
+          };
+          if (current.checked === undefined) current.checked = true;
+          current.status = 'manualReview';
+          ErrorLogger.logError(err.message || String(err), err?.stack, 'AI screening failed');
+        }
+        done++;
+        state.aiScreeningProgress = { done: done, total: jobs.length };
+        state.jobs = jobs;
+        pushState();
+        // 持久化筛选进度，SW 重启后可断点续筛
+        try { chrome.storage.local.set({ 'aiScreeningProgress': state.aiScreeningProgress }).catch(() => {}); } catch (_) {}
+      }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batchEnd - start) }, () => worker()));
+    // 批间短暂延迟 + 持久化，给 SW 喘息，降低长任务挂起风险
+    await new Promise(r => setTimeout(r, 300));
+  }
   state.aiScreeningProgress = { done: jobs.length, total: jobs.length };
   pushState();
   return jobs;
@@ -1346,6 +1358,12 @@ chrome.storage.local.get([
   if (result[STORAGE_KEYS.SW.PHASE] && result[STORAGE_KEYS.SW.PHASE] !== 'idle') {
     state.phase = result[STORAGE_KEYS.SW.PHASE];
     if (result[STORAGE_KEYS.SW.JOBS]) state.jobs = result[STORAGE_KEYS.SW.JOBS];
+    // 恢复 AI 筛选进度（分批筛选断点续筛用）
+    chrome.storage.local.get('aiScreeningProgress', function(pRes) {
+      if (pRes && pRes.aiScreeningProgress && typeof pRes.aiScreeningProgress.done === 'number') {
+        state.aiScreeningProgress = pRes.aiScreeningProgress;
+      }
+    });
     if (result[STORAGE_KEYS.SW.GREETINGS]) state.greetings = result[STORAGE_KEYS.SW.GREETINGS];
     // 期望岗位词恢复：丢了会让 buildSendQueueV6 类目匹配落空 → greeting 取空串
     if (result[STORAGE_KEYS.SW.SELECTED_POSITIONS]) state.selectedPositions = result[STORAGE_KEYS.SW.SELECTED_POSITIONS];
