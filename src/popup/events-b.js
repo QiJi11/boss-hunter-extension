@@ -427,7 +427,9 @@ window.initEventsB=function(){
     var risks=Array.isArray(ai.risks)&&ai.risks.length?ai.risks.join('；'):'无明确风险';
     var names=finalResumeNamesForJob(job);
     E.singleSendJob.textContent=(job.company||'')+'｜'+(job.name||'')+'｜'+(job.city||job.location||'城市未标注')+'｜'+(job.salary||'薪资未标注');
-    E.singleSendAi.textContent='AI '+Number(ai.score||0)+' 分；'+(ai.reason||'未完成 AI 筛选')+'；风险：'+risks;
+    var applyScore=Number(ai.applyScore!==undefined?ai.applyScore:(ai.score||0));
+    var interviewScore=Number(ai.interviewScore!==undefined?ai.interviewScore:(ai.score||0));
+    E.singleSendAi.textContent='综合 '+Number(ai.score||0)+' 分；能投 '+applyScore+' 分'+(ai.applyReason?'（'+ai.applyReason+'）':'')+'；能进 '+interviewScore+' 分'+(ai.interviewReason?'（'+ai.interviewReason+'）':'')+'；'+(ai.reason||'未完成 AI 筛选')+'；风险：'+risks;
     E.singleSendGreeting.textContent=finalGreetingForJob(job)||'未配置招呼语，无法发送';
     E.singleSendResume.textContent=names.length?names.join('、'):'不发送图片简历';
     E.singleSendHistory.textContent=(job.historySkipReason||job.alreadyChatted)

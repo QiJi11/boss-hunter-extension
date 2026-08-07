@@ -51,7 +51,7 @@ function loadSharedScripts(storageSeed = {}) {
 
 async function main() {
   const manifest = JSON.parse(read('manifest.json'));
-  assert.equal(manifest.version, '1.3.7');
+  assert.equal(manifest.version, '1.3.8');
   assert.deepEqual(manifest.host_permissions, ['*://*.zhipin.com/*', 'https://*/*', 'http://*/*']);
   assert.deepEqual(manifest.optional_host_permissions, ['https://*/*', 'http://*/*']);
 
@@ -136,6 +136,12 @@ async function main() {
   assert.match(sw, /singleSendLaunchInProgress/);
   assert.match(sw, /reason: 'AI 岗位筛选已关闭'/);
   assert.match(sw, /isTrustedPopupSender\(sender\)/);
+  // 双维度筛选：prompt 含能投/能进字段，screenSingleJob 归一化两维
+  assert.match(sw, /applyScore/);
+  assert.match(sw, /interviewScore/);
+  assert.match(sw, /能投/);
+  assert.match(sw, /能进/);
+  assert.match(sw, /applyScore: Math\.max\(0, Math\.min\(100, Number\(parsed\.applyScore/);
   assert.match(sw, /sendResult\.alreadyChatted\) sentJobIds\.delete/);
   assert.match(sw, /updateJobStatus\(item\.jobId, 'sent'\)/);
   assert.match(sw, /updateJobStatus\(_it\.jobId, 'alreadyChatted'\)/);

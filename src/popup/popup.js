@@ -872,8 +872,8 @@ function loadAiDrawerConfig(done){
 function isSameJobSnapshot(curJob,newJob){
   if(!curJob||!newJob)return false;
   if(curJob.id!==newJob.id)return false;
-  var curAi=curJob.aiScreen&&curJob.aiScreen.score;
-  var newAi=newJob.aiScreen&&newJob.aiScreen.score;
+  var curAi=curJob.aiScreen&&JSON.stringify(curJob.aiScreen);
+  var newAi=newJob.aiScreen&&JSON.stringify(newJob.aiScreen);
   if(curAi!==newAi)return false;
   if(curJob.checked!==newJob.checked)return false;
   if((curJob.detail||'')!==(newJob.detail||''))return false;

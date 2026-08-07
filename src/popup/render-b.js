@@ -338,20 +338,30 @@ window.renderGroupsStable=function(){
 
 // ── Level 2: Job item HTML ──
 
+function dimCls(v){
+  var n=Number(v||0);
+  return n>=80?' dim-good':(n>=60?' dim-mid':' dim-low');
+}
 function renderJobAiHTML(job){
   var ai=job.aiScreen||null;
   if(!ai)return '';
   var score=Number(ai.score||0);
+  var applyScore=Number(ai.applyScore!==undefined?ai.applyScore:score);
+  var interviewScore=Number(ai.interviewScore!==undefined?ai.interviewScore:score);
   var cls=score>=80?' ai-good':(score>=60?' ai-mid':' ai-low');
   var failed=(ai.failed===true)||/失败|error/i.test(String(ai.reason||''))||((ai.risks||[]).join(' ').toLowerCase().indexOf('error')>=0);
   var status=failed?'需人工确认':(job.checked?'建议投递':'低于阈值');
   if(failed)cls+=' ai-failed';
   return '<div class="job-ai'+cls+'">'
     +'<div class="job-ai-main">'
-    +'<span class="job-ai-score">AI '+score+'</span>'
+    +'<span class="job-ai-score">综合 '+score+'</span>'
+    +'<span class="job-ai-dim job-ai-dim-apply'+dimCls(applyScore)+'">能投 '+applyScore+'</span>'
+    +'<span class="job-ai-dim job-ai-dim-interview'+dimCls(interviewScore)+'">能进 '+interviewScore+'</span>'
     +'<span class="job-ai-status">'+status+'</span>'
     +'</div>'
     +'<div class="job-ai-reason">'+esc(ai.reason||'暂无原因')+'</div>'
+    +(ai.applyScore!==undefined&&ai.applyReason?'<div class="job-ai-dim-reason">能投：'+esc(ai.applyReason)+'</div>':'')
+    +(ai.interviewScore!==undefined&&ai.interviewReason?'<div class="job-ai-dim-reason">能进：'+esc(ai.interviewReason)+'</div>':'')
     +((ai.risks&&ai.risks.length)?'<div class="job-ai-risks">'+ai.risks.map(function(r){return'<span>'+esc(r)+'</span>'}).join('')+'</div>':'')
     +'</div>';
 }

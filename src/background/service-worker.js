@@ -130,24 +130,28 @@ function extractJsonObject(text) {
 
 function buildJobScreenPrompt(job, resumeText, expected) {
   var excludeKeywords = uniqueStrings(state.excludeKeywords || []);
-  return `请判断这个岗位是否适合投递，并生成招呼语。只返回 JSON，不要 Markdown。\n\n[简历]\n${resumeText || '未提供文字简历'}\n\n[用户期望方向]\n${expected || ''}\n\n[排除规则]\n排除关键词：${excludeKeywords.join(' / ') || '无'}\n重点识别并降低评分：外包、驻场、培训推广、销售/主播/客服、讲师岗、剪辑/视频制作、游戏前端、把销售/运营包装成 AI 应用开发的岗位、非真实开发岗。\n\n[岗位]\n标题：${job.name || ''}\n公司：${job.company || ''}\n薪资：${job.salary || ''}\n标签：${(job.tags || []).join(' / ')}\nJD：${String(job.desc || job.description || job.detail || '').slice(0, 1500)}\n\n返回格式：{\"score\":0,\"reason\":\"\",\"greeting\":\"\",\"risks\":[]}\nscore 为 0-100 的匹配分；reason 不超过 40 字；greeting 为 80-120 字招呼语；risks 是字符串数组，命中排除规则时写明具体风险。`;
+  return `请判断这个岗位是否适合投递，并生成招呼语。只返回 JSON，不要 Markdown。\n\n[简历]\n${resumeText || '未提供文字简历'}\n\n[用户期望方向]\n${expected || ''}\n\n[排除规则]\n排除关键词：${excludeKeywords.join(' / ') || '无'}\n重点识别并降低评分：外包、驻场、培训推广、销售/主播/客服、讲师岗、剪辑/视频制作、游戏前端、把销售/运营包装成 AI 应用开发的岗位、非真实开发岗。\n\n[岗位]\n标题：${job.name || ''}\n公司：${job.company || ''}\n薪资：${job.salary || ''}\n标签：${(job.tags || []).join(' / ')}\nJD：${String(job.desc || job.description || job.detail || '').slice(0, 1500)}\n\n返回格式：{"score":0,"applyScore":0,"applyReason":"","interviewScore":0,"interviewReason":"","reason":"","greeting":"","risks":[]}\nscore 为 0-100 的综合匹配分；applyScore 为 0-100 的"能投"分（可投递性，匹配+无风险），applyReason 不超过 30 字说明能投理由；interviewScore 为 0-100 的"能进"分（进面可能性，简历竞争力 vs 岗位要求），interviewReason 不超过 30 字说明能进理由；reason 不超过 40 字；greeting 为 80-120 字招呼语；risks 是字符串数组，命中排除规则时写明具体风险。`;
 }
 
 async function screenSingleJob(cfg, job, resumeText, expected) {
   const messages = [
-    { role: 'system', content: '你是招聘岗位匹配助手。严格输出一个 JSON 对象，字段为 score、reason、greeting、risks。' },
+    { role: 'system', content: '你是招聘岗位匹配助手。严格输出一个 JSON 对象，字段为 score、applyScore、applyReason、interviewScore、interviewReason、reason、greeting、risks。' },
     { role: 'user', content: buildJobScreenPrompt(job, resumeText, expected) },
   ];
   let text;
   try {
-    text = await callOpenAICompatible(cfg, messages, 700, 60000, `screen:${job.id || job.name}`, { type: 'json_object' });
+    text = await callOpenAICompatible(cfg, messages, 900, 60000, `screen:${job.id || job.name}`, { type: 'json_object' });
   } catch (err) {
     if (!/response_format|json_object|400/i.test(String(err.message || ''))) throw err;
-    text = await callOpenAICompatible(cfg, messages, 700, 60000, `screen:${job.id || job.name}`);
+    text = await callOpenAICompatible(cfg, messages, 900, 60000, `screen:${job.id || job.name}`);
   }
   const parsed = extractJsonObject(text);
   return {
     score: Math.max(0, Math.min(100, Number(parsed.score || 0))),
+    applyScore: Math.max(0, Math.min(100, Number(parsed.applyScore !== undefined ? parsed.applyScore : parsed.score || 0))),
+    applyReason: String(parsed.applyReason || '').slice(0, 80),
+    interviewScore: Math.max(0, Math.min(100, Number(parsed.interviewScore !== undefined ? parsed.interviewScore : parsed.score || 0))),
+    interviewReason: String(parsed.interviewReason || '').slice(0, 80),
     reason: String(parsed.reason || '').slice(0, 160),
     greeting: String(parsed.greeting || '').trim(),
     risks: Array.isArray(parsed.risks) ? parsed.risks.map(String).slice(0, 5) : [],
@@ -620,6 +624,11 @@ async function applyAiScreeningToJobs(jobs) {
       } catch (err) {
         current.aiScreen = {
           score: 0,
+          score: 0,
+          applyScore: 0,
+          applyReason: 'AI筛选失败',
+          interviewScore: 0,
+          interviewReason: 'AI筛选失败',
           reason: 'AI筛选失败，请人工确认',
           greeting: '',
           risks: [err.message || 'AI error'],
