@@ -102,6 +102,20 @@ node acceptance-tools/set-search-tab.mjs && node acceptance-tools/deliver-job.mj
 node acceptance-tools/sw-eval.mjs "new Promise(r=>{const t=setInterval(()=>{if(state.phase!=='sending'){clearInterval(t);r({phase:state.phase,results:(state.sendResults||[]).slice(-1).map(x=>({ok:x.success,reason:(x.reason||x.error||'').slice(0,120)}))})}},4000);setTimeout(()=>{clearInterval(t);r({timeout:true})},180000)})"
 ```
 
+### 4.2.1 真实简历配置（投递前必须做！）
+
+**重要教训**：投递 29+1 岗的招呼语曾全是测试假简历（"张三/3年后端"），已真实发出无法撤回。
+
+真实简历（陈俊豪）：
+- **文字简历**（AI 招呼语用）: 设置 → AI 助手 → 文字简历，或 storage `textResume` / `sw:textResume`
+- **图片简历**（投递发给 HR）: storage `resumeImages`（PDF 转 PNG 上传）
+  - PDF 源: `job-application-assets\陈俊豪_简历优化_AgentKB-final-20260708\陈俊豪_简历_AI.pdf`
+  - 转图: `python -c "import fitz; ..."`（PyMuPDF）
+  - 上传: `upload-resume-imgs.mjs`（CDP DOM.setFileInputFiles）
+- **招呼语重新生成**: 清空 `state.greetings` 后 `generateAllGreetingsConcurrent()`，用 `pump-greetings.mjs` 循环应对 Grok 慢响应
+
+**华为 OD 排除**: 排除词含 OD 特征（线上面试/接受无经验/接受应届/机考/15薪），共 22 个持久化在 `ui:filterState.excludeKeywords`。投递前确认。
+
 ### 4.3 批量投递（自动两阶段搜索）
 ```bash
 node acceptance-tools/deliver-batch.mjs "公司名|jobId|岗位名" "公司2|jobId2|岗位名2" ...
