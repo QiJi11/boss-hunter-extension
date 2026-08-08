@@ -1740,20 +1740,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({ success: false, error: '单岗确认只能从扩展侧边面板发起' });
         return false;
       }
-      const preparedJob = findStateJobById(msg.jobId);
-      if (!preparedJob || state.phase === 'sending' || singleSendLaunchInProgress) {
-        sendResponse({
-          success: false,
-          error: (state.phase === 'sending' || singleSendLaunchInProgress)
-            ? '当前已有岗位正在沟通'
-            : '岗位已失效，请重新采集',
-        });
-        return false;
-      }
-      preparedJob.status = 'manualReview';
-      const token = createSingleSendConfirmation(preparedJob.id || preparedJob.jobId);
-      sendResponse({ success: true, token: token, expiresInMs: 5 * 60 * 1000 });
-      return false;
+      // 冷启动竞态：SW 刚被消息唤醒时 state.jobs 尚未从 storage 恢复，
+      // 直接 findStateJobById 会误报"岗位已失效"。必须先 await bootRestored。
+      bootRestored.then(() => {
+        const preparedJob = findStateJobById(msg.jobId);
+        if (!preparedJob || state.phase === 'sending' || singleSendLaunchInProgress) {
+          sendResponse({
+            success: false,
+            error: (state.phase === 'sending' || singleSendLaunchInProgress)
+              ? '当前已有岗位正在沟通'
+              : '岗位已失效，请重新采集',
+          });
+          return;
+        }
+        preparedJob.status = 'manualReview';
+        const token = createSingleSendConfirmation(preparedJob.id || preparedJob.jobId);
+        sendResponse({ success: true, token: token, expiresInMs: 5 * 60 * 1000 });
+      }).catch((e) => {
+        ErrorLogger.logError(e.message, e.stack, 'PREPARE_SINGLE_SEND bootRestored failed');
+        sendResponse({ success: false, error: e.message || '内部错误' });
+      });
+      return true;
     }
 
     case MSG.CONFIRM_SINGLE_SEND:
