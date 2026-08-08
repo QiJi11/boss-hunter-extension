@@ -116,6 +116,16 @@ node acceptance-tools/sw-eval.mjs "new Promise(r=>{const t=setInterval(()=>{if(s
 
 **华为 OD 排除**: 排除词含 OD 特征（线上面试/接受无经验/接受应届/机考/15薪），共 22 个持久化在 `ui:filterState.excludeKeywords`。投递前确认。
 
+### 4.2.2 岗位级招呼语残留（重要！投递前检查）
+
+**教训**：投递招呼语优先级 `custom.customGreeting || job.aiGreeting || group.greeting.text`。
+AI 筛选时用假简历生成了**岗位级 `job.aiGreeting`**（234 岗全是"张三"），只清组级 `state.greetings` 没用——岗位级优先。
+
+**投递前必须**：
+1. 清空所有 `job.aiGreeting`（`clear-job-greetings.mjs`，SW 内 `delete j.aiGreeting` + pushState + 持久化）
+2. 确认组级 `state.greetings` 8 组用真实简历重新生成（`pump-greetings.mjs` 循环触发）
+3. 验证 `JSON.stringify(state.greetings).indexOf('张三') < 0 && indexOf('陈俊豪') >= 0`
+
 ### 4.3 批量投递（自动两阶段搜索）
 ```bash
 node acceptance-tools/deliver-batch.mjs "公司名|jobId|岗位名" "公司2|jobId2|岗位名2" ...
