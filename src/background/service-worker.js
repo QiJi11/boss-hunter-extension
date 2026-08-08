@@ -3184,22 +3184,67 @@ async function startSendV6(jobIds) {
   }
   // pre-flight 最长 20s，期间用户可能点了停止 → 立即 bail（stopSend 已负责清场/终态）
 
-  // ── 投递前定位岗位卡片：把首个搜索 tab 导航到「公司名」搜索页 ──
-  // 真机验证：BOSS 按岗位名 query 常搜不到采集的岗位（算法推荐页分页），
-  // 按公司名 query 命中率高（复知智云/北觅/大我等均靠此投出）。
-  // startSendV6 是单岗门禁，用 queue[0] 公司名；首屏已有卡片时导航后 findCardByLink 同样能匹配，不影响成功路径。
-  // 匿名公司（以"某"开头，BOSS 隐藏真名）跳过导航——query 搜不到，投递必失败，直接沿用原 tab 走兜底。
+  // ── 投递前定位岗位卡片：把首个搜索 tab 导航到目标岗位可命中的搜索页 ──
+  // 真机验证结论：
+  //  · 实名公司岗位：按「岗位名」query 常搜不到（算法推荐页分页），按「公司名」query 命中率高（复知智云/北觅/大我等）。
+  //  · 匿名公司岗位（"某大型XX公司"，BOSS 隐藏真实名）：公司名不可搜索，必须按「岗位名」query 才能定位（真机：大模型Agent应用专家投成）。
+  // 因此两阶段：公司名优先（实名命中）→ 岗位名兜底（匿名命中）。每阶段导航后注入脚本验证
+  // 目标 jobId 的岗位卡片是否在搜索页（DOM 含 job_detail 链接），命中即停。
+  // 首屏已有卡片时导航后 findCardByLink 同样能匹配，不影响成功路径。
   var _qFirst = state.sendQueueV6 && state.sendQueueV6[0];
+  var _qJobId = _qFirst && _qFirst.jobId ? String(_qFirst.jobId) : '';
+  var _qPosition = _qFirst && _qFirst.positionName ? String(_qFirst.positionName).trim() : '';
   var _qCompany = _qFirst && _qFirst.companyName ? String(_qFirst.companyName).trim() : '';
-  if (_qCompany && _qCompany.indexOf('某') !== 0) {
+  // 两阶段搜索词：公司名（实名可搜）→ 岗位名（匿名兜底），过滤匿名占位/空串
+  var _qTerms = [];
+  if (_qCompany && _qCompany.indexOf('某') !== 0) _qTerms.push(_qCompany);
+  if (_qPosition && _qPosition.indexOf('某') !== 0) _qTerms.push(_qPosition);
+  for (var _qi = 0; _qi < _qTerms.length; _qi++) {
+    var _qTerm = _qTerms[_qi];
     try {
-      var _qUrl = 'https://www.zhipin.com/web/geek/jobs?query=' + encodeURIComponent(_qCompany);
+      var _qUrl = 'https://www.zhipin.com/web/geek/jobs?query=' + encodeURIComponent(_qTerm);
       await chrome.tabs.update(searchTabs[0].id, { url: _qUrl });
-      await sleep(3000);
+      await sleep(3500);
       await waitForContentScript(searchTabs[0].id, 5000, 5);
-      try { DiagLogger.userEvent('sw.send', '投递前导航搜索页到公司名: ' + _qCompany); } catch (_) {}
+      // 注入脚本验证目标 jobId 是否在搜索页（滚 8 次加载更多，最多 ~12s）
+      var _qHit = false;
+      if (_qJobId) {
+        try {
+          var _qRes = await chrome.scripting.executeScript({
+            target: { tabId: searchTabs[0].id },
+            func: function(targetJobId) {
+              return new Promise(function(resolve) {
+                var hit = false;
+                var check = function() {
+                  var links = Array.from(document.querySelectorAll('a[href*="/job_detail/"]'));
+                  hit = links.some(function(h) { return h.href.indexOf(targetJobId) >= 0 || h.getAttribute('href').indexOf(targetJobId) >= 0; });
+                  if (hit) { resolve(true); return; }
+                  window.scrollTo(0, document.body.scrollHeight);
+                };
+                var tries = 0;
+                var iv = setInterval(function() {
+                  if (hit) { clearInterval(iv); resolve(true); return; }
+                  check();
+                  tries++;
+                  if (tries >= 10) { clearInterval(iv); resolve(false); }
+                }, 1500);
+              });
+            },
+            args: [_qJobId],
+          });
+          _qHit = _qRes && _qRes[0] && _qRes[0].result === true;
+        } catch (eScr) {
+          try { DiagLogger.warn('sw.send', '搜索页 jobId 验证失败: ' + (eScr.message || eScr)); } catch (_) {}
+        }
+      }
+      if (_qHit) {
+        try { DiagLogger.userEvent('sw.send', '投递前导航搜索页命中（' + (_qi === 0 ? '公司名' : '岗位名') + '）: ' + _qTerm); } catch (_) {}
+        break; // 命中，用当前搜索页进入 stage1
+      }
+      try { DiagLogger.userEvent('sw.send', '投递前导航未命中（' + (_qi === 0 ? '公司名' : '岗位名') + '）: ' + _qTerm + '，尝试下一词'); } catch (_) {}
     } catch (e) {
-      try { DiagLogger.warn('sw.send', '公司名导航失败（沿用原 tab）: ' + (e.message || e)); } catch (_) {}
+      try { DiagLogger.warn('sw.send', '搜索页导航失败（沿用原 tab）: ' + (e.message || e)); } catch (_) {}
+      break;
     }
   }
 
