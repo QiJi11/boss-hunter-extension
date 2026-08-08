@@ -27,6 +27,7 @@ const MSG = {
   AI_CHAT: 'AI_CHAT',
   SCORE_RESUME: 'SCORE_RESUME',
   REWRITE_RESUME: 'REWRITE_RESUME',
+  CLOSE_IDLE_BOSS_TABS: 'CLOSE_IDLE_BOSS_TABS',
 
   // SW → Popup
   STATE_UPDATE: 'STATE_UPDATE',
@@ -124,6 +125,7 @@ const FEATURE_KEYS = {
   AUTO_RESUME_REPLY_ENABLED: 'autoResumeReplyEnabled',
   AUTO_RESUME_ID: 'autoResumeId',
   BACKUP_VERSION: 'backupVersion',
+  AUTO_CLOSE_BOSS_TABS: 'autoCloseBossTabs',
 };
 
 const FEATURE_DEFAULTS = {
@@ -131,6 +133,7 @@ const FEATURE_DEFAULTS = {
   autoResumeReplyEnabled: false,
   autoResumeId: '',
   backupVersion: 2,
+  autoCloseBossTabs: true,
 };
 
 const DEFAULT_TARGET_CITIES = ['101210100', '101020100', '101190400', '101210400'];
@@ -306,6 +309,7 @@ function normalizeFeatureSettings(raw) {
     autoResumeReplyEnabled: raw.autoResumeReplyEnabled === true,
     autoResumeId: typeof raw.autoResumeId === 'string' ? raw.autoResumeId.trim() : '',
     backupVersion: 2,
+    autoCloseBossTabs: raw.autoCloseBossTabs !== false,
   };
 }
 

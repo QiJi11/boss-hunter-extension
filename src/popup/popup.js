@@ -67,6 +67,7 @@ function initDomRefs(){
   E.compositeAiModel=$('#compositeAiModel');E.compositeAiScoreThreshold=$('#compositeAiScoreThreshold');E.compositeTextResume=$('#compositeTextResume');
   E.compositeAiScreeningEnabled=$('#compositeAiScreeningEnabled');
   E.compositeAutoResumeReplyEnabled=$('#compositeAutoResumeReplyEnabled');E.compositeAutoResumeId=$('#compositeAutoResumeId');
+  E.compositeAutoCloseBossTabs=$('#compositeAutoCloseBossTabs');E.compositeCloseBossTabsBtn=$('#compositeCloseBossTabsBtn');E.compositeCloseBossTabsStatus=$('#compositeCloseBossTabsStatus');
   E.compositeTestBtn=$('#compositeTestBtn');E.compositeSaveBtn=$('#compositeSaveBtn');E.compositeStatus=$('#compositeStatus');
   E.compositeExportBtn=$('#compositeExportBtn');E.compositeImportBtn=$('#compositeImportBtn');E.compositeImportFileInput=$('#compositeImportFileInput');
   E.compositeSensitiveExportBtn=$('#compositeSensitiveExportBtn');
@@ -849,10 +850,11 @@ function fillAiDrawer(config,textResume){
   },cfg,textResume);
   if(E.compositeBtn)E.compositeBtn.classList.toggle('configured',!!cfg.apiKey);
   updateAiFilterAssistantState();
-  chrome.storage.local.get(['aiScreeningEnabled','autoResumeReplyEnabled','autoResumeId'],function(items){
+  chrome.storage.local.get(['aiScreeningEnabled','autoResumeReplyEnabled','autoResumeId','autoCloseBossTabs'],function(items){
     if(E.compositeAiScreeningEnabled)E.compositeAiScreeningEnabled.checked=items.aiScreeningEnabled!==false;
     if(E.compositeAutoResumeReplyEnabled)E.compositeAutoResumeReplyEnabled.checked=items.autoResumeReplyEnabled===true;
     if(E.compositeAutoResumeId)E.compositeAutoResumeId.value=items.autoResumeId||'';
+    if(E.compositeAutoCloseBossTabs)E.compositeAutoCloseBossTabs.checked=items.autoCloseBossTabs!==false;
   });
 }
 
@@ -909,7 +911,8 @@ function saveCompositeConfig(callback){
       aiScreeningEnabled:!E.compositeAiScreeningEnabled||E.compositeAiScreeningEnabled.checked,
       autoResumeReplyEnabled:autoEnabled,
       autoResumeId:autoResumeId,
-      backupVersion:2
+      backupVersion:2,
+      autoCloseBossTabs:!E.compositeAutoCloseBossTabs||E.compositeAutoCloseBossTabs.checked
     }).then(function(){saveAiConfig(cfg,textResume,setCompositeStatus,callback)});
   }).catch(function(e){
     setCompositeStatus('保存失败: '+e.message,'error');if(callback)callback(false);
@@ -998,6 +1001,19 @@ function wireCompositeDrawer(){
       showCompositeImportStatus('导出失败: '+err.message,'error');
     }).finally(function(){
       E.compositeExportBtn.disabled=false;
+    });
+  });
+  if(E.compositeCloseBossTabsBtn)E.compositeCloseBossTabsBtn.addEventListener('click',function(){
+    E.compositeCloseBossTabsBtn.disabled=true;
+    if(E.compositeCloseBossTabsStatus)E.compositeCloseBossTabsStatus.textContent='正在清理多余 BOSS 窗口...';
+    chrome.runtime.sendMessage({type:MSG.CLOSE_IDLE_BOSS_TABS},function(resp){
+      E.compositeCloseBossTabsBtn.disabled=false;
+      if(resp&&resp.success){
+        var msg=resp.closed>0?('已关闭 '+resp.closed+' 个多余 BOSS 窗口'):'当前无多余 BOSS 窗口';
+        if(E.compositeCloseBossTabsStatus)E.compositeCloseBossTabsStatus.textContent=msg;
+      }else{
+        if(E.compositeCloseBossTabsStatus)E.compositeCloseBossTabsStatus.textContent='清理失败: '+((resp&&resp.error)||'无响应');
+      }
     });
   });
   if(E.compositeSensitiveExportBtn)E.compositeSensitiveExportBtn.addEventListener('click',function(){

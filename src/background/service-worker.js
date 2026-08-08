@@ -1812,6 +1812,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       ], 8, 20000, 'test').then((text) => sendResponse({ success: true, message: text })).catch((e) => sendResponse({ success: false, error: e.message }));
       return true;
 
+    case MSG.CLOSE_IDLE_BOSS_TABS:
+      // 手动清理：忽略开关，强制关闭多余 BOSS 搜索 tab
+      closeIdleBossSearchTabs(true).then((closed) => {
+        sendResponse({ success: true, closed: closed });
+      }).catch((e) => {
+        ErrorLogger.logError(e.message, e.stack, 'CLOSE_IDLE_BOSS_TABS failed');
+        sendResponse({ success: false, error: e.message });
+      });
+      return true;
+
     case MSG.GENERATE_FILTER_SUGGESTION:
       Promise.all([
         chrome.storage.local.get([STORAGE_KEYS.UI.FILTER_STATE, STORAGE_KEYS.SW.JOBS]),
@@ -3859,6 +3869,41 @@ async function cleanupV6() {
   state._v6CurrentBatchQueue = [];
   await persistState();
   await activateOriginalMainWindow();
+  // 投递收尾：自动清理多余 BOSS 搜索 tab（保留当前 searchTabId，其余搜索页全关）
+  await closeIdleBossSearchTabs();
+}
+
+// ── 关闭多余的 BOSS 搜索 tab：保留 searchTabId（下轮投递复用），其余 /web/geek/jobs 搜索页全关 ──
+// 只动搜索页（zhipin.com/web/geek/jobs*），不碰 job_detail / chat 页 / 用户浏览页。
+// force=true 手动触发（忽略开关）；否则读 autoCloseBossTabs 开关（默认开）。
+async function closeIdleBossSearchTabs(force) {
+  try {
+    if (!force) {
+      var feat = await chrome.storage.local.get(FEATURE_KEYS.AUTO_CLOSE_BOSS_TABS);
+      if (feat[FEATURE_KEYS.AUTO_CLOSE_BOSS_TABS] === false) return 0; // 开关关闭，不清理
+    }
+    var tabs = await chrome.tabs.query({ url: '*://*.zhipin.com/web/geek/jobs*' });
+    if (!tabs || tabs.length <= 1) return 0;
+    var keepId = state.searchTabId;
+    var closed = 0;
+    for (var i = 0; i < tabs.length; i++) {
+      var tab = tabs[i];
+      if (tab.id && tab.id !== keepId) {
+        try {
+          await chrome.tabs.remove(tab.id);
+          closed++;
+        } catch (e) {}
+      }
+    }
+    if (closed > 0) {
+      try { _diagMarkSelfTabOps(); } catch (_) {} // 扩展自己关 tab，别记成用户误操作
+      try { DiagLogger.userEvent('sw.tab', '投递后清理多余 BOSS 搜索 tab: 关 ' + closed + ' 个（保留 searchTabId=' + keepId + '）'); } catch (_) {}
+    }
+    return closed;
+  } catch (e) {
+    try { DiagLogger.warn('sw.tab', '清理多余搜索 tab 失败: ' + (e.message || e)); } catch (_) {}
+    return 0;
+  }
 }
 
 async function stopSend() {
