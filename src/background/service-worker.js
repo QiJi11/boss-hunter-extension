@@ -608,6 +608,14 @@ async function applyAiScreeningToJobs(jobs) {
   const expected = allExpectedPositions(state).join(' / ');
   const CONCURRENCY = 2;
   const BATCH_SIZE = 6; // 每批岗位数：批间持久化 + 短暂延迟，避免长时间高负载导致 SW 挂起/浏览器崩溃
+  // 保活：Grok 单岗响应 40s+，超过 Chrome SW 空闲终止阈值（30s）。
+  // 实测有效方式：setInterval 每 8s 创建一个 1s 后触发的 alarm，制造"待处理事件"，
+  // 让 SW 在等待 Grok 响应期间保持活跃，不被 Chrome 空闲终止杀（否则筛选 promise 冻结）。
+  state._screeningActive = true;
+  var _screenKeepaliveTimer = setInterval(function() {
+    try { chrome.alarms.create(_screenKeepaliveAlarm, { when: Date.now() + 1000 }).catch(function(){}); } catch (_) {}
+  }, 8000);
+  state._screenKeepaliveTimer = _screenKeepaliveTimer;
   // 断点续筛：从已完成的 done 开始（SW 重启后 state 恢复，继续未完成部分）
   let done = state.aiScreeningProgress && typeof state.aiScreeningProgress.done === 'number'
     ? Math.min(state.aiScreeningProgress.done, jobs.length)
@@ -659,6 +667,9 @@ async function applyAiScreeningToJobs(jobs) {
     await new Promise(r => setTimeout(r, 300));
   }
   state.aiScreeningProgress = { done: jobs.length, total: jobs.length };
+  state._screeningActive = false;
+  if (state._screenKeepaliveTimer) { clearInterval(state._screenKeepaliveTimer); state._screenKeepaliveTimer = null; }
+  try { chrome.alarms.clear(_screenKeepaliveAlarm).catch(function(){}); } catch (_) {}
   pushState();
   return jobs;
 }
@@ -1971,6 +1982,7 @@ function sleep(ms) {
 // ═══════════════════════════════════════════════════════════════════
 const _workerAlarmPrefix = 'zitou:worker_keepalive:';
 const _activeWorkerKeepalives = new Set(); // tabId 集合
+const _screenKeepaliveAlarm = 'zitou:screen_keepalive'; // AI 筛选保活 alarm
 
 function _workerAlarmName(tabId) { return _workerAlarmPrefix + tabId; }
 
@@ -1995,6 +2007,12 @@ function stopWorkerKeepalive(tabId) {
 // CS 侧已有 PONG handler（content.js:401-403），无需新增
 chrome.alarms.onAlarm.addListener(function(alarm) {
   if (!alarm || !alarm.name) return;
+  // 筛选保活 alarm（由 _screenKeepaliveTimer 每 8s 创建、1s 后触发）：
+  // 触发即算 SW 有待处理事件，重置空闲计时器。旧期间 alarm 清理即可，保活靠 timer 续命。
+  if (alarm.name === _screenKeepaliveAlarm) {
+    try { chrome.alarms.clear(alarm.name).catch(function(){}); } catch (_) {}
+    return;
+  }
   if (alarm.name.indexOf(_workerAlarmPrefix) !== 0) return;
   var tabId = parseInt(alarm.name.slice(_workerAlarmPrefix.length), 10);
   if (!tabId || !_activeWorkerKeepalives.has(tabId)) {
