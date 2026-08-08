@@ -3184,6 +3184,24 @@ async function startSendV6(jobIds) {
   }
   // pre-flight 最长 20s，期间用户可能点了停止 → 立即 bail（stopSend 已负责清场/终态）
 
+  // ── 投递前定位岗位卡片：把首个搜索 tab 导航到「公司名」搜索页 ──
+  // 真机验证：BOSS 按岗位名 query 常搜不到采集的岗位（算法推荐页分页），
+  // 按公司名 query 命中率高（复知智云/北觅/大我等均靠此投出）。
+  // startSendV6 是单岗门禁，用 queue[0] 公司名；首屏已有卡片时导航后 findCardByLink 同样能匹配，不影响成功路径。
+  // 匿名公司（以"某"开头，BOSS 隐藏真名）跳过导航——query 搜不到，投递必失败，直接沿用原 tab 走兜底。
+  var _qFirst = state.sendQueueV6 && state.sendQueueV6[0];
+  var _qCompany = _qFirst && _qFirst.companyName ? String(_qFirst.companyName).trim() : '';
+  if (_qCompany && _qCompany.indexOf('某') !== 0) {
+    try {
+      var _qUrl = 'https://www.zhipin.com/web/geek/jobs?query=' + encodeURIComponent(_qCompany);
+      await chrome.tabs.update(searchTabs[0].id, { url: _qUrl });
+      await sleep(3000);
+      await waitForContentScript(searchTabs[0].id, 5000, 5);
+      try { DiagLogger.userEvent('sw.send', '投递前导航搜索页到公司名: ' + _qCompany); } catch (_) {}
+    } catch (e) {
+      try { DiagLogger.warn('sw.send', '公司名导航失败（沿用原 tab）: ' + (e.message || e)); } catch (_) {}
+    }
+  }
 
   // 遍历所有搜索 tab，逐个激活并提取 HR 信息
   // 每个 tab 上的 DOM 只包含对应城市的岗位卡片

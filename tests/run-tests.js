@@ -51,7 +51,7 @@ function loadSharedScripts(storageSeed = {}) {
 
 async function main() {
   const manifest = JSON.parse(read('manifest.json'));
-  assert.equal(manifest.version, '1.3.9');
+  assert.equal(manifest.version, '1.3.10');
   assert.deepEqual(manifest.host_permissions, ['*://*.zhipin.com/*', 'https://*/*', 'http://*/*']);
   assert.deepEqual(manifest.optional_host_permissions, ['https://*/*', 'http://*/*']);
 
