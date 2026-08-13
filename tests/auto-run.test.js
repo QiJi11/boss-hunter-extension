@@ -262,6 +262,30 @@ async function main() {
     console.log('[PASS] buildSendQueueV6: jobId greeting priority');
   }
 
+  // ── M5: normalizeJobRecord 五分类状态支持 ──
+  {
+    const idb = read('src/db/indexeddb.js');
+    // 提取状态常量 + buildJobKey + normalizeJobRecord
+    const cStart = idb.indexOf('const HANDLED_JOB_STATUSES');
+    const cEnd = idb.indexOf('function mergeJobRecord');
+    assert.ok(cStart >= 0 && cEnd > cStart, 'indexeddb markers not found');
+    const src = idb.slice(cStart, cEnd);
+    const c = vm.createContext({ console, Date, indexedDB: undefined });
+    vm.runInContext(src, c, { filename: 'indexeddb-partial.js' });
+    const r1 = c.normalizeJobRecord({ jobId: 'x1', status: 'delivered', deliveredAt: '2026-08-13T00:00:00Z', runId: 'run-1', attemptId: 'run-1-x1' });
+    assert.strictEqual(r1.status, 'delivered');
+    assert.strictEqual(r1.runId, 'run-1');
+    assert.strictEqual(r1.attemptId, 'run-1-x1');
+    assert.strictEqual(r1.deliveredAt, '2026-08-13T00:00:00Z');
+    const r2 = c.normalizeJobRecord({ jobId: 'x2', status: 'uncertain' });
+    assert.strictEqual(r2.status, 'uncertain');
+    const r3 = c.normalizeJobRecord({ jobId: 'x3', status: 'stopped' });
+    assert.strictEqual(r3.status, 'stopped');
+    const r4 = c.normalizeJobRecord({ jobId: 'x4', status: 'bogus' });
+    assert.strictEqual(r4.status, 'collected', 'bogus status falls back');
+    console.log('[PASS] normalizeJobRecord: delivered/uncertain/stopped + M5 fields');
+  }
+
   console.log('All auto-run tests passed.');
   process.exit(0);
 }

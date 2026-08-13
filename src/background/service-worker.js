@@ -4880,6 +4880,10 @@ async function startAutoRun(frozen) {
   state.autoRun.status = stopped ? 'stopped' : 'done';
   state.autoRun.stopReason = stopReason || '';
   state.autoRun.attemptLog = attemptLog;
+  // 1.4.0 M5: 写入长期 jobRecords（runId/attemptId/五分类状态）
+  try { await persistAutoRunRecords(attemptLog, runId); } catch (e) {
+    try { DiagLogger.warn('sw.autoRecords', 'M5 记录失败: ' + (e && e.message || e)); } catch (_) {}
+  }
   await persistState();
   return { runId: runId, status: state.autoRun.status, stopReason: state.autoRun.stopReason, attempts: attemptLog };
 }
@@ -4963,4 +4967,47 @@ async function buildJobGreetingMap(jobIds) {
     }
   }
   return { map: map, reviewIds: reviewIds };
+}
+
+// ── 1.4.0 M5: 自动投递结果写入长期 jobRecords ──
+async function persistAutoRunRecords(attemptLog, runId) {
+  if (typeof saveJobRecords !== 'function') return;
+  var records = (Array.isArray(attemptLog) ? attemptLog : []).map(function(a) {
+    var job = state.jobs.find(function(j) { return (j.jobId || j.id) === a.jobId; });
+    var status;
+    switch (a.outcome) {
+      case 'delivered': status = 'delivered'; break;
+      case 'alreadyChatted': status = 'alreadyChatted'; break;
+      case 'captcha': status = 'failed'; break;
+      case 'uncertain': status = 'uncertain'; break;
+      case 'stopped': status = 'stopped'; break;
+      default: status = 'failed';
+    }
+    var greetingInfo = state.greetings && state.greetings[a.jobId];
+    var rec = {
+      jobId: a.jobId,
+      positionName: job && (job.name || job.positionName || ''),
+      companyName: job && (job.company || job.companyName || ''),
+      hrName: a.hr || (job && job.hrName) || '',
+      city: (job && job.cityName) || '',
+      salary: (job && job.salary) || '',
+      status: status,
+      error: a.reason || '',
+      source: 'auto-send',
+      runId: runId,
+      attemptId: a.attemptId,
+      deliveredAt: a.deliveredAt ? new Date(a.deliveredAt).toISOString() : '',
+      greetingHash: greetingInfo && greetingInfo.sha256 || '',
+      greetingVariant: greetingInfo && greetingInfo.variant || '',
+      frozenPrediction: job && job.aiScreen ? { applyScore: job.aiScreen.applyScore, score: job.aiScreen.score } : null,
+      lastHandledAt: new Date().toISOString(),
+    };
+    return rec;
+  }).filter(function(r) { return r.jobId; });
+  if (!records.length) return;
+  try {
+    await saveJobRecords(records);
+  } catch (e) {
+    try { DiagLogger.warn('sw.autoRecords', '自动投递记录保存失败: ' + (e && e.message || e)); } catch (_) {}
+  }
 }

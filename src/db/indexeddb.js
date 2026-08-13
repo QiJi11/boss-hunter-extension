@@ -1,7 +1,7 @@
 // IndexedDB 封装 — 简历图片 + 设置 + 岗位记录存储
 const DB_NAME = 'zitou';
 const DB_VERSION = 2;
-const HANDLED_JOB_STATUSES = ['recommended', 'manualReview', 'sending', 'sent', 'alreadyChatted', 'skipped', 'failed', 'unsent'];
+const HANDLED_JOB_STATUSES = ['recommended', 'manualReview', 'sending', 'sent', 'alreadyChatted', 'skipped', 'failed', 'unsent', 'delivered', 'uncertain', 'stopped'];
 const JOB_STATUS_PRIORITY = {
   collected: 0,
   recommended: 5,
@@ -12,6 +12,9 @@ const JOB_STATUS_PRIORITY = {
   unsent: 20,
   sent: 30,
   alreadyChatted: 30,
+  delivered: 40,
+  uncertain: 25,
+  stopped: 20,
 };
 
 function openDB() {
@@ -190,6 +193,18 @@ function normalizeJobRecord(record) {
     firstCollectedAt: String(record.firstCollectedAt || record.createdAt || now),
     lastSeenAt: String(record.lastSeenAt || now),
     lastHandledAt: String(record.lastHandledAt || ''),
+    // 1.4.0 M5: 自动投递记账字段
+    runId: String(record.runId || '').trim(),
+    attemptId: String(record.attemptId || '').trim(),
+    deliveredAt: String(record.deliveredAt || '').trim(),
+    viewedAt: String(record.viewedAt || '').trim(),
+    repliedAt: String(record.repliedAt || '').trim(),
+    interviewAt: String(record.interviewAt || '').trim(),
+    rejectedAt: String(record.rejectedAt || '').trim(),
+    noResponseAsOf: String(record.noResponseAsOf || '').trim(),
+    frozenPrediction: record.frozenPrediction || null,
+    greetingHash: String(record.greetingHash || '').trim(),
+    greetingVariant: String(record.greetingVariant || '').trim(),
   };
   if (HANDLED_JOB_STATUSES.includes(normalized.status) && !normalized.lastHandledAt) {
     normalized.lastHandledAt = now;
