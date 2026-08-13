@@ -1739,8 +1739,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case MSG.AUTO_RUN_PREVIEW: {
       var _cfg = (msg && msg.config) || {};
       try {
-        var _pv = buildAutoRunPreview(msg.jobIds || [], _cfg);
-        sendResponse({ success: true, preview: _pv });
+        buildHandledHrSet().then(function(_hs) {
+          var _pv = buildAutoRunPreview(msg.jobIds || [], _cfg, _hs);
+          sendResponse({ success: true, preview: _pv });
+        }).catch(function() {
+          var _pv = buildAutoRunPreview(msg.jobIds || [], _cfg);
+          sendResponse({ success: true, preview: _pv });
+        });
       } catch (e) {
         ErrorLogger.logError(e.message, e.stack, 'AUTO_RUN_PREVIEW failed');
         sendResponse({ success: false, error: e.message });
@@ -4611,7 +4616,7 @@ function classifyJob(job, cfg) {
 }
 
 // 硬过滤补充（自动投递专用）：城市/学历/已投/已沟通
-function autoHardReject(job, state) {
+function autoHardReject(job, state, handledSet) {
   var reasons = [];
   if (!job) return ['岗位数据缺失'];
   if (sentJobIds.has(job.jobId || job.id)) reasons.push('本机已送达');
@@ -4623,11 +4628,25 @@ function autoHardReject(job, state) {
     var cityOk = state.autoRun.config.allowedCities.some(function(c) { return (job.cityName || '').indexOf(c) >= 0; });
     if (!cityOk) reasons.push('城市不符: ' + job.cityName);
   }
+  // 1.4.0 M7: 历史 jobRecords 同公司/同 HR 去重
+  if (handledSet) {
+    var company = String(job.company || job.companyName || '').trim().toLowerCase();
+    var hr = String(job.hrName || '').trim().toLowerCase();
+    if (company && hr) {
+      var key = company + '|' + hr;
+      if (handledSet[key]) reasons.push('历史已沟通: ' + handledSet[key]);
+      else {
+        // 公司名模糊：按公司名匹配任何历史 HR
+        var companyMatch = Object.keys(handledSet).some(function(k) { return k.split('|')[0] === company; });
+        if (companyMatch) reasons.push('历史已投同公司');
+      }
+    }
+  }
   return reasons;
 }
 
 // 批次预览：分类 + 汇总
-function buildAutoRunPreview(jobIds, cfg) {
+function buildAutoRunPreview(jobIds, cfg, handledSet) {
   var preview = {
     runId: genRunId(),
     generatedAt: Date.now(),
@@ -4648,7 +4667,7 @@ function buildAutoRunPreview(jobIds, cfg) {
     var job = state.jobs.find(function(j) { return (j.jobId || j.id) === id; });
     if (!job) return;
     preview.counts.total++;
-    var reject = autoHardReject(job, state);
+    var reject = autoHardReject(job, state, handledSet);
     if (reject.length) {
       preview.counts.rejected++;
       preview.skip.push({ jobId: id, company: job.company, position: job.name, reason: reject.join('; ') });
@@ -4799,7 +4818,12 @@ async function startAutoRun(frozen) {
   }
 
   var runId = frozen.runId || genRunId();
-  var preview = buildAutoRunPreview(jobIds, cfg);
+  // 1.4.0 M7: 读取历史 jobRecords 已沟通集合，用于同公司/同 HR 去重
+  var handledSet = {};
+  try { handledSet = await buildHandledHrSet(); } catch (e) {
+    try { DiagLogger.warn('sw.autoRun', '读取历史已沟通集合失败: ' + (e && e.message || e)); } catch (_) {}
+  }
+  var preview = buildAutoRunPreview(jobIds, cfg, handledSet);
   var attemptLog = [];
   var stopped = false;
   var stopReason = '';

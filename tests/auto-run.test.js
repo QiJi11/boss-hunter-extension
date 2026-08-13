@@ -112,7 +112,14 @@ async function main() {
     ctx3.state.autoRun = { config: { allowedCities: ['杭州'] } };
     const jobCity = mkJob({ cityName: '苏州' });
     assert.ok(ctx3.autoHardReject(jobCity, ctx3.state).some(r => r.includes('城市不符')), 'city mismatch caught');
-    console.log('[PASS] autoHardReject: exclude/sent/city');
+    // 历史已沟通去重（M7）
+    const ctx4 = loadAutoRunCtx();
+    const handled = { '测试公司|王hr': 'sent' };
+    const jobHr = mkJob({ company: '测试公司', hrName: '王HR' });
+    assert.ok(ctx4.autoHardReject(jobHr, ctx4.state, handled).some(r => r.includes('历史已沟通')), 'same hr caught');
+    const handled2 = { '测试公司|李hr': 'sent' };
+    assert.ok(ctx4.autoHardReject(jobHr, ctx4.state, handled2).some(r => r.includes('同公司')), 'same company caught');
+    console.log('[PASS] autoHardReject: exclude/sent/city/history-dedup');
   }
 
   // ── buildAutoRunPreview ──
