@@ -286,6 +286,42 @@ async function main() {
     console.log('[PASS] normalizeJobRecord: delivered/uncertain/stopped + M5 fields');
   }
 
+  // ── M6: buildResponseMetrics 回复/约面分层统计 ──
+  {
+    const of = read('src/shared/outcome-feedback.js');
+    const ctx = vm.createContext({ globalThis: {}, console, Date });
+    ctx.globalThis = ctx;
+    vm.runInContext(of, ctx, { filename: 'outcome-feedback.js' });
+    const JobOutcomeFeedback = ctx.globalThis.JobOutcomeFeedback;
+    const now = Date.now();
+    const DAY = 86400000;
+    // 样本不足（3条 delivered）→ sampleOk false，metrics null
+    const small = [
+      { status: 'delivered', deliveredAt: now, repliedAt: now + DAY, city: '杭州' },
+      { status: 'delivered', deliveredAt: now, repliedAt: now + 2 * DAY, city: '杭州' },
+      { status: 'delivered', deliveredAt: now, city: '苏州' },
+    ];
+    const rSmall = JobOutcomeFeedback.buildResponseMetrics(small);
+    assert.strictEqual(rSmall.sampleOk, false);
+    assert.strictEqual(rSmall.metrics, null);
+    // 样本充足（5条），7天内回复 3 条，14天内约面 1 条
+    const recs = [
+      { status: 'delivered', deliveredAt: now - 10 * DAY, repliedAt: now - 8 * DAY, interviewAt: now - 3 * DAY, city: '杭州', frozenPrediction: { applyScore: 80 }, greetingVariant: 'v1' },
+      { status: 'delivered', deliveredAt: now - 10 * DAY, repliedAt: now - 6 * DAY, city: '杭州', frozenPrediction: { applyScore: 85 }, greetingVariant: 'v1' },
+      { status: 'delivered', deliveredAt: now - 10 * DAY, repliedAt: now - 4 * DAY, city: '苏州', frozenPrediction: { applyScore: 65 }, greetingVariant: 'v2' },
+      { status: 'delivered', deliveredAt: now - 10 * DAY, city: '苏州', frozenPrediction: { applyScore: 50 }, greetingVariant: 'v2' },
+      { status: 'delivered', deliveredAt: now - 10 * DAY, city: '杭州', frozenPrediction: { applyScore: 70 }, greetingVariant: 'v1' },
+    ];
+    const r = JobOutcomeFeedback.buildResponseMetrics(recs);
+    assert.strictEqual(r.sampleOk, true);
+    assert.strictEqual(r.metrics.n, 5);
+    assert.strictEqual(r.metrics.repliedPct, 60, '3/5 replied');
+    assert.ok(r.metrics.replied7dPct <= 100);
+    assert.strictEqual(r.byCity['杭州'].n, 3);
+    assert.strictEqual(r.byScoreBand.high.n, 2, 'applyScore>=75 → 2');
+    console.log('[PASS] buildResponseMetrics: sample-gate/7d-14d/stratified');
+  }
+
   console.log('All auto-run tests passed.');
   process.exit(0);
 }
