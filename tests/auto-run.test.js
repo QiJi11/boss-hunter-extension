@@ -26,6 +26,15 @@ function extractAutoRunPureFns() {
   return sw.slice(start, fnStart);
 }
 
+// 从 SW 源码中截取 collectOnTab 附近的辅助函数（cityCodeToName / parseSalaryMidK）
+function extractCollectHelpers() {
+  const sw = read('src/background/service-worker.js');
+  const start = sw.indexOf('// 1.4.0: BOSS 城市码 → 城市名');
+  const end = sw.indexOf('function allExpectedPositions');
+  assert.ok(start >= 0 && end > start, 'collect helper markers not found');
+  return sw.slice(start, end);
+}
+
 function loadAutoRunCtx(seed = {}) {
   const state = {
     jobs: [],
@@ -58,6 +67,9 @@ function loadAutoRunCtx(seed = {}) {
   // 注入纯函数
   const pure = extractAutoRunPureFns();
   vm.runInContext(pure, context, { filename: 'auto-run-pure.js' });
+  // 注入 collect 辅助函数（cityCodeToName / parseSalaryMidK）
+  const helpers = extractCollectHelpers();
+  vm.runInContext(helpers, context, { filename: 'collect-helpers.js' });
   // 注入尝试函数桩（跳过真实投递）
   context.attemptJobDelivery = async (job, attemptId) => ({ attemptId, jobId: job.jobId || job.id, company: job.company || '', hr: job.hrName || '', outcome: 'delivered', reason: '', deliveredAt: Date.now(), attemptAt: Date.now() });
   return context;
@@ -169,6 +181,32 @@ async function main() {
     assert.strictEqual(ctx.extractJobOutcome([{ success: false, error: '网络错误' }]).outcome, 'failed');
     assert.strictEqual(ctx.extractJobOutcome([]).outcome, 'uncertain');
     console.log('[PASS] extractJobOutcome: delivered/alreadyChatted/captcha/uncertain/failed');
+  }
+
+  // ── rankAutoJobs / parseSalaryMidK / cityCodeToName ──
+  {
+    const ctx = loadAutoRunCtx();
+    // parseSalaryMidK
+    assert.strictEqual(ctx.parseSalaryMidK('15-30K·14薪'), 22.5);
+    assert.strictEqual(ctx.parseSalaryMidK('8-13K·13'), 10.5);
+    assert.strictEqual(ctx.parseSalaryMidK('10K'), 10);
+    assert.strictEqual(ctx.parseSalaryMidK(''), 0);
+    // cityCodeToName
+    assert.strictEqual(ctx.cityCodeToName('101210100'), '杭州');
+    assert.strictEqual(ctx.cityCodeToName('999999'), '999999');
+    // rankAutoJobs: applyScore 主导
+    const jobs = [
+      mkJob({ id: 'r1', jobId: 'r1', salary: '8-10K', salaryMidK: 9, cityName: '苏州', aiScreen: { applyScore: 90 } }),
+      mkJob({ id: 'r2', jobId: 'r2', salary: '15-30K', salaryMidK: 22.5, cityName: '杭州', aiScreen: { applyScore: 85 } }),
+      mkJob({ id: 'r3', jobId: 'r3', salary: '12-16K', salaryMidK: 14, cityName: '杭州', aiScreen: { applyScore: 80 } }),
+    ];
+    const cfg = { allowedCities: ['杭州'], targetSalaryK: 10 };
+    const ranked = ctx.rankAutoJobs(jobs, cfg);
+    assert.strictEqual(ranked[0].jobId, 'r2', 'r2 高apply+杭州+高薪 最优');
+    assert.ok(ranked.every(r => typeof r.rank === 'number'), 'rank is number');
+    // 城市白名单过滤效应：非杭州的 r1 应排最后
+    assert.strictEqual(ranked[ranked.length - 1].jobId, 'r1', 'r1 非杭州排最后');
+    console.log('[PASS] rankAutoJobs/parseSalaryMidK/cityCodeToName');
   }
 
   console.log('All auto-run tests passed.');

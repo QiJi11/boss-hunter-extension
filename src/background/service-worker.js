@@ -2610,9 +2610,13 @@ async function collectOnTab(cityCode, params) {
     await waitForContentScript(tabId);
     const response = await chrome.tabs.sendMessage(tabId, { type: 'DO_COLLECT', params: { ...params, urlParams } });
     if (response && response.success && response.jobs) {
+      const cityName = cityCodeToName(cityCode);
       return response.jobs.map(function(job) {
         job.searchKeyword = params.searchKeyword || urlParams.query || '';
         job.matchedKeywords = uniqueStrings((job.matchedKeywords || []).concat(job.searchKeyword || []));
+        job.cityCode = cityCode;
+        job.cityName = cityName;
+        job.salaryMidK = parseSalaryMidK(job.salary || '');
         return job;
       });
     }
@@ -2628,6 +2632,27 @@ async function collectOnTab(cityCode, params) {
 // 规则：选中的任一期望岗位的所有关键词都出现在 job.name 里 → 留
 // 期望岗位为空 → 不过滤（兜底）；过滤后 0 条 → 打 warn 但仍返回 0 条不阻塞
 // picker(严格) + 自定义(字符重叠) 期望岗位合集，用于 cluster/招呼语/发送（filter 仍区分两类）
+
+// 1.4.0: BOSS 城市码 → 城市名（四城 + 兜底）
+function cityCodeToName(cityCode) {
+  var map = {
+    '101190400': '苏州', '101210100': '杭州', '101020100': '上海', '101210400': '宁波',
+    '101190100': '南京', '101190200': '无锡', '101280100': '广州',
+  };
+  return map[cityCode] || (cityCode || '');
+}
+
+// 1.4.0: 解析薪资字符串为月薪中位值（K），如 "15-30K·14薪" → 22.5，"8-13K·13" → 10.5
+function parseSalaryMidK(salary) {
+  if (!salary) return 0;
+  var m = String(salary).match(/(\d+(?:\.\d+)?)\s*[-~—]\s*(\d+(?:\.\d+)?)/);
+  if (!m) {
+    var single = String(salary).match(/(\d+(?:\.\d+)?)/);
+    return single ? Number(single[1]) : 0;
+  }
+  return (Number(m[1]) + Number(m[2])) / 2;
+}
+
 function allExpectedPositions(state) {
   const sp = Array.isArray(state.selectedPositions) ? state.selectedPositions : [];
   const cp = Array.isArray(state.customPositions) ? state.customPositions : [];
@@ -4639,6 +4664,37 @@ function buildAutoRunPreview(jobIds, cfg) {
   return preview;
 }
 
+// 1.4.0: 自动投递排序（MVP 实现 applyScore 主导 + 薪资适配 + 城市白名单，其余项占位）
+// 权重：applyScore 0.7 | 薪资适配 0.2 | 城市白名单 0.1；competitionScore/新鲜度/HR活跃 留空占位
+function rankAutoJobs(jobs, cfg) {
+  var allowedCities = (cfg && cfg.allowedCities) || [];
+  return jobs.map(function(job) {
+    var scr = jobScreen(job);
+    var apply = Number(scr.applyScore !== undefined ? scr.applyScore : scr.score) || 0;
+    // 薪资适配分：目标薪资附近最优，偏高/偏低递减
+    var salaryScore = 0.5;
+    var midK = Number(job.salaryMidK) || 0;
+    var targetK = (cfg && cfg.targetSalaryK) || 10;
+    if (midK > 0) {
+      if (midK >= targetK && midK <= targetK * 1.6) salaryScore = 1;
+      else if (midK < targetK) salaryScore = Math.max(0.2, midK / targetK);
+      else salaryScore = Math.max(0.3, 1 - (midK - targetK * 1.6) / (targetK * 3));
+    }
+    // 城市白名单分
+    var cityScore = 0.5;
+    var city = job.cityName || '';
+    if (allowedCities.length) {
+      cityScore = allowedCities.some(function(c) { return city.indexOf(c) >= 0; }) ? 1 : 0.1;
+    } else if (city) {
+      cityScore = 1;
+    }
+    var rank = apply * 0.7 + salaryScore * 20 * 0.2 + cityScore * 10 * 0.1;
+    // 城市硬优先：不在白名单的城市显著降权（需求：城市硬排除优先于排序）
+    if (allowedCities.length && cityScore < 1) rank = rank * 0.4;
+    return { jobId: job.jobId || job.id, rank: Math.round(rank * 100) / 100, applyScore: apply, salaryScore: salaryScore, cityScore: cityScore };
+  }).sort(function(a, b) { return b.rank - a.rank; });
+}
+
 // 从单岗投递结果中提取最终状态
 function extractJobOutcome(sendResults) {
   var list = Array.isArray(sendResults) ? sendResults : [];
@@ -4745,6 +4801,14 @@ async function startAutoRun(frozen) {
   await persistState();
 
   // 只处理 auto 队列（review 留给人工复核模式；skip 不投）
+  // 排序：applyScore 主导 + 薪资适配 + 城市白名单
+  try {
+    var _autoJobs = preview.auto.map(function(p) { return state.jobs.find(function(j) { return (j.jobId || j.id) === p.jobId; }); }).filter(Boolean);
+    var _ranked = rankAutoJobs(_autoJobs, cfg);
+    var _rankMap = {};
+    _ranked.forEach(function(r) { _rankMap[r.jobId] = r.rank; });
+    preview.auto.sort(function(a, b) { return (_rankMap[b.jobId] || 0) - (_rankMap[a.jobId] || 0); });
+  } catch (_) {}
   for (var i = 0; i < preview.auto.length; i++) {
     if (sendAborted || autoRunAbort || state.phase === 'captcha_paused') { stopped = true; stopReason = state.phase === 'captcha_paused' ? '验证码暂停' : '用户停止'; break; }
     var p = preview.auto[i];
