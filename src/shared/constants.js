@@ -10,6 +10,10 @@ const MSG = {
   START_COLLECT: 'START_COLLECT',
   STOP_COLLECT: 'STOP_COLLECT',
   START_SEND: 'START_SEND',
+  START_AUTO_RUN: 'START_AUTO_RUN',
+  AUTO_RUN_PREVIEW: 'AUTO_RUN_PREVIEW',
+  AUTO_RUN_STATUS: 'AUTO_RUN_STATUS',
+  STOP_AUTO_RUN: 'STOP_AUTO_RUN',
   PREPARE_SINGLE_SEND: 'PREPARE_SINGLE_SEND',
   CONFIRM_SINGLE_SEND: 'CONFIRM_SINGLE_SEND',
   STOP_SEND: 'STOP_SEND',
@@ -193,6 +197,15 @@ const CONFIG = {
   // 投递数量闸门
   DAILY_SEND_LIMIT: 150,   // 日累积上限（本地自然日）：当天成功投递岗位数超过即硬拦
   SOFT_BATCH_LIMIT: 75,    // 单批软提示阈值：单批选中 > 75 时提示但允许继续
+  // ── 1.4.0 自动投递额度（MVP） ──
+  AUTO_RUN_BATCH_LIMIT: 10,     // 每批最多自动投递岗位数（可配置，硬上限 DAILY_SEND_LIMIT）
+  AUTO_RUN_DAILY_LIMIT: 30,     // 自动投递每日默认上限（用户可降低，硬上限 150 不破）
+  AUTO_RUN_THRESHOLD_AUTO: 75,  // applyScore >= 75 → 自动投递
+  AUTO_RUN_THRESHOLD_REVIEW: 60,// applyScore 60-74 → 人工复核；< 60 → 跳过
+  AUTO_RUN_MAX_CONSECUTIVE_FAIL: 3,    // 连续失败达到停止本批
+  AUTO_RUN_MAX_CONSECUTIVE_UNCERTAIN: 2, // 连续不确定达到停止本批
+  AUTO_RUN_MAX_PER_COMPANY: 2,   // 同公司每日最多投递数
+  AUTO_RUN_MAX_PER_HR: 1,        // 同 HR 每日最多投递数
 };
 
 // ── 工作经验年限识别（BOSS 岗位卡片 tag 列表里提取） ──

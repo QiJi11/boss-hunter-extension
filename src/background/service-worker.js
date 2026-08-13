@@ -1054,6 +1054,8 @@ let state = {
   _v6WorkerTabsReady: new Set(),  // 已就绪的 worker tab id 集合
   _v6MissedJobs: [],        // 已建联但未确认送达的岗位，终态时提示用户逐岗人工核对
   originalMainWindowId: null,
+  // ── 1.4.0 自动投递（MVP）状态 ──
+  autoRun: null,            // { runId, config, status, frozenJobIds, attemptLog[], preview }
 };
 
 // 中断恢复用：发送过的 jobId 集合
@@ -1721,6 +1723,44 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       state.sendProgress = null;
       persistState();
       sendResponse({ success: false, error: '当前插件包已禁用投递，只允许采集岗位。', errorCode: 'SEND_DISABLED' });
+      return true;
+
+    // ── 1.4.0 自动投递：批次预览（只读，不投递） ──
+    case MSG.AUTO_RUN_PREVIEW: {
+      var _cfg = (msg && msg.config) || {};
+      try {
+        var _pv = buildAutoRunPreview(msg.jobIds || [], _cfg);
+        sendResponse({ success: true, preview: _pv });
+      } catch (e) {
+        ErrorLogger.logError(e.message, e.stack, 'AUTO_RUN_PREVIEW failed');
+        sendResponse({ success: false, error: e.message });
+      }
+      return true;
+    }
+
+    // ── 1.4.0 自动投递：启动整批（一次确认） ──
+    case MSG.START_AUTO_RUN: {
+      if (state.phase === 'sending' || state.phase === 'collecting' || singleSendLaunchInProgress) {
+        sendResponse({ success: false, error: '当前有任务进行中，请先停止', errorCode: 'BUSY' });
+        return true;
+      }
+      startAutoRun(msg)
+        .then(function(res) { sendResponse({ success: true, result: res }); })
+        .catch(function(e) {
+          ErrorLogger.logError(e.message, e.stack, 'START_AUTO_RUN failed');
+          sendResponse({ success: false, error: e.message, errorCode: e.errorCode || null });
+        });
+      return true;
+    }
+
+    // ── 1.4.0 自动投递：状态查询 ──
+    case MSG.AUTO_RUN_STATUS:
+      sendResponse({ success: true, autoRun: state.autoRun || null });
+      return true;
+
+    // ── 1.4.0 自动投递：停止 ──
+    case 'STOP_AUTO_RUN':
+      stopAutoRun().then(function() { sendResponse({ success: true }); }).catch(function(e) { sendResponse({ success: false, error: e.message }); });
       return true;
 
     case MSG.RESUME_SEND:
@@ -3269,11 +3309,14 @@ async function startSendV6(jobIds, sendOptions) {
   if (sentJobIds.has(jobIds[0])) {
     throw new Error('该岗位已有本机送达记录，已阻止重复沟通');
   }
-  // 每日投递上限（风控保护）：超过 DAILY_SEND_LIMIT 硬拦
+  // 每日投递上限（风控保护）：超过 DAILY_SEND_LIMIT 硬拦；自动投递用自身的 dailyLimit
   try {
     var todayCount = await getDailySendCount();
-    if (todayCount >= CONFIG.DAILY_SEND_LIMIT) {
-      var err = new Error('今日投递已达上限（' + CONFIG.DAILY_SEND_LIMIT + '），请明日再试');
+    var _autoDaily = (sendOptions && sendOptions.autoRun && state.autoRun && state.autoRun.config && state.autoRun.config.dailyLimit)
+      ? Number(state.autoRun.config.dailyLimit) : CONFIG.DAILY_SEND_LIMIT;
+    var _limit = Math.min(_autoDaily, CONFIG.DAILY_SEND_LIMIT);
+    if (todayCount >= _limit) {
+      var err = new Error('今日投递已达上限（' + _limit + '），请明日再试');
       err.errorCode = 'SEND_DAILY_LIMIT';
       throw err;
     }
@@ -4507,3 +4550,238 @@ try {
   });
 } catch (_) {}
 
+
+// ════════════════════════════════════════════════════════════════════
+// 1.4.0 自动投递 MVP（startAutoRun 批处理器）
+// 自动模式：一次确认整批 → 串行投递；复核模式保留单岗 PREPARE/CONFIRM。
+// 不做反检测、不绕过验证码；只有平台聊天证据成立才标记 delivered。
+// ════════════════════════════════════════════════════════════════════
+
+function genRunId() {
+  return 'run-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+}
+
+// 从 state.jobs 读取岗位的 aiScreen 分
+function jobScreen(job) {
+  return (job && job.aiScreen) || {};
+}
+
+// 分类：auto / review / skip
+function classifyJob(job, cfg) {
+  var scr = jobScreen(job);
+  var apply = Number(scr.applyScore !== undefined ? scr.applyScore : scr.score) || 0;
+  if (apply >= cfg.thresholdAuto) return { bucket: 'auto', score: apply };
+  if (apply >= cfg.thresholdReview) return { bucket: 'review', score: apply };
+  return { bucket: 'skip', score: apply };
+}
+
+// 硬过滤补充（自动投递专用）：城市/学历/已投/已沟通
+function autoHardReject(job, state) {
+  var reasons = [];
+  if (!job) return ['岗位数据缺失'];
+  if (sentJobIds.has(job.jobId || job.id)) reasons.push('本机已送达');
+  if (job.excludeReason) reasons.push(job.excludeReason);
+  if (job.companyRisk) reasons.push('公司风险: ' + job.companyRisk);
+  if (job.historySkipReason) reasons.push(job.historySkipReason);
+  // 城市硬排除：BOSS 搜索已按城市过滤，此处只拦已知非目标
+  if (job.cityName && state.autoRun && state.autoRun.config && state.autoRun.config.allowedCities && state.autoRun.config.allowedCities.length) {
+    var cityOk = state.autoRun.config.allowedCities.some(function(c) { return (job.cityName || '').indexOf(c) >= 0; });
+    if (!cityOk) reasons.push('城市不符: ' + job.cityName);
+  }
+  return reasons;
+}
+
+// 批次预览：分类 + 汇总
+function buildAutoRunPreview(jobIds, cfg) {
+  var preview = {
+    runId: genRunId(),
+    generatedAt: Date.now(),
+    config: {
+      thresholdAuto: cfg.thresholdAuto,
+      thresholdReview: cfg.thresholdReview,
+      batchLimit: cfg.batchLimit,
+      dailyLimit: cfg.dailyLimit,
+      allowedCities: cfg.allowedCities || [],
+      sendImages: !!cfg.sendImages,
+    },
+    counts: { total: 0, auto: 0, review: 0, skip: 0, rejected: 0 },
+    auto: [],
+    review: [],
+    skip: [],
+  };
+  (jobIds || []).forEach(function(id) {
+    var job = state.jobs.find(function(j) { return (j.jobId || j.id) === id; });
+    if (!job) return;
+    preview.counts.total++;
+    var reject = autoHardReject(job, state);
+    if (reject.length) {
+      preview.counts.rejected++;
+      preview.skip.push({ jobId: id, company: job.company, position: job.name, reason: reject.join('; ') });
+      return;
+    }
+    var cls = classifyJob(job, cfg);
+    if (cls.bucket === 'auto') {
+      preview.counts.auto++;
+      preview.auto.push({ jobId: id, company: job.company, position: job.name, score: cls.score });
+    } else if (cls.bucket === 'review') {
+      preview.counts.review++;
+      preview.review.push({ jobId: id, company: job.company, position: job.name, score: cls.score });
+    } else {
+      preview.counts.skip++;
+      preview.skip.push({ jobId: id, company: job.company, position: job.name, score: cls.score, reason: 'applyScore<阈值' });
+    }
+  });
+  // 修正：skip 计数只含"分数不足"，rejected 单独计数；此处从 skip 数组剔除 rejected 条目
+  preview.skip = preview.skip.filter(function(s) { return !s.reason || s.reason.indexOf('applyScore<阈值') >= 0; });
+  preview.counts.skip = preview.skip.length;
+  return preview;
+}
+
+// 从单岗投递结果中提取最终状态
+function extractJobOutcome(sendResults) {
+  var list = Array.isArray(sendResults) ? sendResults : [];
+  if (!list.length) return { outcome: 'uncertain', reason: '无投递结果记录' };
+  // 取最后一条（本岗结果）
+  var last = list[list.length - 1];
+  if (last.success) return { outcome: 'delivered', reason: last.reason || '' };
+  if (last.alreadyChatted) return { outcome: 'alreadyChatted', reason: '已沟通过' };
+  if (last.captchaDetected || (last.error && (String(last.error).indexOf('captcha') >= 0 || String(last.error).indexOf('验证码') >= 0))) return { outcome: 'captcha', reason: last.error || '验证码' };
+  if (last.error && String(last.error).indexOf('安全') >= 0) return { outcome: 'captcha', reason: last.error };
+  if (last.skipped || last.missed) return { outcome: 'uncertain', reason: last.error || (last.reason || '未确认送达') };
+  return { outcome: 'failed', reason: last.error || last.reason || '' };
+}
+
+// 额度检查：连续失败/不确定、同公司、同 HR、每日
+function autoQuotaCheck(attemptLog, job, cfg) {
+  var reasons = [];
+  var successCount = attemptLog.filter(function(a) { return a.outcome === 'delivered'; }).length;
+  if (successCount >= cfg.batchLimit) reasons.push('达到本批上限 ' + cfg.batchLimit);
+  var consecFail = 0, consecUncert = 0;
+  for (var i = attemptLog.length - 1; i >= 0; i--) {
+    if (attemptLog[i].outcome === 'failed') { consecFail++; consecUncert = 0; }
+    else if (attemptLog[i].outcome === 'uncertain') { consecUncert++; consecFail = 0; }
+    else break;
+  }
+  if (consecFail >= cfg.maxConsecutiveFail) reasons.push('连续失败 ' + consecFail + ' 次');
+  if (consecUncert >= cfg.maxConsecutiveUncertain) reasons.push('连续不确定 ' + consecUncert + ' 次');
+  var company = job && (job.company || job.companyName || '');
+  if (company) {
+    var companyCount = attemptLog.filter(function(a) { return a.company === company && a.outcome === 'delivered'; }).length;
+    if (companyCount >= cfg.maxPerCompany) reasons.push('同公司已达上限 ' + cfg.maxPerCompany);
+  }
+  var hr = job && job.hrName;
+  if (hr) {
+    var hrCount = attemptLog.filter(function(a) { return a.hr === hr && a.outcome === 'delivered'; }).length;
+    if (hrCount >= cfg.maxPerHr) reasons.push('同 HR 已达上限 ' + cfg.maxPerHr);
+  }
+  // 每日上限
+  return reasons;
+}
+
+// 单岗自动投递：复用 startSendV6（保持单岗），等待完成并提取结果
+async function attemptJobDelivery(job, attemptId) {
+  var jobId = job.jobId || job.id;
+  var beforeResults = (state.sendResults || []).length;
+  await startSendV6([jobId], { autoRun: true, attemptId: attemptId });
+  // 等待单岗任务进入非 sending 终态
+  var deadline = Date.now() + 180000;
+  while (Date.now() < deadline) {
+    if (state.phase !== 'sending') break;
+    await new Promise(function(r) { setTimeout(r, 2000); });
+  }
+  // 提取本岗新增结果
+  var newResults = (state.sendResults || []).slice(beforeResults);
+  var outcome = extractJobOutcome(newResults);
+  var lastItem = newResults[newResults.length - 1] || {};
+  return {
+    attemptId: attemptId,
+    jobId: jobId,
+    company: job.company || job.companyName || '',
+    hr: lastItem.hrName || job.hrName || '',
+    outcome: outcome.outcome,
+    reason: outcome.reason || lastItem.reason || lastItem.error || '',
+    deliveredAt: outcome.outcome === 'delivered' ? Date.now() : null,
+    attemptAt: Date.now(),
+  };
+}
+
+// 自动投递批处理器（串行）
+async function startAutoRun(frozen) {
+  await bootRestored;
+  var jobIds = Array.isArray(frozen.jobIds) ? frozen.jobIds : [];
+  var cfg = Object.assign({
+    thresholdAuto: CONFIG.AUTO_RUN_THRESHOLD_AUTO,
+    thresholdReview: CONFIG.AUTO_RUN_THRESHOLD_REVIEW,
+    batchLimit: CONFIG.AUTO_RUN_BATCH_LIMIT,
+    dailyLimit: CONFIG.AUTO_RUN_DAILY_LIMIT,
+    maxConsecutiveFail: CONFIG.AUTO_RUN_MAX_CONSECUTIVE_FAIL,
+    maxConsecutiveUncertain: CONFIG.AUTO_RUN_MAX_CONSECUTIVE_UNCERTAIN,
+    maxPerCompany: CONFIG.AUTO_RUN_MAX_PER_COMPANY,
+    maxPerHr: CONFIG.AUTO_RUN_MAX_PER_HR,
+    allowedCities: [],
+    sendImages: false,
+  }, frozen.config || {});
+
+  var todayCount = await getDailySendCount();
+  if (todayCount >= Math.min(cfg.dailyLimit, CONFIG.DAILY_SEND_LIMIT)) {
+    throw new Error('自动投递已达每日上限（' + Math.min(cfg.dailyLimit, CONFIG.DAILY_SEND_LIMIT) + '）');
+  }
+
+  var runId = frozen.runId || genRunId();
+  var preview = buildAutoRunPreview(jobIds, cfg);
+  var attemptLog = [];
+  var stopped = false;
+  var stopReason = '';
+
+  state.autoRun = { runId: runId, config: cfg, status: 'running', frozenJobIds: jobIds.slice(), attemptLog: attemptLog, preview: preview };
+  await persistState();
+
+  // 只处理 auto 队列（review 留给人工复核模式；skip 不投）
+  for (var i = 0; i < preview.auto.length; i++) {
+    if (sendAborted || state.phase === 'captcha_paused') { stopped = true; stopReason = state.phase === 'captcha_paused' ? '验证码暂停' : '用户停止'; break; }
+    var p = preview.auto[i];
+    var job = state.jobs.find(function(j) { return (j.jobId || j.id) === p.jobId; });
+    if (!job) continue;
+    // 额度检查
+    var q = autoQuotaCheck(attemptLog, job, cfg);
+    if (q.length) { stopReason = q.join('; '); stopped = true; break; }
+    // 每日上限实时检查
+    var dc = await getDailySendCount();
+    if (dc >= Math.min(cfg.dailyLimit, CONFIG.DAILY_SEND_LIMIT)) { stopReason = '每日上限'; stopped = true; break; }
+
+    var attemptId = runId + '-' + p.jobId;
+    try {
+      var rec = await attemptJobDelivery(job, attemptId);
+      attemptLog.push(rec);
+      if (rec.outcome === 'captcha') { state.phase = 'captcha_paused'; stopReason = '验证码暂停'; stopped = true; break; }
+      if (rec.outcome === 'delivered') {
+        // 成功继续，但检查本批上限
+        var okCount = attemptLog.filter(function(a) { return a.outcome === 'delivered'; }).length;
+        if (okCount >= cfg.batchLimit) { stopReason = '达到本批上限'; stopped = true; break; }
+      }
+    } catch (e) {
+      attemptLog.push({ attemptId: attemptId, jobId: p.jobId, company: job.company || '', hr: job.hrName || '', outcome: 'failed', reason: String(e.message || e).slice(0, 200), attemptAt: Date.now() });
+      // 单岗内部错误（如搜索页缺失）不应终止整批，记失败继续
+    }
+    state.autoRun.status = 'running';
+    state.autoRun.attemptLog = attemptLog;
+    await persistState();
+    // 批间等待
+    await new Promise(function(r) { setTimeout(r, 2000); });
+  }
+
+  state.autoRun.status = stopped ? 'stopped' : 'done';
+  state.autoRun.stopReason = stopReason || '';
+  state.autoRun.attemptLog = attemptLog;
+  await persistState();
+  return { runId: runId, status: state.autoRun.status, stopReason: state.autoRun.stopReason, attempts: attemptLog };
+}
+
+// 停止自动投递
+async function stopAutoRun() {
+  sendAborted = true;
+  if (state.autoRun) state.autoRun.status = 'stopping';
+  await stopSend();
+  if (state.autoRun) { state.autoRun.status = 'stopped'; state.autoRun.stopReason = '用户停止'; }
+  await persistState();
+}

@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.4.0",
   "scripts": {
-    "test": "node tests/run-tests.js",
-    "check": "node tests/run-tests.js"
+    "test": "node tests/run-tests.js && node tests/auto-run.test.js",
+    "check": "node tests/run-tests.js && node tests/auto-run.test.js"
   }
 }
