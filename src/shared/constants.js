@@ -28,6 +28,9 @@ const MSG = {
   SCORE_RESUME: 'SCORE_RESUME',
   REWRITE_RESUME: 'REWRITE_RESUME',
   CLOSE_IDLE_BOSS_TABS: 'CLOSE_IDLE_BOSS_TABS',
+  GET_JOB_OUTCOMES: 'GET_JOB_OUTCOMES',
+  RECORD_JOB_OUTCOME: 'RECORD_JOB_OUTCOME',
+  CLEAR_OUTCOME_FEEDBACK: 'CLEAR_OUTCOME_FEEDBACK',
 
   // SW → Popup
   STATE_UPDATE: 'STATE_UPDATE',
@@ -72,10 +75,8 @@ const MSG = {
   // CAPTCHA
   CAPTCHA_DETECTED: 'CAPTCHA_DETECTED',
 
-  // 招呼语开关 pre-flight（陷阱 #31：BOSS「自动打招呼」开关关闭 → 点立即沟通整页跳转 → stage1 卡死）
-  CHECK_GREETING_SETTING: 'CHECK_GREETING_SETTING',   // SW -> CS(搜索页): 读 getGreetingList，返回 {success, enabled, templateId}（🔴 必须镜像 selectors.js）
-  ENABLE_GREETING_SETTING: 'ENABLE_GREETING_SETTING', // SW -> CS(搜索页): updateGreetingV2 写开+复读自检，返回 {ok, enabled}（🔴 必须镜像 selectors.js）
-  GREETING_AUTO_ENABLED: 'GREETING_AUTO_ENABLED',     // SW -> Popup: 已自动开启打招呼开关的非阻断提示（CS 不用，无需镜像 selectors.js）
+  // BOSS 自带招呼语安全检查：开启或状态未知时中止，避免它在扩展招呼语之外另发未复核文本。
+  CHECK_GREETING_SETTING: 'CHECK_GREETING_SETTING',   // SW -> CS(搜索页): 只读 getGreetingList，返回 {success, enabled, templateId}（🔴 必须镜像 selectors.js）
   GET_DAILY_SEND_COUNT: 'GET_DAILY_SEND_COUNT',       // Popup -> SW: 读当天（本地自然日）已成功投递岗位数，投递前 gate 用（CS 不用，无需镜像 selectors.js）
 };
 
@@ -105,6 +106,7 @@ const STORAGE_KEYS = {
     MISSED_JOBS: 'sw:missedJobs',
     DAILY_SEND_COUNT: 'sw:dailySendCount',  // 投递数量闸门：{date:'YYYY-MM-DD', count:N}，本地自然日成功投递岗位数，跨日归零
     LAST_SNAPSHOT: 'sw:lastSnapshot',       // 诊断旁路：每次 persistState 落盘的内存态快照摘要（脱敏），SW 卸载后导出仍有基本完整快照
+    OUTCOME_FEEDBACK: 'sw:outcomeFeedback', // 用户手动标记的后续结果；仅本机保存，不进入配置备份
   },
   // 诊断滚动持久化（diag: 前缀）—— 与 SW 内存态解耦，新任务清内存也不丢
   DIAG: {
@@ -124,16 +126,22 @@ const FEATURE_KEYS = {
   AI_SCREENING_ENABLED: 'aiScreeningEnabled',
   AUTO_RESUME_REPLY_ENABLED: 'autoResumeReplyEnabled',
   AUTO_RESUME_ID: 'autoResumeId',
+  AUTO_RESUME_CONSENT_VERSION: 'autoResumeReplyConsentVersion',
   BACKUP_VERSION: 'backupVersion',
   AUTO_CLOSE_BOSS_TABS: 'autoCloseBossTabs',
+  OUTCOME_FEEDBACK_LEARNING_ENABLED: 'outcomeFeedbackLearningEnabled',
 };
+
+const AUTO_RESUME_REPLY_CONSENT_VERSION = 1;
 
 const FEATURE_DEFAULTS = {
   aiScreeningEnabled: true,
   autoResumeReplyEnabled: false,
   autoResumeId: '',
+  autoResumeReplyConsentVersion: 0,
   backupVersion: 2,
   autoCloseBossTabs: true,
+  outcomeFeedbackLearningEnabled: false,
 };
 
 const DEFAULT_TARGET_CITIES = ['101210100', '101020100', '101190400', '101210400'];
@@ -304,12 +312,18 @@ function normalizeFilterStateDefaults(filterState) {
 
 function normalizeFeatureSettings(raw) {
   raw = raw && typeof raw === 'object' ? raw : {};
+  var hasCurrentAutoResumeConsent =
+    Number(raw.autoResumeReplyConsentVersion) === AUTO_RESUME_REPLY_CONSENT_VERSION;
   return {
     aiScreeningEnabled: raw.aiScreeningEnabled !== false,
-    autoResumeReplyEnabled: raw.autoResumeReplyEnabled === true,
+    autoResumeReplyEnabled: raw.autoResumeReplyEnabled === true && hasCurrentAutoResumeConsent,
     autoResumeId: typeof raw.autoResumeId === 'string' ? raw.autoResumeId.trim() : '',
+    autoResumeReplyConsentVersion: hasCurrentAutoResumeConsent
+      ? AUTO_RESUME_REPLY_CONSENT_VERSION
+      : 0,
     backupVersion: 2,
     autoCloseBossTabs: raw.autoCloseBossTabs !== false,
+    outcomeFeedbackLearningEnabled: raw.outcomeFeedbackLearningEnabled === true,
   };
 }
 

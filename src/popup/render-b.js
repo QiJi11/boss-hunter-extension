@@ -170,6 +170,11 @@ window.applyGreetingsToGroups=function(){
       for(var t in tagCounts){if(tagCounts[t]>bestCount){bestTag=t;bestCount=tagCounts[t]}}
       aiGreeting=greetings[bestTag];
     }
+    var companyNames=(g.jobs||[]).reduce(function(names,job){
+      names.push(job.company,job.companyName);
+      return names;
+    },[]);
+    aiGreeting=sanitizeGeneratedGreeting(aiGreeting,companyNames);
     if(aiGreeting&&g.greeting.text!==aiGreeting){g.greeting.text=aiGreeting;changed=true}
   });
   if(changed)Store.set('groups',groups);

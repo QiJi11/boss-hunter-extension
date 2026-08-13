@@ -66,6 +66,9 @@ function initDomRefs(){
   E.compositeAiProvider=$('#compositeAiProvider');E.compositeAiBaseUrl=$('#compositeAiBaseUrl');E.compositeAiApiKey=$('#compositeAiApiKey');
   E.compositeAiModel=$('#compositeAiModel');E.compositeAiScoreThreshold=$('#compositeAiScoreThreshold');E.compositeTextResume=$('#compositeTextResume');
   E.compositeAiScreeningEnabled=$('#compositeAiScreeningEnabled');
+  E.compositeOutcomeFeedbackLearningEnabled=$('#compositeOutcomeFeedbackLearningEnabled');
+  E.compositeClearOutcomeFeedbackBtn=$('#compositeClearOutcomeFeedbackBtn');
+  E.compositeOutcomeFeedbackStatus=$('#compositeOutcomeFeedbackStatus');
   E.compositeAutoResumeReplyEnabled=$('#compositeAutoResumeReplyEnabled');E.compositeAutoResumeId=$('#compositeAutoResumeId');
   E.compositeAutoCloseBossTabs=$('#compositeAutoCloseBossTabs');E.compositeCloseBossTabsBtn=$('#compositeCloseBossTabsBtn');E.compositeCloseBossTabsStatus=$('#compositeCloseBossTabsStatus');
   E.compositeTestBtn=$('#compositeTestBtn');E.compositeSaveBtn=$('#compositeSaveBtn');E.compositeStatus=$('#compositeStatus');
@@ -79,6 +82,7 @@ function initDomRefs(){
   E.singleSendOverlay=$('#singleSendOverlay');E.singleSendClose=$('#singleSendClose');
   E.singleSendJob=$('#singleSendJob');E.singleSendAi=$('#singleSendAi');
   E.singleSendGreeting=$('#singleSendGreeting');E.singleSendResume=$('#singleSendResume');
+  E.singleSendSendImages=$('#singleSendSendImages');
   E.singleSendHistory=$('#singleSendHistory');E.singleSendStatus=$('#singleSendStatus');
   E.singleSendSkip=$('#singleSendSkip');E.singleSendConfirm=$('#singleSendConfirm');
   E.singleSendRewriteInput=$('#singleSendRewriteInput');E.singleSendRewriteBtn=$('#singleSendRewriteBtn');
@@ -850,9 +854,12 @@ function fillAiDrawer(config,textResume){
   },cfg,textResume);
   if(E.compositeBtn)E.compositeBtn.classList.toggle('configured',!!cfg.apiKey);
   updateAiFilterAssistantState();
-  chrome.storage.local.get(['aiScreeningEnabled','autoResumeReplyEnabled','autoResumeId','autoCloseBossTabs'],function(items){
+  chrome.storage.local.get(['aiScreeningEnabled','outcomeFeedbackLearningEnabled','autoResumeReplyEnabled','autoResumeId','autoResumeReplyConsentVersion','autoCloseBossTabs'],function(items){
     if(E.compositeAiScreeningEnabled)E.compositeAiScreeningEnabled.checked=items.aiScreeningEnabled!==false;
-    if(E.compositeAutoResumeReplyEnabled)E.compositeAutoResumeReplyEnabled.checked=items.autoResumeReplyEnabled===true;
+    if(E.compositeOutcomeFeedbackLearningEnabled)E.compositeOutcomeFeedbackLearningEnabled.checked=items.outcomeFeedbackLearningEnabled===true;
+    if(E.compositeAutoResumeReplyEnabled)E.compositeAutoResumeReplyEnabled.checked=
+      items.autoResumeReplyEnabled===true
+      && Number(items.autoResumeReplyConsentVersion)===AUTO_RESUME_REPLY_CONSENT_VERSION;
     if(E.compositeAutoResumeId)E.compositeAutoResumeId.value=items.autoResumeId||'';
     if(E.compositeAutoCloseBossTabs)E.compositeAutoCloseBossTabs.checked=items.autoCloseBossTabs!==false;
   });
@@ -907,13 +914,26 @@ function saveCompositeConfig(callback){
     if(autoEnabled&&!confirm('确认自动发送 BOSS 在线简历“'+autoResumeId+'”？')){
       throw new Error('已取消自动回复简历确认');
     }
-    return chrome.storage.local.set({
+    var featurePatch={
       aiScreeningEnabled:!E.compositeAiScreeningEnabled||E.compositeAiScreeningEnabled.checked,
+      outcomeFeedbackLearningEnabled:!!(E.compositeOutcomeFeedbackLearningEnabled&&E.compositeOutcomeFeedbackLearningEnabled.checked),
       autoResumeReplyEnabled:autoEnabled,
       autoResumeId:autoResumeId,
+      autoResumeReplyConsentVersion:autoEnabled?AUTO_RESUME_REPLY_CONSENT_VERSION:0,
       backupVersion:2,
       autoCloseBossTabs:!E.compositeAutoCloseBossTabs||E.compositeAutoCloseBossTabs.checked
-    }).then(function(){saveAiConfig(cfg,textResume,setCompositeStatus,callback)});
+    };
+    return new Promise(function(resolve,reject){
+      saveAiConfig(cfg,textResume,setCompositeStatus,function(saved){
+        if(!saved){resolve();return;}
+        chrome.storage.local.set(featurePatch).then(function(){
+          fillAiDrawer(cfg,textResume);
+          setCompositeStatus('设置已保存','success');
+          if(callback)callback(true);
+          resolve();
+        }).catch(reject);
+      });
+    });
   }).catch(function(e){
     setCompositeStatus('保存失败: '+e.message,'error');if(callback)callback(false);
   });
@@ -937,7 +957,7 @@ function saveAiConfig(cfg,textResume,statusSetter,callback){
         SettingsBackupApi.applySnapshotToStorage({
           textResume:textResume,
           aiConfig:cfg
-        }).then(function(){
+        },{preserveAutoResumeConsent:true}).then(function(){
         fillAiDrawer(cfg,textResume);
         statusSetter('AI 设置已保存','success');
         if(callback)callback(true);
@@ -1013,6 +1033,19 @@ function wireCompositeDrawer(){
         if(E.compositeCloseBossTabsStatus)E.compositeCloseBossTabsStatus.textContent=msg;
       }else{
         if(E.compositeCloseBossTabsStatus)E.compositeCloseBossTabsStatus.textContent='清理失败: '+((resp&&resp.error)||'无响应');
+      }
+    });
+  });
+  if(E.compositeClearOutcomeFeedbackBtn)E.compositeClearOutcomeFeedbackBtn.addEventListener('click',function(){
+    if(!confirm('清除本机保存的岗位结果反馈？此操作不会影响已投递记录。'))return;
+    E.compositeClearOutcomeFeedbackBtn.disabled=true;
+    if(E.compositeOutcomeFeedbackStatus)E.compositeOutcomeFeedbackStatus.textContent='正在清除本机反馈...';
+    chrome.runtime.sendMessage({type:MSG.CLEAR_OUTCOME_FEEDBACK},function(resp){
+      E.compositeClearOutcomeFeedbackBtn.disabled=false;
+      if(E.compositeOutcomeFeedbackStatus){
+        E.compositeOutcomeFeedbackStatus.textContent=resp&&resp.success
+          ?'已清除本机结果反馈'
+          :'清除失败: '+((resp&&resp.error)||chrome.runtime.lastError?.message||'无响应');
       }
     });
   });
@@ -1121,19 +1154,45 @@ function downloadBackupSnapshot(snapshot,prefix){
   URL.revokeObjectURL(url);
 }
 
-function applyResumeImagesToStore(stored){
-  var images=[];
-  (stored||[]).forEach(function(it){
+async function applyResumeImagesToStore(stored){
+  var previousImages=Store.get('resumeImages')||[];
+  var needsIdMigration=false;
+  var normalizedStored=await Promise.all((stored||[]).map(async function(it){
     var thumbSrc=it.thumb||(it.data?arrayBufferToDataUrl(it.data,it.type||'image/jpeg'):null);
-    if(!it.data&&!thumbSrc)return;
-    var entry={src:thumbSrc||it.data,name:it.name,id:it.id||Date.now()+'_'+Math.random().toString(36).slice(2,6)};
+    if(!it.data&&!thumbSrc)return null;
+    var imageId=await stableResumeImageId(it);
+    if(!imageId)return null;
+    if(it.id!==imageId)needsIdMigration=true;
+    return Object.assign({},it,{id:imageId});
+  }));
+  var images=[];
+  normalizedStored.filter(Boolean).forEach(function(it){
+    var thumbSrc=it.thumb||(it.data?arrayBufferToDataUrl(it.data,it.type||'image/jpeg'):null);
+    var entry={src:thumbSrc||it.data,name:it.name,id:it.id};
     if(it.fullSrc)entry.fullSrc=it.fullSrc;
     else if(it.data)entry.fullSrc=arrayBufferToDataUrl(it.data,it.type||'image/jpeg');
     images.push(entry);
   });
   Store.set('resumeImages',images);
+  syncDefaultGroupImages(previousImages,images);
   window.renderResumeImages();
   window.refreshBImages();
+  if(needsIdMigration){
+    await chrome.storage.local.set({resumeImages:normalizedStored.filter(Boolean)});
+  }
+}
+
+function syncDefaultGroupImages(previousImages,nextImages){
+  var previousIds=(previousImages||[]).map(function(image){return image.id}).join(',');
+  var groups=Store.get('groups')||[];
+  var changed=false;
+  groups.forEach(function(group){
+    var groupIds=(group.images||[]).map(function(image){return image.id}).join(',');
+    if(groupIds!==previousIds)return;
+    group.images=JSON.parse(JSON.stringify(nextImages||[]));
+    changed=true;
+  });
+  if(changed)Store.set('groups',groups);
 }
 
 function applyAiStorageState(aiConfig,textResume){
@@ -1183,12 +1242,13 @@ function hydrateAiSettingsFromStorage(done){
 function hydratePopupFromStorage(done){
   try{
     chrome.storage.local.get(['resumeImages',FILTER_STATE_KEY,'apiKey','textResume',AI_CONFIG_KEY],function(items){
-      applyResumeImagesToStore(items.resumeImages||[]);
       applyFilterStateToStore(items[FILTER_STATE_KEY]||null);
       var cfg=Object.assign({},DEFAULT_AI_CONFIG,items[AI_CONFIG_KEY]||{});
       if(items.apiKey&&!cfg.apiKey)cfg.apiKey=items.apiKey;
       applyAiStorageState(cfg,items.textResume||'');
-      if(done)done();
+      applyResumeImagesToStore(items.resumeImages||[])
+        .then(function(){if(done)done();})
+        .catch(function(error){if(done)done(error);});
     });
   }catch(e){
     if(done)done(e);
@@ -1201,7 +1261,8 @@ function bindPopupStorageSync(){
     if(areaName!=='local'||!changes)return;
 
     if(Object.prototype.hasOwnProperty.call(changes,'resumeImages')){
-      applyResumeImagesToStore(changes.resumeImages&&changes.resumeImages.newValue||[]);
+      applyResumeImagesToStore(changes.resumeImages&&changes.resumeImages.newValue||[])
+        .catch(function(error){console.warn('[猎职] 图片简历同步失败:',error&&error.message||error);});
     }
 
     if(Object.prototype.hasOwnProperty.call(changes,FILTER_STATE_KEY)){
@@ -1352,20 +1413,6 @@ function init(){
           E.btnSend.disabled=true;
           E.btnSend.style.background='var(--green)';
           window.renderReview(msg.results||[],msg.duration,msg.missedCount||0);
-        }
-      }
-      if(msg.type===MSG.GREETING_AUTO_ENABLED){
-        // pre-flight 自动开启了 BOSS 打招呼开关：投递照常，给一条非阻断提示。
-        // 不写 progressSub（EXTRACT_PROGRESS→updateProgress 几秒内会覆盖它），独立 notice 块仿 captchaWarning 插法。
-        if(!document.getElementById('greetingAutoNotice')){
-          var gn=document.createElement('div');
-          gn.id='greetingAutoNotice';
-          gn.className='fade-in';
-          gn.style.cssText='margin:8px 0;padding:8px 12px;background:#f0f9f4;color:#1a7f4b;border-radius:8px;font-size:12px;line-height:1.5;';
-          gn.textContent='已为你自动开启 BOSS『自动打招呼』功能（投递必需）';
-          if(E.progressSection&&E.progressSection.parentNode){
-            E.progressSection.parentNode.insertBefore(gn,E.progressSection);
-          }
         }
       }
       if(msg.type===MSG.ERROR){

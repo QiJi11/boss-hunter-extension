@@ -2,6 +2,7 @@
 
 // 🔴 发布打包前改为 false：关闭 window.postMessage 测试桥，防同页恶意脚本触发自动投递
 const TEST_BRIDGE_ENABLED = false;
+const AUTO_RESUME_REPLY_CONSENT_VERSION = 1;
 
 // ── 同步诊断：直接写 documentElement.dataset.diagSync ringer（零 await，零 race） ──
 // 决策：ErrorLogger.logError 是 async read-modify-write，多个 _dbg 连续调用时后写覆盖前写
@@ -224,6 +225,16 @@ var JobClicker = {
       _dbg('click:alreadyChatted', { hrName: hrName, hrCompany: hrCompany, btnText: chatBtnTxt });
       try { if (typeof DiagLogger !== 'undefined') DiagLogger.info('cs.flow', '检测到继续沟通按钮，跳过点击 标记alreadyChatted hr=' + hrName + ' btnText=' + chatBtnTxt); } catch (_) {}
       return { success: true, hrName: hrName, hrCompany: hrCompany, alreadyChatted: true };
+    }
+
+    var greetingSafety = evaluateBossGreetingSafety(await handleCheckGreetingSetting());
+    if (!greetingSafety.ok) {
+      _dbg('click:greetingBlocked', { errorCode: greetingSafety.errorCode });
+      return {
+        success: false,
+        error: greetingSafety.error || 'BOSS 自带自动招呼语未确认关闭',
+        errorCode: greetingSafety.errorCode,
+      };
     }
 
     // #39 阶段1跳转恢复：即将点「立即沟通」——同 HR 新岗位场景 BOSS 会整页跳转 /web/geek/chat
@@ -1044,18 +1055,10 @@ function assertOpenConversationIdentity(targetHrName, targetHrCompany) {
         return;
 
       case MSG.CHECK_GREETING_SETTING:
-        // pre-flight: 读 BOSS「自动打招呼」开关状态（CS 同源 fetch 带 cookie）
+        // pre-flight: 只读 BOSS「自动打招呼」开关状态（CS 同源 fetch 带 cookie）
         handleCheckGreetingSetting().then(
           (result) => sendResponse(result),
           (e) => sendResponse({ success: false, error: e.message })
-        );
-        return true;
-
-      case MSG.ENABLE_GREETING_SETTING:
-        // pre-flight: API 写开（status=1）+ getGreetingList 复读自检
-        handleEnableGreetingSetting(msg.templateId).then(
-          (result) => sendResponse(result),
-          (e) => sendResponse({ ok: false, error: e.message })
         );
         return true;
 
@@ -1084,17 +1087,27 @@ function assertOpenConversationIdentity(targetHrName, targetHrCompany) {
     if (typeof ChatListMonitor !== 'undefined') ChatListMonitor.start();
     if (typeof ChatMonitor !== 'undefined') {
       function syncAutoResumeMonitor(items) {
-        if (items.autoResumeReplyEnabled === true && String(items.autoResumeId || '').trim()) {
+        if (items.autoResumeReplyEnabled === true
+          && Number(items.autoResumeReplyConsentVersion) === AUTO_RESUME_REPLY_CONSENT_VERSION
+          && String(items.autoResumeId || '').trim()) {
           ChatMonitor.start(items.autoResumeId);
         } else {
           ChatMonitor.stop();
         }
       }
-      chrome.storage.local.get(['autoResumeReplyEnabled', 'autoResumeId'], syncAutoResumeMonitor);
+      chrome.storage.local.get(
+        ['autoResumeReplyEnabled', 'autoResumeId', 'autoResumeReplyConsentVersion'],
+        syncAutoResumeMonitor
+      );
       chrome.storage.onChanged.addListener(function(changes, areaName) {
         if (areaName !== 'local'
-          || (!changes.autoResumeReplyEnabled && !changes.autoResumeId)) return;
-        chrome.storage.local.get(['autoResumeReplyEnabled', 'autoResumeId'], syncAutoResumeMonitor);
+          || (!changes.autoResumeReplyEnabled
+            && !changes.autoResumeId
+            && !changes.autoResumeReplyConsentVersion)) return;
+        chrome.storage.local.get(
+          ['autoResumeReplyEnabled', 'autoResumeId', 'autoResumeReplyConsentVersion'],
+          syncAutoResumeMonitor
+        );
       });
     }
   } else if (href.includes('/job_detail/')) {
@@ -1480,13 +1493,50 @@ async function handleWorkerSend(msg) {
   var job = msg.job || {};
   var jobId = job.jobId;
   try {
+    var confirmationExpiresAt = Number(job.confirmationExpiresAt);
+    if (!Number.isFinite(confirmationExpiresAt) || confirmationExpiresAt <= Date.now()) {
+      return {
+        success: false,
+        jobId: jobId,
+        error: '逐岗确认已过期，请重新复核',
+        errorCode: 'CONFIRMATION_EXPIRED',
+      };
+    }
+    var reviewedGreeting = String(job.greeting || '').trim();
+    var finalBlockedNames = uniqueStrings(
+      (Array.isArray(job.blockedNames) ? job.blockedNames : [])
+        .concat([job.hrName, job.hrCompany, job.companyName])
+    );
+    var finalGreeting = sanitizeGeneratedGreeting(reviewedGreeting, finalBlockedNames);
+    if (!finalGreeting || finalGreeting !== reviewedGreeting) {
+      return {
+        success: false,
+        jobId: jobId,
+        error: '招呼语包含未复核的姓名或公司信息，请重新逐岗复核',
+        errorCode: 'GREETING_IDENTITY_REVIEW_REQUIRED',
+      };
+    }
+    var workerGreetingSafety = evaluateBossGreetingSafety(await handleCheckGreetingSetting());
+    if (!workerGreetingSafety.ok) {
+      return {
+        success: false,
+        jobId: jobId,
+        error: workerGreetingSafety.error || 'BOSS 自带自动招呼语未确认关闭',
+        errorCode: workerGreetingSafety.errorCode || 'BOSS_GREETING_STATUS_UNKNOWN',
+      };
+    }
     // worker 阶段 fail-fast：文字 3s、图片 4s，各单次不重试；未确认即记失败并交给人工复核。
     // 旧版 sendText 死等 8s + 重试 3 次 = ~28s/岗位 → 招呼语发 3 次（errorLog 实证 baseline=4）；
     // sendImage 同款 3 次重试。worker 阶段抢同账号 WS，重复发送风险更高，因此只尝试一次。
     var sendResult = await JobSender.sendSingle(
-      job.greeting, jobId,
-      { timeoutMs: 4000, maxAttempts: 1 },  // imgOpts
-      { timeoutMs: 3000, maxAttempts: 1 }   // textOpts
+      finalGreeting, jobId,
+      {
+        timeoutMs: 4000,
+        maxAttempts: 1,
+        allowed: job.sendImages === true, // 必须来自本岗位复核框的显式许可
+        expectedImageKeys: Array.isArray(job.imageKeys) ? job.imageKeys : [],
+      },
+      { timeoutMs: 3000, maxAttempts: 1 }
     );
     return { success: true, jobId: jobId, positionName: job.positionName, companyName: job.companyName, ...sendResult };
   } catch (e) {
@@ -1495,9 +1545,10 @@ async function handleWorkerSend(msg) {
 }
 
 // ════════════════════════════════════════════════════════════════
-// 招呼语开关 pre-flight（陷阱 #31）：投递前确认 BOSS「自动打招呼」开关已开
-// 开关关闭时点「立即沟通」会整页跳 /web/geek/chat → stage1 卡死，必须先开。
-// fetch 由搜索页 CS 执行：同源带 cookie、且能 document.cookie 读 bst（非 HttpOnly）。
+// BOSS 自带招呼语安全检查：只读开关，不自动修改账户设置。
+// 开关必须关闭，避免 BOSS 模板在扩展已复核招呼语之外另发一条未知文本。
+// 关闭后若点「立即沟通」发生整页跳转，由既有 #39 stage1 恢复链处理。
+// fetch 由搜索页 CS 执行：同源带 cookie。
 // ════════════════════════════════════════════════════════════════
 
 // 读开关：GET getGreetingList → zpData.greeting.{enabled, templateId}
@@ -1518,43 +1569,7 @@ async function handleCheckGreetingSetting() {
     var g = await _fetchGreetingSetting();
     return { success: true, enabled: g.enabled, templateId: g.templateId };
   } catch (e) {
-    // 读失败（网络/接口变更）→ SW 侧视为 enabled 未知，放行投递（宁可少拦截不可误拦截）
+    // 读失败（网络/接口变更）→ SW 侧按未知状态硬拦，避免未复核文本外发。
     return { success: false, error: e.message };
-  }
-}
-
-function _readCookie(name) {
-  var m = document.cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
-  return m ? decodeURIComponent(m[1]) : '';
-}
-
-// 写开关（只写 status=1，绝不写 status=0）+ 复读自检。
-// zp_token = cookie bst 原值；traceId BOSS 不校验内容，随机串即可。实测 ~0.5s 生效。
-async function handleEnableGreetingSetting(templateId) {
-  try {
-    var bst = _readCookie('bst');
-    if (!bst) return { ok: false, error: '未读到 bst cookie（zp_token 缺失）' };
-    var body = 'status=1&templateId=' + encodeURIComponent(templateId == null ? '' : templateId);
-    await fetch('https://www.zhipin.com/wapi/zpchat/greeting/updateGreetingV2', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'X-Requested-With': 'XMLHttpRequest',
-        'zp_token': bst,
-        'traceId': 'F-' + Math.random().toString(36).slice(2, 12).toUpperCase(),
-      },
-      body: body,
-    });
-    // 写后必须复读 enabled 自检（updateGreetingV2 响应不可全信，以 getGreetingList 为准）
-    await sleep(600);
-    var g = await _fetchGreetingSetting();
-    if (g.enabled) return { ok: true, enabled: true };
-    // 一次复读未生效 → 再等 1s 复读一次兜底（实测 0.5s 生效，1.6s 仍 false 即判失败走降级）
-    await sleep(1000);
-    g = await _fetchGreetingSetting();
-    return { ok: !!g.enabled, enabled: g.enabled };
-  } catch (e) {
-    return { ok: false, error: e.message };
   }
 }

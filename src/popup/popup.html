@@ -296,8 +296,14 @@
             <input type="text" id="singleSendRewriteInput" placeholder="润色要求，如：更活泼、突出 AI 经验" autocomplete="off">
             <button class="btn btn-ghost" id="singleSendRewriteBtn" type="button">AI 润色</button>
           </div>
+          <div class="single-send-platform-warning">安全检查：BOSS 自带“自动打招呼”必须关闭。若它仍开启或状态无法确认，本次会直接中止，扩展不会替你修改账户设置。</div>
         </div>
-        <div class="single-send-section"><strong>待发送简历</strong><div id="singleSendResume"></div></div>
+        <div class="single-send-section"><strong>图片简历</strong><div id="singleSendResume"></div>
+          <label class="single-send-consent">
+            <input type="checkbox" id="singleSendSendImages">
+            <span>本次明确发送上述图片简历（默认不发送）</span>
+          </label>
+        </div>
         <div class="single-send-section"><strong>历史沟通</strong><div id="singleSendHistory"></div></div>
         <div class="ai-status" id="singleSendStatus"></div>
         <div class="ai-actions">
@@ -372,6 +378,13 @@
             <input type="checkbox" id="compositeAiScreeningEnabled" checked>
             <span>采集后自动运行 AI 岗位筛选</span>
           </label>
+          <label class="send-greeting-toggle">
+            <input type="checkbox" id="compositeOutcomeFeedbackLearningEnabled">
+            <span>把本机人工结果汇总用于下一轮 AI 筛选</span>
+          </label>
+          <p class="composite-setting-hint">默认关闭。新增的反馈字段只有匿名统计；原有 AI 筛选仍按既有授权发送简历和岗位信息。</p>
+          <button class="btn btn-ghost" id="compositeClearOutcomeFeedbackBtn" type="button">清除本机结果反馈</button>
+          <div id="compositeOutcomeFeedbackStatus" class="composite-import-status"></div>
           <div class="ai-field">
             <label for="compositeAiProvider">Provider</label>
             <input id="compositeAiProvider" type="text" placeholder="openai-compatible" autocomplete="off">
@@ -448,6 +461,9 @@
 
   <!-- shared -->
 <script src="../shared/constants.js"></script>
+<script src="../shared/greeting-safety.js"></script>
+<script src="../shared/resume-image-consent.js"></script>
+<script src="../shared/outcome-feedback.js"></script>
 <script src="../shared/diag-logger.js"></script>
 <script src="../shared/device-id.js"></script>
 <script src="../db/indexeddb.js"></script>

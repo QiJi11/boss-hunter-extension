@@ -162,9 +162,8 @@ const MSG = {
   // CAPTCHA
   CAPTCHA_DETECTED: 'CAPTCHA_DETECTED',
 
-  // 招呼语开关 pre-flight（必须与 constants.js 同步）
-  CHECK_GREETING_SETTING: 'CHECK_GREETING_SETTING',   // SW -> CS(搜索页): 读 getGreetingList
-  ENABLE_GREETING_SETTING: 'ENABLE_GREETING_SETTING', // SW -> CS(搜索页): 写开关+复读自检
+  // BOSS 自带招呼语安全检查（必须与 constants.js 同步）
+  CHECK_GREETING_SETTING: 'CHECK_GREETING_SETTING',   // SW -> CS(搜索页): 只读 getGreetingList
 };
 
 // ── URL 参数映射 ──

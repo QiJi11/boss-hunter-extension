@@ -1,5 +1,7 @@
 // Service Worker — 消息中枢 + OpenAI-compatible AI 代理
 importScripts('/src/shared/constants.js');
+importScripts('/src/shared/greeting-safety.js');
+importScripts('/src/shared/outcome-feedback.js');
 importScripts('/src/db/indexeddb.js');
 importScripts('/src/shared/error-logger.js');
 importScripts('/src/shared/diag-logger.js');
@@ -19,7 +21,8 @@ async function migrateSettingsV2() {
   const keys = [
     'apiKey', STORAGE_KEYS.SW.AI_CONFIG, STORAGE_KEYS.UI.FILTER_STATE,
     FEATURE_KEYS.AI_SCREENING_ENABLED, FEATURE_KEYS.AUTO_RESUME_REPLY_ENABLED,
-    FEATURE_KEYS.AUTO_RESUME_ID, FEATURE_KEYS.BACKUP_VERSION,
+    FEATURE_KEYS.AUTO_RESUME_ID, FEATURE_KEYS.AUTO_RESUME_CONSENT_VERSION,
+    FEATURE_KEYS.BACKUP_VERSION, FEATURE_KEYS.OUTCOME_FEEDBACK_LEARNING_ENABLED,
   ];
   const result = await chrome.storage.local.get(keys);
   const patch = {};
@@ -128,15 +131,16 @@ function extractJsonObject(text) {
   return JSON.parse(match[0]);
 }
 
-function buildJobScreenPrompt(job, resumeText, expected) {
+function buildJobScreenPrompt(job, resumeText, expected, feedbackContext) {
   var excludeKeywords = uniqueStrings(state.excludeKeywords || []);
-  return `请判断这个岗位是否适合投递，并生成招呼语。只返回 JSON，不要 Markdown。\n\n[简历]\n${resumeText || '未提供文字简历'}\n\n[用户期望方向]\n${expected || ''}\n\n[排除规则]\n排除关键词：${excludeKeywords.join(' / ') || '无'}\n重点识别并降低评分：外包、驻场、培训推广、销售/主播/客服、讲师岗、剪辑/视频制作、游戏前端、把销售/运营包装成 AI 应用开发的岗位、非真实开发岗。\n\n[岗位]\n标题：${job.name || ''}\n公司：${job.company || ''}\n薪资：${job.salary || ''}\n标签：${(job.tags || []).join(' / ')}\nJD：${String(job.desc || job.description || job.detail || '').slice(0, 1500)}\n\n返回格式：{"score":0,"applyScore":0,"applyReason":"","interviewScore":0,"interviewReason":"","reason":"","greeting":"","risks":[]}\nscore 为 0-100 的综合匹配分；applyScore 为 0-100 的"能投"分（可投递性，匹配+无风险），applyReason 不超过 30 字说明能投理由；interviewScore 为 0-100 的"能进"分（进面可能性，简历竞争力 vs 岗位要求），interviewReason 不超过 30 字说明能进理由；reason 不超过 40 字；greeting 为 80-120 字招呼语；risks 是字符串数组，命中排除规则时写明具体风险。`;
+  var feedbackSection = feedbackContext ? '\n\n' + feedbackContext : '';
+  return `请判断这个岗位是否适合投递。只返回 JSON，不要 Markdown。\n\n[简历]\n${resumeText || '未提供文字简历'}\n\n[用户期望方向]\n${expected || ''}\n\n[排除规则]\n排除关键词：${excludeKeywords.join(' / ') || '无'}\n重点识别并降低评分：外包、驻场、培训推广、销售/主播/客服、讲师岗、剪辑/视频制作、游戏前端、把销售/运营包装成 AI 应用开发的岗位、非真实开发岗。${feedbackSection}\n\n[岗位]\n标题：${job.name || ''}\n公司：${job.company || ''}\n薪资：${job.salary || ''}\n标签：${(job.tags || []).join(' / ')}\nJD：${String(job.desc || job.description || job.detail || '').slice(0, 1500)}\n\n返回格式：{"score":0,"applyScore":0,"applyReason":"","interviewScore":0,"interviewReason":"","reason":"","risks":[]}\nscore 为 0-100 的综合匹配分；applyScore 为 0-100 的"能投"分（可投递性，匹配+无风险），applyReason 不超过 30 字说明能投理由；interviewScore 为 0-100 的"能进"分（进面可能性，简历竞争力 vs 岗位要求），interviewReason 不超过 30 字说明能进理由；reason 不超过 40 字；risks 是字符串数组，命中排除规则时写明具体风险。`;
 }
 
-async function screenSingleJob(cfg, job, resumeText, expected) {
+async function screenSingleJob(cfg, job, resumeText, expected, feedbackContext) {
   const messages = [
-    { role: 'system', content: '你是招聘岗位匹配助手。严格输出一个 JSON 对象，字段为 score、applyScore、applyReason、interviewScore、interviewReason、reason、greeting、risks。' },
-    { role: 'user', content: buildJobScreenPrompt(job, resumeText, expected) },
+    { role: 'system', content: '你是招聘岗位匹配助手。严格输出一个 JSON 对象，字段为 score、applyScore、applyReason、interviewScore、interviewReason、reason、risks。不要生成招呼语。' },
+    { role: 'user', content: buildJobScreenPrompt(job, resumeText, expected, feedbackContext) },
   ];
   let text;
   try {
@@ -153,7 +157,6 @@ async function screenSingleJob(cfg, job, resumeText, expected) {
     interviewScore: Math.max(0, Math.min(100, Number(parsed.interviewScore !== undefined ? parsed.interviewScore : parsed.score || 0))),
     interviewReason: String(parsed.interviewReason || '').slice(0, 80),
     reason: String(parsed.reason || '').slice(0, 160),
-    greeting: String(parsed.greeting || '').trim(),
     risks: Array.isArray(parsed.risks) ? parsed.risks.map(String).slice(0, 5) : [],
   };
 }
@@ -583,7 +586,10 @@ async function generateFilterSuggestion(input) {
 }
 
 async function applyAiScreeningToJobs(jobs) {
-  const featureState = await chrome.storage.local.get(FEATURE_KEYS.AI_SCREENING_ENABLED);
+  const featureState = await chrome.storage.local.get([
+    FEATURE_KEYS.AI_SCREENING_ENABLED,
+    FEATURE_KEYS.OUTCOME_FEEDBACK_LEARNING_ENABLED,
+  ]);
   if (featureState[FEATURE_KEYS.AI_SCREENING_ENABLED] === false) {
     state.aiScreeningProgress = { done: 0, total: 0, disabled: true };
     return jobs || [];
@@ -606,6 +612,9 @@ async function applyAiScreeningToJobs(jobs) {
   }
   const threshold = cfg.scoreThreshold;
   const expected = allExpectedPositions(state).join(' / ');
+  const feedbackContext = featureState[FEATURE_KEYS.OUTCOME_FEEDBACK_LEARNING_ENABLED] === true
+    ? await getOutcomeFeedbackPromptContext()
+    : '';
   const CONCURRENCY = 2;
   const BATCH_SIZE = 6; // 每批岗位数：批间持久化 + 短暂延迟，避免长时间高负载导致 SW 挂起/浏览器崩溃
   // 保活：Grok 单岗响应 40s+，超过 Chrome SW 空闲终止阈值（30s）。
@@ -632,11 +641,11 @@ async function applyAiScreeningToJobs(jobs) {
       while (idx < batchEnd) {
         const current = jobs[idx++];
         try {
-          const screening = await screenSingleJob(cfg, current, resumeText, expected);
+          const screening = await screenSingleJob(cfg, current, resumeText, expected, feedbackContext);
           current.aiScreen = screening;
           current.checked = screening.score >= threshold;
           current.status = screening.score >= threshold ? 'recommended' : 'manualReview';
-          if (screening.greeting) current.aiGreeting = screening.greeting;
+          if (Object.prototype.hasOwnProperty.call(current, 'aiGreeting')) delete current.aiGreeting;
         } catch (err) {
           current.aiScreen = {
             score: 0,
@@ -645,7 +654,6 @@ async function applyAiScreeningToJobs(jobs) {
             interviewScore: 0,
             interviewReason: 'AI筛选失败',
             reason: 'AI筛选失败，请人工确认',
-            greeting: '',
             risks: [err.message || 'AI error'],
             failed: true,
           };
@@ -894,11 +902,12 @@ async function generateGreeting(apiKey, resumeImages, jdSamples, category) {
   const jdText = (jdSamples || []).slice(0, 5).map((jd, i) => {
     return `${i + 1}. ${jd.title || ''}\n${(jd.tags || []).join(' / ')}\n${String(jd.desc || '').slice(0, 500)}`;
   }).join('\n\n');
-  const userPrompt = `请根据简历和岗位方向生成一段 80-120 字招呼语。\n\n[简历]\n${resumeText || '未提供文字简历，请根据岗位方向写通用但真诚的招呼语。'}\n\n[应聘方向]\n${category}\n\n[岗位样本]\n${jdText || '暂无岗位样本'}\n\n要求：以“您好”开头，语气真诚专业，结尾自然引出简历。`;
-  return callOpenAICompatible(cfg, [
+  const userPrompt = `请根据简历和岗位方向生成一段 70-110 字招呼语。\n\n[简历]\n${resumeText || '未提供文字简历，请根据岗位方向写通用但真诚的招呼语。'}\n\n[应聘方向]\n${category}\n\n[岗位样本]\n${jdText || '暂无岗位样本'}\n\n要求：以“您好”开头；只说 1-2 个与岗位最相关的真实匹配点；口语、自然、简短；结尾用“方便沟通吗”或同类问句。不要写求职者姓名、招聘者姓名、客户名、公司名、学校名或署名；不要声称已发送、已附上或稍后发送简历/附件。`;
+  const generated = await callOpenAICompatible(cfg, [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt },
   ], 500, 120000, `greeting:${category}`);
+  return sanitizeGeneratedGreeting(generated);
 }
 
 // ── Resume image cache (compressed, reused across batch calls) ──
@@ -1004,12 +1013,13 @@ async function loadResumeImages() {
 
 // 商业化：重写迁移到后端 /rewrite（藏 Key，复用 /greeting 计费闸口，堵白嫖漏）。
 // apiKey 参数保留仅为兼容调用方签名（doRewriteGreeting 仍传入），后端不再用客户端 Key。
-async function rewriteGreeting(apiKey, originalGreeting, instruction) {
+async function rewriteGreeting(apiKey, originalGreeting, instruction, blockedNames) {
   const cfg = await getAiConfig();
-  return callOpenAICompatible(cfg, [
-    { role: 'system', content: '你是求职助手，帮助用户优化 BOSS 直聘招呼语。只输出重写后的招呼语正文。' },
-    { role: 'user', content: `原招呼语：\n${originalGreeting}\n\n重写要求：${instruction}\n\n输出要求：80-150字，真诚专业。` },
+  const rewritten = await callOpenAICompatible(cfg, [
+    { role: 'system', content: '你是求职助手，帮助用户优化 BOSS 直聘招呼语。只输出重写后的招呼语正文。不得添加求职者姓名、招聘者姓名、客户名、公司名或署名。' },
+    { role: 'user', content: `原招呼语：\n${originalGreeting}\n\n重写要求：${instruction}\n\n输出要求：70-120字，真诚、自然、简短；只保留 1-2 个岗位匹配点；不要声称已发送或附上简历/附件。` },
   ], 500, 60000, 'rewrite');
+  return sanitizeGeneratedGreeting(rewritten, blockedNames);
 }
 
 // ── 状态管理 ──
@@ -1059,8 +1069,17 @@ let abortStage1 = null;
 let sendAborted = false;
 const pendingSingleSendConfirmations = new Map();
 let singleSendLaunchInProgress = false;
+const SINGLE_SEND_CONFIRMATION_VERSION = 3;
+const SINGLE_SEND_CONFIRMATION_TTL_MS = 5 * 60 * 1000;
 
-function createSingleSendConfirmation(jobId) {
+function normalizeImageConsentKeys(imageKeys) {
+  return (Array.isArray(imageKeys) ? imageKeys : [])
+    .slice(0, CONFIG.RESUME_MAX_COUNT)
+    .map(function(key) { return String(key || '').trim().slice(0, 512); })
+    .filter(Boolean);
+}
+
+function createSingleSendConfirmation(confirmation) {
   var now = Date.now();
   // 顺带清理已过期 token（防 Map 无限增长）
   pendingSingleSendConfirmations.forEach(function(rec, key) {
@@ -1068,8 +1087,12 @@ function createSingleSendConfirmation(jobId) {
   });
   var token = crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(36).slice(2));
   pendingSingleSendConfirmations.set(token, {
-    jobId: String(jobId),
-    expiresAt: now + 5 * 60 * 1000,
+    jobId: String(confirmation.jobId),
+    greeting: String(confirmation.greeting || '').trim(),
+    sendImages: confirmation.sendImages === true,
+    imageKeys: normalizeImageConsentKeys(confirmation.imageKeys),
+    blockedNames: uniqueStrings(confirmation.blockedNames),
+    expiresAt: now + SINGLE_SEND_CONFIRMATION_TTL_MS,
   });
   return token;
 }
@@ -1092,12 +1115,97 @@ function findSendResultByJobId(jobId) {
   return null;
 }
 
+let confirmedDeliveryPersistChain = Promise.resolve();
+
+function persistConfirmedDelivery() {
+  const snapshot = {
+    [STORAGE_KEYS.SW.JOBS]: state.jobs.slice(),
+    [STORAGE_KEYS.SW.SENT_JOB_IDS]: Array.from(sentJobIds),
+    [STORAGE_KEYS.SW.SEND_RESULTS]: state.sendResults.slice(),
+  };
+  confirmedDeliveryPersistChain = confirmedDeliveryPersistChain
+    .catch(() => {})
+    .then(() => chrome.storage.local.set(snapshot))
+    .catch((error) => {
+      try { ErrorLogger.logError(error.message || String(error), error.stack, 'confirmed delivery persistence failed'); } catch (_) {}
+    });
+  return confirmedDeliveryPersistChain;
+}
+
+async function readOutcomeFeedbackRecords() {
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.SW.OUTCOME_FEEDBACK);
+  return JobOutcomeFeedback.normalizeRecords(stored[STORAGE_KEYS.SW.OUTCOME_FEEDBACK]);
+}
+
+async function getOutcomeFeedbackPromptContext() {
+  const records = await readOutcomeFeedbackRecords();
+  return records.length >= 5 ? JobOutcomeFeedback.buildPromptContext(records) : '';
+}
+
+async function getJobOutcomeFeedback(jobIds) {
+  const records = await readOutcomeFeedbackRecords();
+  return {
+    records: JobOutcomeFeedback.recordsByJobId(records, jobIds),
+    summary: JobOutcomeFeedback.buildSummary(records),
+  };
+}
+
+async function findConfirmedSendResult(jobId) {
+  const inMemory = findSendResultByJobId(jobId);
+  if (inMemory && inMemory.success === true) return inMemory;
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.SW.SEND_RESULTS);
+  return (Array.isArray(stored[STORAGE_KEYS.SW.SEND_RESULTS])
+    ? stored[STORAGE_KEYS.SW.SEND_RESULTS]
+    : []).find(function (sendResult) {
+    return sendResult
+      && sendResult.success === true
+      && String(sendResult.jobId) === String(jobId);
+  }) || null;
+}
+
+async function findFeedbackScore(jobId) {
+  const inMemory = findStateJobById(jobId);
+  if (inMemory && inMemory.aiScreen) return inMemory.aiScreen.score;
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.SW.JOBS);
+  const jobs = Array.isArray(stored[STORAGE_KEYS.SW.JOBS]) ? stored[STORAGE_KEYS.SW.JOBS] : [];
+  const persisted = jobs.find(function (job) {
+    return String(job && (job.id || job.jobId)) === String(jobId);
+  });
+  return persisted && persisted.aiScreen ? persisted.aiScreen.score : undefined;
+}
+
+async function recordJobOutcome(message) {
+  const sendResult = await findConfirmedSendResult(message && message.jobId);
+  if (!sendResult || sendResult.success !== true) {
+    throw new Error('只能为已确认送达的岗位标记后续结果');
+  }
+  const existing = await readOutcomeFeedbackRecords();
+  if (message.outcome === 'clear') {
+    const remaining = JobOutcomeFeedback.removeRecord(existing, message.jobId);
+    await chrome.storage.local.set({ [STORAGE_KEYS.SW.OUTCOME_FEEDBACK]: remaining });
+    return { record: null, summary: JobOutcomeFeedback.buildSummary(remaining) };
+  }
+  const record = JobOutcomeFeedback.createRecord({
+    jobId: message.jobId,
+    outcome: message.outcome,
+    score: await findFeedbackScore(message.jobId),
+  });
+  if (!record) throw new Error('反馈结果不支持');
+  const records = JobOutcomeFeedback.upsertRecord(existing, record);
+  await chrome.storage.local.set({ [STORAGE_KEYS.SW.OUTCOME_FEEDBACK]: records });
+  return {
+    record: record,
+    summary: JobOutcomeFeedback.buildSummary(records),
+  };
+}
+
 function consumeSingleSendConfirmation(token, jobId) {
   var record = pendingSingleSendConfirmations.get(String(token || ''));
   pendingSingleSendConfirmations.delete(String(token || ''));
-  return !!record
-    && record.jobId === String(jobId)
-    && record.expiresAt >= Date.now();
+  if (!record
+    || record.jobId !== String(jobId)
+    || record.expiresAt < Date.now()) return null;
+  return record;
 }
 
 function isTrustedPopupSender(sender) {
@@ -1131,7 +1239,7 @@ function claimNextJob(state) {
   return job;
 }
 
-function buildSendQueueV6(state, jobIds) {
+function buildSendQueueV6(state, jobIds, sendOptions) {
   // 用「期望岗位名」作为 greeting key，与 B 页 / clusterJobs 完全一致
   // （旧实现用 job.tags[0]=BOSS卡片标签当 key，与生成时的岗位名 key 错配 → greeting 取空）
   var picker = Array.isArray(state.selectedPositions) ? state.selectedPositions : [];
@@ -1142,19 +1250,46 @@ function buildSendQueueV6(state, jobIds) {
       var job = state.jobs.find(function(j) { return (j.jobId || j.id) === id; });
       if (!job) { console.warn('[猎职] buildSendQueueV6: 未找到 job id=' + id); }
       var category = job ? matchJobToPosition(job, picker, custom) : '其他';
-      var greeting = state.sendGreeting === false ? '' : ((job && job.aiGreeting) || state.greetings[category] || '');
+      var jobCompanyNames = job ? [job.company, job.companyName] : [];
+      var reviewedGreeting = sendOptions && typeof sendOptions.confirmedGreeting === 'string'
+        ? sendOptions.confirmedGreeting.trim()
+        : '';
+      var confirmedGreeting = '';
+      if (reviewedGreeting) {
+        var currentBlockedNames = jobCompanyNames.concat(sendOptions && sendOptions.blockedNames);
+        var checkedGreeting = sanitizeGeneratedGreeting(reviewedGreeting, currentBlockedNames);
+        if (!checkedGreeting || checkedGreeting !== reviewedGreeting) {
+          var greetingReviewError = new Error('招呼语关联信息已变化，请重新逐岗复核');
+          greetingReviewError.errorCode = 'GREETING_REVIEW_REQUIRED';
+          throw greetingReviewError;
+        }
+        confirmedGreeting = reviewedGreeting;
+      }
+      var greeting = confirmedGreeting || (
+        state.sendGreeting === false
+          ? ''
+          : sanitizeGeneratedGreeting(state.greetings[category] || '', jobCompanyNames)
+      );
       // per-job 自定义招呼语优先：该岗设了非空 customGreeting → 覆盖组级招呼语；为空/未设则保持组级 fallback（行为不变）
       var jcEntry = state.jobCustom && state.jobCustom[id];
-      var jcGreeting = jcEntry && typeof jcEntry.customGreeting === 'string' ? jcEntry.customGreeting.trim() : '';
-      if (state.sendGreeting !== false && jcGreeting) {
+      var jcGreeting = jcEntry && typeof jcEntry.customGreeting === 'string'
+        ? sanitizeGeneratedGreeting(jcEntry.customGreeting, jobCompanyNames)
+        : '';
+      if (state.sendGreeting !== false && !confirmedGreeting && jcGreeting) {
         greeting = jcGreeting;
         try { DiagLogger.info('sw.send', 'buildSendQueueV6：jobId=' + id + ' 用 per-job 自定义招呼语 len=' + jcGreeting.length); } catch (_) {}
       }
+      var sendImages = !!(sendOptions && sendOptions.sendImages);
       return {
         jobId: id,
         hrName: '',
         hrCompany: '',
         greeting: greeting,
+        confirmationVersion: SINGLE_SEND_CONFIRMATION_VERSION,
+        confirmationExpiresAt: Number(sendOptions && sendOptions.confirmationExpiresAt) || 0,
+        sendImages: sendImages,
+        imageKeys: sendImages ? normalizeImageConsentKeys(sendOptions.imageKeys) : [],
+        blockedNames: uniqueStrings(sendOptions && sendOptions.blockedNames),
         positionName: job ? (job.name || job.positionName || '') : '',
         companyName: job ? (job.company || job.companyName || '') : '',
         jobLink: job ? (job.jobLink || 'https://www.zhipin.com/job_detail/' + (job.id || job.jobId) + '.html') : ''
@@ -1454,6 +1589,36 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ success: true, state });
       break;
 
+    case MSG.GET_JOB_OUTCOMES:
+      if (!isTrustedPopupSender(sender)) {
+        sendResponse({ success: false, error: '岗位反馈只能从扩展侧边面板读取' });
+        return false;
+      }
+      getJobOutcomeFeedback(msg.jobIds)
+        .then((result) => sendResponse({ success: true, records: result.records, summary: result.summary }))
+        .catch((e) => sendResponse({ success: false, error: e.message }));
+      return true;
+
+    case MSG.RECORD_JOB_OUTCOME:
+      if (!isTrustedPopupSender(sender)) {
+        sendResponse({ success: false, error: '岗位反馈只能从扩展侧边面板保存' });
+        return false;
+      }
+      recordJobOutcome(msg)
+        .then((result) => sendResponse({ success: true, record: result.record, summary: result.summary }))
+        .catch((e) => sendResponse({ success: false, error: e.message }));
+      return true;
+
+    case MSG.CLEAR_OUTCOME_FEEDBACK:
+      if (!isTrustedPopupSender(sender)) {
+        sendResponse({ success: false, error: '岗位反馈只能从扩展侧边面板清除' });
+        return false;
+      }
+      chrome.storage.local.set({ [STORAGE_KEYS.SW.OUTCOME_FEEDBACK]: [] })
+        .then(() => sendResponse({ success: true }))
+        .catch((e) => sendResponse({ success: false, error: e.message }));
+      return true;
+
     case 'START_COLLECT':
       startCollect(msg.params).then(() => sendResponse({ success: true })).catch((e) => {
         ErrorLogger.logError(e.message, e.stack, 'START_COLLECT failed');
@@ -1685,7 +1850,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true;
 
     case 'REWRITE_GREETING':
-      doRewriteGreeting(msg.greeting, msg.instruction)
+      doRewriteGreeting(msg.greeting, msg.instruction, msg.blockedNames)
         .then((newGreeting) => sendResponse({ success: true, greeting: newGreeting }))
         .catch((e) => {
           ErrorLogger.logError(e.message, e.stack, 'REWRITE_GREETING failed');
@@ -1753,7 +1918,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       // 冷启动竞态：SW 刚被消息唤醒时 state.jobs 尚未从 storage 恢复，
       // 直接 findStateJobById 会误报"岗位已失效"。必须先 await bootRestored。
-      bootRestored.then(() => {
+      bootRestored.then(async () => {
         const preparedJob = findStateJobById(msg.jobId);
         if (!preparedJob || state.phase === 'sending' || singleSendLaunchInProgress) {
           sendResponse({
@@ -1764,9 +1929,51 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           });
           return;
         }
+        const resumeText = await getTextResume();
+        const blockedNames = uniqueStrings(
+          [preparedJob.company, preparedJob.companyName]
+            .concat(extractGreetingBlockedNames(resumeText))
+        );
+        const reviewedGreeting = String(msg.greeting || '').trim();
+        const preparedGreeting = sanitizeGeneratedGreeting(reviewedGreeting, blockedNames);
+        if (!preparedGreeting) {
+          sendResponse({ success: false, error: '当前岗位没有可发送的招呼语' });
+          return;
+        }
+        if (msg.seal === true && preparedGreeting !== reviewedGreeting) {
+          sendResponse({
+            success: false,
+            error: '招呼语内容已变化，请重新打开岗位确认弹层',
+            errorCode: 'GREETING_REVIEW_REQUIRED',
+          });
+          return;
+        }
         preparedJob.status = 'manualReview';
-        const token = createSingleSendConfirmation(preparedJob.id || preparedJob.jobId);
-        sendResponse({ success: true, token: token, expiresInMs: 5 * 60 * 1000 });
+        var response = {
+          success: true,
+          greeting: preparedGreeting,
+          expiresInMs: SINGLE_SEND_CONFIRMATION_TTL_MS,
+        };
+        if (msg.seal === true) {
+          var sendImages = msg.sendImages === true;
+          var imageKeys = normalizeImageConsentKeys(msg.imageKeys);
+          if (sendImages && !imageKeys.length) {
+            sendResponse({
+              success: false,
+              error: '图片确认信息已失效，请重新打开岗位确认弹层',
+              errorCode: 'IMAGE_CONFIRMATION_REQUIRED',
+            });
+            return;
+          }
+          response.token = createSingleSendConfirmation({
+            jobId: preparedJob.id || preparedJob.jobId,
+            greeting: preparedGreeting,
+            sendImages: sendImages,
+            imageKeys: imageKeys,
+            blockedNames: blockedNames,
+          });
+        }
+        sendResponse(response);
       }).catch((e) => {
         ErrorLogger.logError(e.message, e.stack, 'PREPARE_SINGLE_SEND bootRestored failed');
         sendResponse({ success: false, error: e.message || '内部错误' });
@@ -1784,8 +1991,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({ success: false, error: '当前已有岗位正在沟通' });
         return false;
       }
-      if (!consumeSingleSendConfirmation(msg.token, msg.jobId)) {
+      var singleSendConfirmation = consumeSingleSendConfirmation(msg.token, msg.jobId);
+      if (!singleSendConfirmation) {
         sendResponse({ success: false, error: '确认已过期，请重新打开岗位确认弹层', errorCode: 'CONFIRMATION_REQUIRED' });
+        return false;
+      }
+      var sendConfirmedImages = singleSendConfirmation.sendImages === true;
+      if (sendConfirmedImages && !singleSendConfirmation.imageKeys.length) {
+        sendResponse({
+          success: false,
+          error: '图片确认信息已失效，请重新打开岗位确认弹层',
+          errorCode: 'IMAGE_CONFIRMATION_REQUIRED',
+        });
         return false;
       }
       singleSendLaunchInProgress = true;
@@ -1795,7 +2012,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       state.hrActiveFilter = msg.hrActiveFilter || '不限';
       // 立即受理：先同步响应，让 popup 进入 sending 态（可停止）；发送进度走 STATE_UPDATE 推送。
       sendResponse({ success: true, accepted: true });
-      startSendV6([msg.jobId]).catch((e) => {
+      startSendV6([msg.jobId], {
+        confirmedGreeting: singleSendConfirmation.greeting,
+        sendImages: sendConfirmedImages,
+        imageKeys: sendConfirmedImages ? singleSendConfirmation.imageKeys : [],
+        blockedNames: singleSendConfirmation.blockedNames,
+        confirmationExpiresAt: singleSendConfirmation.expiresAt,
+      }).catch((e) => {
         ErrorLogger.logError(e.message, e.stack, 'CONFIRM_SINGLE_SEND failed');
         try { chrome.runtime.sendMessage({ type: MSG.ERROR, message: e.message }).catch(() => {}); } catch (_) {}
         state.phase = 'ready';
@@ -2729,6 +2952,7 @@ async function recordV5Success(item) {
     jobId: item.jobId, success: true,
     positionName: item.positionName, companyName: item.companyName,
   });
+  await persistConfirmedDelivery();
   pushState();
   chrome.runtime.sendMessage({
     type: MSG.SEND_ITEM_RESULT,
@@ -2804,6 +3028,7 @@ async function recordV6Success(item) {
     jobId: item.jobId, positionName: item.positionName, companyName: item.companyName,
     success: true, hrName: item.hrName, time: Date.now()
   });
+  await persistConfirmedDelivery();
   pushState();
   chrome.runtime.sendMessage({
     type: MSG.SEND_ITEM_RESULT,
@@ -2980,153 +3205,63 @@ async function resumeSendV6() {
 }
 
 // ════════════════════════════════════════════════════════════════
-// pre-flight：BOSS「自动打招呼」开关检测 + 自动开启（陷阱 #31）
-// 开关关闭 → 点「立即沟通」整页跳 /web/geek/chat → stage1 卡死。投递前必查。
-// 链路：①搜索页 CS 读 getGreetingList → enabled=true 放行
-//      ②enabled 确认 false → CS API 写开（status=1）+复读自检
-//      ③自检失败 → 降级：后台 tab 开 notify-set 设置页，executeScript 点 DOM 开关，
-//        DOM class + getGreetingList 双确认
-//      ④仍失败 → {ok:false}，调用方中止任务给用户手动指引
-// 原则：读不到开关状态（网络等）= enabled 未知 → 放行投递（宁可少拦截不可误拦截，
-//       老用户开关本来就开着）。全程 20s 总超时兜底，任何异常按 ok:false 走提示路径。
+// pre-flight：BOSS 自带「自动打招呼」必须确认处于关闭状态。
+// 该模板是扩展招呼语之外的独立外发来源，正文无法在逐岗复核中锁定。
+// 因此只读检查、绝不自动改账户设置；开启或读取失败都按不安全状态中止。
+// 开关关闭后若「立即沟通」触发整页跳转，由既有 #39 stage1 恢复链继续处理。
 // ════════════════════════════════════════════════════════════════
 const GREETING_PREFLIGHT_TIMEOUT_MS = 20000;
 
-async function ensureGreetingEnabled(searchTabId) {
+async function ensureBossDefaultGreetingDisabled(searchTabId) {
   try {
     var result = await Promise.race([
-      _ensureGreetingEnabledImpl(searchTabId),
+      _checkBossDefaultGreetingDisabled(searchTabId),
       new Promise(function (resolve) {
-        setTimeout(function () { resolve({ ok: false, timeout: true }); }, GREETING_PREFLIGHT_TIMEOUT_MS);
+        setTimeout(function () {
+          resolve({
+            ok: false,
+            timeout: true,
+            errorCode: 'BOSS_GREETING_STATUS_UNKNOWN',
+            error: '检查 BOSS 自带自动招呼语状态超时',
+          });
+        }, GREETING_PREFLIGHT_TIMEOUT_MS);
       }),
     ]);
     return result || { ok: false };
   } catch (e) {
     try { DiagLogger.warn('sw.greeting', 'pre-flight 异常，按失败处理：' + e.message); } catch (_) {}
-    return { ok: false, error: e.message };
+    return {
+      ok: false,
+      errorCode: 'BOSS_GREETING_STATUS_UNKNOWN',
+      error: e.message || '无法确认 BOSS 自带自动招呼语是否关闭',
+    };
   }
 }
 
-async function _ensureGreetingEnabledImpl(searchTabId) {
-  // ① 读开关（搜索页 CS 同源 fetch 带 cookie）
+async function _checkBossDefaultGreetingDisabled(searchTabId) {
   var read = null;
   try {
     await waitForContentScript(searchTabId);
     read = await chrome.tabs.sendMessage(searchTabId, { type: MSG.CHECK_GREETING_SETTING });
   } catch (e) {
-    read = null;
+    read = { success: false, error: e.message };
   }
-  if (!read || read.success !== true || typeof read.enabled !== 'boolean') {
-    // 读失败 → enabled 未知 → 放行（误拦截比少拦截伤害大）
-    try { DiagLogger.warn('sw.greeting', 'pre-flight：开关状态读取失败，放行投递 err=' + ((read && read.error) || '无响应')); } catch (_) {}
-    return { ok: true, unknown: true };
-  }
-  if (read.enabled) {
-    try { DiagLogger.info('sw.greeting', 'pre-flight：打招呼开关已开启，直接放行'); } catch (_) {}
-    return { ok: true };
-  }
-
-  // ② 主路径：API 写开 + 复读自检（仅在 enabled 确认为 false 时执行；CS 侧只写 status=1）
-  try { DiagLogger.warn('sw.greeting', 'pre-flight：开关为关，尝试 API 自动开启 templateId=' + read.templateId); } catch (_) {}
-  try {
-    var wr = await chrome.tabs.sendMessage(searchTabId, {
-      type: MSG.ENABLE_GREETING_SETTING,
-      templateId: read.templateId,
-    });
-    if (wr && wr.ok && wr.enabled) {
-      try { DiagLogger.info('sw.greeting', 'pre-flight：API 自动开启成功（复读自检通过）'); } catch (_) {}
-      return { ok: true, autoEnabled: true };
-    }
-    try { DiagLogger.warn('sw.greeting', 'pre-flight：API 开启自检未通过，走降级 err=' + ((wr && wr.error) || 'enabled 仍为 false')); } catch (_) {}
-  } catch (e) {
-    try { DiagLogger.warn('sw.greeting', 'pre-flight：API 开启消息失败，走降级 err=' + e.message); } catch (_) {}
-  }
-
-  // ③ 降级：后台 tab 开设置页点 DOM 开关
-  var fb = await _enableGreetingViaSettingsPage(searchTabId);
-  if (fb) {
-    try { DiagLogger.info('sw.greeting', 'pre-flight：降级（设置页 DOM）自动开启成功'); } catch (_) {}
-    return { ok: true, autoEnabled: true };
-  }
-  try { DiagLogger.warn('sw.greeting', 'pre-flight：降级路径也失败，任务将中止'); } catch (_) {}
-  return { ok: false };
-}
-
-// 降级路径：后台 tab 开 notify-set，executeScript 注入点击「设置打招呼语」面板 + ui-switch。
-// notify-set 不在 content_scripts matches 内，只能 scripting.executeScript（权限已有）。
-// 每步 poll 元素就绪（不固定 sleep）；成功判据 = DOM ui-switch-checked + getGreetingList 双确认。
-async function _enableGreetingViaSettingsPage(searchTabId) {
-  var tab = null;
-  try {
-    try { _diagMarkSelfTabOps(); } catch (_) {} // 扩展自己开/关设置页 tab，别记成用户误操作
-    tab = await chrome.tabs.create({ url: 'https://www.zhipin.com/web/geek/notify-set', active: false });
-    // 等页面加载完（poll status，最多 8s）
-    var loaded = false;
-    for (var i = 0; i < 32; i++) {
-      var t = await chrome.tabs.get(tab.id);
-      if (t && t.status === 'complete') { loaded = true; break; }
-      await sleep(250);
-    }
-    if (!loaded) return false;
-    var res = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: async function () {
-        function _slp(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
-        async function poll(fn, timeoutMs) {
-          var start = Date.now();
-          while (Date.now() - start < timeoutMs) {
-            var v = fn();
-            if (v) return v;
-            await _slp(300);
-          }
-          return null;
-        }
-        // ① 切到「设置打招呼语」面板
-        var nav = await poll(function () {
-          var lis = document.querySelectorAll('li.nav-list');
-          for (var i = 0; i < lis.length; i++) {
-            if ((lis[i].textContent || '').indexOf('设置打招呼语') >= 0) return lis[i];
-          }
-          return null;
-        }, 6000);
-        if (!nav) return { ok: false, step: 'nav-not-found' };
-        nav.click();
-        // ② 等开关元素出现
-        var sw = await poll(function () {
-          return document.querySelector('.greeting-header .ui-switch');
-        }, 6000);
-        if (!sw) return { ok: false, step: 'switch-not-found' };
-        // 只在「未开」时点击（绝不把开着的关掉）
-        if (!sw.classList.contains('ui-switch-checked')) sw.click();
-        // ③ poll 到 checked class 出现（DOM 侧确认）
-        var checked = await poll(function () {
-          var el = document.querySelector('.greeting-header .ui-switch');
-          return el && el.classList.contains('ui-switch-checked') ? el : null;
-        }, 5000);
-        return { ok: !!checked, step: checked ? 'done' : 'class-not-checked' };
-      },
-    });
-    var r0 = res && res[0] && res[0].result;
-    if (!r0 || !r0.ok) {
-      try { DiagLogger.warn('sw.greeting', '降级 DOM 点击失败 step=' + ((r0 && r0.step) || '注入无结果')); } catch (_) {}
-      return false;
-    }
-    // ④ getGreetingList 复读双确认（经搜索页 CS）
+  var safety = evaluateBossGreetingSafety(read);
+  if (!safety.ok) {
     try {
-      var re = await chrome.tabs.sendMessage(searchTabId, { type: MSG.CHECK_GREETING_SETTING });
-      return !!(re && re.success === true && re.enabled === true);
-    } catch (e) {
-      return false;
-    }
-  } catch (e) {
-    try { DiagLogger.warn('sw.greeting', '降级路径异常：' + e.message); } catch (_) {}
-    return false;
-  } finally {
-    if (tab) { try { await chrome.tabs.remove(tab.id); } catch (e) {} }
+      DiagLogger.warn(
+        'sw.greeting',
+        'pre-flight：BOSS 自带招呼语未确认关闭 code=' + safety.errorCode
+          + ' err=' + (safety.error || (read && read.error) || '未知')
+      );
+    } catch (_) {}
+  } else {
+    try { DiagLogger.info('sw.greeting', 'pre-flight：BOSS 自带招呼语已关闭'); } catch (_) {}
   }
+  return safety;
 }
 
-async function startSendV6(jobIds) {
+async function startSendV6(jobIds, sendOptions) {
   await bootRestored;         // 冷启动竞态防护：等 boot-restore 完成再建队列，防止被旧值覆盖
   if (!Array.isArray(jobIds) || jobIds.length !== 1) {
     throw new Error('安全门禁：每次只能沟通一个岗位');
@@ -3152,8 +3287,18 @@ async function startSendV6(jobIds) {
   sendAborted = false;        // 新批次开始，清掉上一轮的停止标记
   sendStartTime = Date.now(); // v6 也记录开始时间，finishSend/finalizeTask 计算耗时用
   await loadSendGreetingPreference();
-  await loadJobCustomIntoState(); // per-job 自定义招呼语：建队前灌入 state.jobCustom，buildSendQueueV6 据此覆盖组级招呼语
-  state.sendQueueV6 = buildSendQueueV6(state, jobIds);
+  var hasConfirmedGreeting = !!(
+    sendOptions
+    && typeof sendOptions.confirmedGreeting === 'string'
+    && sendOptions.confirmedGreeting.trim()
+  );
+  if (hasConfirmedGreeting) {
+    // 逐岗 token 已锁定文字；此处不读取含图片 Data URL 的 ui:jobCustom。
+    state.jobCustom = {};
+  } else {
+    await loadJobCustomIntoState();
+  }
+  state.sendQueueV6 = buildSendQueueV6(state, jobIds, sendOptions);
   state._v6CurrentBatchQueue = state.sendQueueV6.slice();
   state.sendQueueV6Index = 0;
   state.sendProgress = { sent: 0, total: jobIds.length };
@@ -3176,21 +3321,19 @@ async function startSendV6(jobIds) {
     return;
   }
 
-  // pre-flight：BOSS「自动打招呼」开关必须开启（陷阱 #31：关着时点立即沟通整页跳转，stage1 卡死）
-  // 读失败放行（unknown）；确认 false 则自动开启（API 主路径 + 设置页 DOM 降级）；都失败才中止。
-  var greetPre = state.sendGreeting === false ? { ok: true, skipped: true } : await ensureGreetingEnabled(searchTabs[0].id);
+  // pre-flight：BOSS 自带自动招呼语必须关闭，防止它绕过逐岗复核另发未知文本。
+  // 状态读取失败同样硬拦；扩展绝不自动修改用户的 BOSS 账户设置。
+  var greetPre = await ensureBossDefaultGreetingDisabled(searchTabs[0].id);
   if (!greetPre.ok) {
     state.phase = 'idle'; state.sendPhase = '';
     await persistState();
-    try { DiagLogger.warn('sw.greeting', '任务中止：打招呼开关未开启且自动开启失败'); } catch (_) {}
-    // throw → START_SEND handler 统一 sendResponse({success:false, error}) + ERROR 广播，
-    // popup 两条路径展示同一文案，避免「广播先到、成功回调后到」互相覆盖的竞态。
-    throw new Error('⚠️ 你的 BOSS『自动打招呼』功能未开启且自动开启失败，请到 BOSS『消息通知→设置打招呼语』手动开启后重试');
-  }
-  if (greetPre.autoEnabled) {
-    // 非阻断提示：投递照常，告知用户已替他开了开关
-    chrome.runtime.sendMessage({ type: MSG.GREETING_AUTO_ENABLED }).catch(() => {});
-    try { DiagLogger.userEvent('sw.greeting', '已自动开启 BOSS「自动打招呼」开关（投递 pre-flight）'); } catch (_) {}
+    try { DiagLogger.warn('sw.greeting', '任务中止：BOSS 自带自动招呼语未确认关闭'); } catch (_) {}
+    var greetError = greetPre.errorCode === 'BOSS_DEFAULT_GREETING_ENABLED'
+      ? '请先在 BOSS「消息通知→设置打招呼语」关闭自动打招呼。扩展不会替你改设置，也不会在它开启时发送。'
+      : '无法确认 BOSS 自带自动招呼语已关闭，本次未发送。请检查登录和网络后重试。';
+    var preflightError = new Error(greetError);
+    preflightError.errorCode = greetPre.errorCode || 'BOSS_GREETING_STATUS_UNKNOWN';
+    throw preflightError;
   }
   // pre-flight 最长 20s，期间用户可能点了停止 → 立即 bail（stopSend 已负责清场/终态）
 
@@ -3329,7 +3472,23 @@ async function startSendV6(jobIds) {
     return;
   }
 
-
+  var preStage2SearchTabs = await chrome.tabs.query({ url: '*://*.zhipin.com/web/geek/jobs*' });
+  var preStage2GreetingSafety = preStage2SearchTabs.length
+    ? await ensureBossDefaultGreetingDisabled(preStage2SearchTabs[0].id)
+    : {
+        ok: false,
+        errorCode: 'BOSS_GREETING_STATUS_UNKNOWN',
+        error: '未找到可检查 BOSS 自动招呼语状态的搜索页',
+      };
+  if (!preStage2GreetingSafety.ok) {
+    var preStage2Error = new Error(
+      preStage2GreetingSafety.errorCode === 'BOSS_DEFAULT_GREETING_ENABLED'
+        ? 'BOSS 自带自动招呼语已开启，本次发送已中止'
+        : '无法确认 BOSS 自带自动招呼语已关闭，本次发送未继续'
+    );
+    preStage2Error.errorCode = preStage2GreetingSafety.errorCode || 'BOSS_GREETING_STATUS_UNKNOWN';
+    throw preStage2Error;
+  }
   try { DiagLogger.info('sw.send', '阶段转换：stage1 → stage2 queueLen=' + state.sendQueueV6.length); } catch (_) {}
   state.sendPhase = 'stage2';
   state.sendProgress.total = state.sendQueueV6.length;
@@ -4079,10 +4238,10 @@ async function regenerateGreeting(category, jdSamples) {
   return greeting;
 }
 
-async function doRewriteGreeting(originalGreeting, instruction) {
+async function doRewriteGreeting(originalGreeting, instruction, blockedNames) {
   const apiKey = await getApiKey();
   if (!apiKey) throw new Error('请先在设置中配置 API Key');
-  return rewriteGreeting(apiKey, originalGreeting, instruction);
+  return rewriteGreeting(apiKey, originalGreeting, instruction, blockedNames);
 }
 
 // ── 首页 AI 对话框：通用求职/岗位/简历咨询，复用已配置的 OpenAI-compatible 接口 ──
@@ -4191,11 +4350,50 @@ function autoScoreResumeAfterCollect() {
     });
 }
 
+function isCurrentSingleSendQueue(queue) {
+  return queue.length === 1
+    && queue[0]
+    && Number(queue[0].confirmationVersion) === SINGLE_SEND_CONFIRMATION_VERSION
+    && Number.isFinite(Number(queue[0].confirmationExpiresAt))
+    && Number(queue[0].confirmationExpiresAt) > Date.now()
+    && typeof queue[0].greeting === 'string'
+    && queue[0].greeting.trim()
+    && Array.isArray(queue[0].imageKeys)
+    && (queue[0].sendImages !== true || queue[0].imageKeys.length > 0);
+}
+
 // ── CAPTCHA 暂停后恢复投递：续跑保留的发送队列（state.sendQueueV6） ──
 async function resumeFromCaptchaPause() {
   if (state.phase !== 'captcha_paused') throw new Error('当前不在暂停状态');
   var queue = Array.isArray(state.sendQueueV6) ? state.sendQueueV6 : [];
   if (!queue.length) throw new Error('暂停任务无待发岗位');
+  if (!isCurrentSingleSendQueue(queue)) {
+    state.phase = 'ready';
+    state.sendPhase = '';
+    state.sendQueueV6 = [];
+    state.sendQueueV6Index = 0;
+    await persistState();
+    var reviewError = new Error('旧暂停任务缺少当前逐岗确认凭据，已失效；请重新逐岗复核');
+    reviewError.errorCode = 'PAUSED_TASK_REVIEW_REQUIRED';
+    throw reviewError;
+  }
+  var searchTabs = await chrome.tabs.query({ url: '*://*.zhipin.com/web/geek/jobs*' });
+  var greetingSafety = searchTabs.length
+    ? await ensureBossDefaultGreetingDisabled(searchTabs[0].id)
+    : {
+        ok: false,
+        errorCode: 'BOSS_GREETING_STATUS_UNKNOWN',
+        error: '未找到可检查 BOSS 自动招呼语状态的搜索页',
+      };
+  if (!greetingSafety.ok) {
+    var greetingError = new Error(
+      greetingSafety.errorCode === 'BOSS_DEFAULT_GREETING_ENABLED'
+        ? 'BOSS 自带自动招呼语已开启，本次恢复已中止；请关闭后重试'
+        : '无法确认 BOSS 自带自动招呼语已关闭，本次恢复未发送'
+    );
+    greetingError.errorCode = greetingSafety.errorCode || 'BOSS_GREETING_STATUS_UNKNOWN';
+    throw greetingError;
+  }
   sendAborted = false;
   state.captchaError = false;
   state.phase = 'sending';

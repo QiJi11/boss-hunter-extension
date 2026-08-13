@@ -17,7 +17,8 @@
     const [storageItems, storedImages] = await Promise.all([
       chrome.storage.local.get([
         'resumeImages', 'apiKey', 'textResume', AI_CONFIG_KEY, FILTER_STATE_KEY,
-        'aiScreeningEnabled', 'autoResumeReplyEnabled', 'autoResumeId', 'backupVersion',
+        'aiScreeningEnabled', 'autoResumeReplyEnabled', 'autoResumeId',
+        'autoResumeReplyConsentVersion', 'backupVersion',
       ]),
       global.getResumeImages().catch(() => []),
     ]);
@@ -33,13 +34,15 @@
       ? global.normalizeFeatureSettings(storageItems)
       : {
           aiScreeningEnabled: storageItems.aiScreeningEnabled !== false,
-          autoResumeReplyEnabled: storageItems.autoResumeReplyEnabled === true,
+          autoResumeReplyEnabled: false,
           autoResumeId: typeof storageItems.autoResumeId === 'string' ? storageItems.autoResumeId : '',
+          autoResumeReplyConsentVersion: 0,
           backupVersion: 2,
         };
     const publicAiConfig = Object.assign({}, aiConfig);
     delete publicAiConfig.apiKey;
     if (!sensitive) delete featureSettings.autoResumeId;
+    delete featureSettings.outcomeFeedbackLearningEnabled;
     const snapshot = {
       version: 2,
       backupVersion: 2,
@@ -111,12 +114,15 @@
         featurePatch.aiScreeningEnabled = rawFeatures.aiScreeningEnabled !== false;
       }
       if (Object.prototype.hasOwnProperty.call(rawFeatures, 'autoResumeReplyEnabled')) {
-        featurePatch.autoResumeReplyEnabled = rawFeatures.autoResumeReplyEnabled === true;
+        // 导入文件不能继承历史自动外发授权；必须回到设置页重新确认具体在线简历。
+        featurePatch.autoResumeReplyEnabled = false;
       }
       if (Object.prototype.hasOwnProperty.call(rawFeatures, 'autoResumeId')) {
         featurePatch.autoResumeId = typeof rawFeatures.autoResumeId === 'string' ? rawFeatures.autoResumeId.trim() : '';
       }
+      featurePatch.autoResumeReplyConsentVersion = 0;
       featurePatch.backupVersion = 2;
+      featurePatch.outcomeFeedbackLearningEnabled = false;
       draft.featureSettings = featurePatch;
     }
     if (draft.featureSettings?.autoResumeReplyEnabled === true && !draft.featureSettings.autoResumeId) {
@@ -139,8 +145,15 @@
   /**
    * 将导入结果统一写回 storage 和 IndexedDB。
    */
-  async function applySnapshotToStorage(draft) {
-    const storagePatch = {};
+  async function applySnapshotToStorage(draft, options) {
+    // 导入默认撤销历史自动外发授权；设置页保存自身配置时可显式保留刚确认的授权。
+    const storagePatch = options && options.preserveAutoResumeConsent
+      ? {}
+      : {
+          autoResumeReplyEnabled: false,
+          autoResumeReplyConsentVersion: 0,
+          outcomeFeedbackLearningEnabled: false,
+        };
 
     if (draft.resumeImages !== undefined) {
       storagePatch.resumeImages = draft.resumeImages;

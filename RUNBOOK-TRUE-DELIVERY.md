@@ -15,13 +15,13 @@
 | CDP 端口 | **9250** | `--remote-debugging-port=9250` |
 | 扩展源码目录 | `C:\Users\tianh\Documents\Codex-Contexts\boss-hunter-extension` | 开发模式加载 |
 | 分支 | `feature/personalized-v1.3.0` | 已推远程 |
-| 最新版本 | v1.3.10（投递可用性改进） | 未发布 1.3.11，见尾部 |
+| 当前工作树 | 1.3.11 本地 MVP 安全构建 | 当前安全增量未发布，见尾部 |
 
 ### AI 配置（Grok）
 - baseUrl: `https://bearlab.space/v1`
 - model: `grok-4.5`
-- key: `sk-wTfvHAu92HLmoWNfLj1XCwkj3F3FGxZ3tc7imV58xOSpmt6l`
-- **注意**：baseUrl 必须带 `/v1`，否则 405；key 以 cc-switch providers 表 `bla grok 0.25` 为准
+- key: 只保存在扩展本地设置中，不写入文档或安装包
+- **注意**：baseUrl 必须带 `/v1`，否则 405；凭据变更只在本地设置页完成
 
 ### 辅助脚本（acceptance-tools/）
 | 脚本 | 用途 |
@@ -108,7 +108,7 @@ node acceptance-tools/sw-eval.mjs "new Promise(r=>{const t=setInterval(()=>{if(s
 
 真实简历（陈俊豪）：
 - **文字简历**（AI 招呼语用）: 设置 → AI 助手 → 文字简历，或 storage `textResume` / `sw:textResume`
-- **图片简历**（投递发给 HR）: storage `resumeImages`（PDF 转 PNG 上传）
+- **图片简历**（候选附件）: storage `resumeImages`（PDF 转 PNG 上传）。逐岗复核默认不发送，只有当前岗位明确勾选后才放行。
   - PDF 源: `job-application-assets\陈俊豪_简历优化_AgentKB-final-20260708\陈俊豪_简历_AI.pdf`
   - 转图: `python -c "import fitz; ..."`（PyMuPDF）
   - 上传: `upload-resume-imgs.mjs`（CDP DOM.setFileInputFiles）
@@ -116,15 +116,20 @@ node acceptance-tools/sw-eval.mjs "new Promise(r=>{const t=setInterval(()=>{if(s
 
 **华为 OD 排除**: 排除词含 OD 特征（线上面试/接受无经验/接受应届/机考/15薪），共 22 个持久化在 `ui:filterState.excludeKeywords`。投递前确认。
 
-### 4.2.2 岗位级招呼语残留（重要！投递前检查）
+### 4.2.2 岗位级招呼语残留（历史事故与现行防护）
 
-**教训**：投递招呼语优先级 `custom.customGreeting || job.aiGreeting || group.greeting.text`。
-AI 筛选时用假简历生成了**岗位级 `job.aiGreeting`**（234 岗全是"张三"），只清组级 `state.greetings` 没用——岗位级优先。
+**历史教训**：旧版投递优先级是 `custom.customGreeting || job.aiGreeting || group.greeting.text`。
+AI 筛选时用假简历生成了**岗位级 `job.aiGreeting`**（234 岗全是"张三"），只清组级 `state.greetings` 没用。
 
-**投递前必须**：
-1. 清空所有 `job.aiGreeting`（`clear-job-greetings.mjs`，SW 内 `delete j.aiGreeting` + pushState + 持久化）
-2. 确认组级 `state.greetings` 8 组用真实简历重新生成（`pump-greetings.mjs` 循环触发）
-3. 验证 `JSON.stringify(state.greetings).indexOf('张三') < 0 && indexOf('陈俊豪') >= 0`
+**现行防护**：
+1. AI 岗位筛选不再生成或写入 `job.aiGreeting`，发送链也不再读取历史岗位级招呼语。
+2. 自动生成、AI 润色、历史缓存和手工 `customGreeting` 都走同一份招呼语安全模块；候选人、招聘者、客户、旧公司、学校和署名信息会在复核前清理。
+3. 逐岗复核时把当前展示的招呼语绑定到一次性 token；后台岗位/公司信息变化时不再静默改字，而是要求重新打开复核。
+4. 图片简历复核框每次打开都默认不勾选；未显式许可时发送层不读取图片 storage。选择发图后，一次性 token 会绑定当时展示的具体图片；若仍选择发图但图片被替换、增加、删除或调换顺序，本次发送直接失效并要求重新复核。取消发图则安全降级为只发文字。
+5. 旧“自动回复在线简历”授权和备份导入授权会失效，必须回到设置页重新确认具体在线简历。
+6. BOSS 自带的默认招呼模板是独立外发来源。扩展只读检查其开关：任务开始、点击“立即沟通”前、进入 stage2、worker 实际发文前和验证码恢复时，开启或状态未知都会硬拦；扩展不再自动开启或修改用户设置。关闭后的整页跳转由既有 stage1 恢复链处理。
+7. 所有外发招呼语先按文字简历中的候选人、客户、旧公司、学校和岗位公司信息清理；stage1 取得 HR 姓名/公司后，worker 会再次核对。最终文本只要需要再改字就不发送，必须重新逐岗复核。推荐结构是“岗位匹配点 + 1 个真实项目/技能证据 + 简短询问”，不写任何个人、客户或公司名字。
+8. 一次性逐岗确认有效期为 5 分钟。正常发送或验证码暂停后若已过期，队列直接失效，必须重新逐岗复核。
 
 ### 4.3 批量投递（自动两阶段搜索）
 ```bash
@@ -166,6 +171,14 @@ node acceptance-tools/deliver-batch.mjs "公司名|jobId|岗位名" "公司2|job
 4. 批量投剩余高分岗: 用 4.3 流程
 5. 投完查 `sentJobIds.size` 汇总
 
+### 6.1 后续结果反馈（MVP 后飞轮）
+
+- 打开侧边栏的「查看上次投递结果」，只有 `ok:true` 的已确认送达岗位能手动标记“已回复 / 约面 / 不合适 / 暂无回复”。
+- 标记仅写入当前浏览器本机；不读取聊天记录，不自动判断回复，也不会发起 BOSS 操作。再次选择会覆盖旧标签，点「撤销」可删除单条。
+- 完整设置中的“把本机人工结果汇总用于下一轮 AI 筛选”默认关闭。开启后，本机至少有 5 条标记时，下一轮筛选只附加按评分档位汇总的匿名计数。
+- 新增反馈摘要不会包含公司、HR、聊天内容、简历、姓名、岗位 ID 或自由备注；原有 AI 筛选仍按既有授权使用简历和岗位信息。
+- 需要彻底清空时，在完整设置点击「清除本机结果反馈」。这不会影响已投递记录或 BOSS 账户。
+
 ---
 
 ## 七、版本发布记录
@@ -173,6 +186,7 @@ node acceptance-tools/deliver-batch.mjs "公司名|jobId|岗位名" "公司2|job
 | 版本 | commit | 内容 |
 |------|--------|------|
 | v1.3.10 | 718a13b | 投递前公司名导航 + 筛选保活(b9d17fc) |
-| 待发 1.3.11 | 81a9a2e | 两阶段搜索导航（公司名→岗位名），突破匿名岗位投递 |
+| v1.3.11 | 7d7aeb5 | 投递后自动清理多余 BOSS 搜索窗口 + 手动清理按钮 |
+| 本地 MVP 安全增量 | 当前未提交工作树 | 图片简历逐岗许可、内容哈希绑定、无姓名招呼语与 BOSS 自带招呼语硬拦 |
 
-> 81a9a2e 已推送但未打 tag/未发 release。下次：改 version→1.3.11，跑测试，tag + release。
+> 现有 `v1.3.11` tag 不包含当前安全增量。本地验收包按 MVP 约定仍使用 `1.3.11`；若公开发布，必须先升级为新版本号，避免同版本内容不一致。

@@ -501,12 +501,20 @@ const JobSender = {
     return last || { success: false, status: 'timeout' };
   },
 
-  // ── 发送单个岗位（招呼语 + 简历图片）──
+  // ── 发送单个岗位（招呼语；图片简历必须显式许可）──
   // textOpts: 透传给 sendText（worker 阶段使用短超时、单次尝试）
-  // imgOpts: 透传给 _sendResumeImages → sendImage（worker 阶段使用短超时、单次尝试）
+  // imgOpts: 透传给 _sendResumeImages → sendImage；allowed=true 才允许读取图片。
   async sendSingle(greeting, jobId, imgOpts, textOpts) {
     // 硬中止：停止后绝不再发文本/图片
     if (this.stopped) return { success: false, stopped: true, error: 'stopped' };
+    var approvedImages = null;
+    if (imgOpts && imgOpts.allowed === true) {
+      var imagePreparation = await this._prepareResumeImages(jobId, imgOpts.expectedImageKeys);
+      if (!imagePreparation.ok) {
+        return { success: false, error: imagePreparation.error, skipped: 'image' };
+      }
+      approvedImages = imagePreparation.images;
+    }
     // 1. 发送文字
     var textResult = { success: true, skippedText: true };
     if (greeting && greeting.trim()) {
@@ -517,8 +525,11 @@ const JobSender = {
     if (this.stopped) return { success: false, stopped: true, error: 'stopped' };
     await sleep(500);
 
-    // 2. 发送简历图片
-    var imgRet = await this._sendResumeImages(jobId, imgOpts);
+    // 图片简历是敏感外发；未拿到当前岗位的显式许可时不读取 storage。
+    var imgRet = { imageFailed: false, imageError: null, attempted: false };
+    if (approvedImages) {
+      imgRet = await this._sendResumeImages(jobId, approvedImages, imgOpts);
+    }
     var imageFailed = imgRet.imageFailed;
     var imageError = imgRet.imageError;
 
@@ -539,65 +550,65 @@ const JobSender = {
     return { success: true };
   },
 
+  async _loadResumeImagesForJob(jobId) {
+    const stored = await chrome.storage.local.get(['ui:jobCustom', 'resumeImages']);
+    const custom = stored['ui:jobCustom'] && stored['ui:jobCustom'][jobId];
+    if (custom && custom.noImages) return [];
+    if (custom && Array.isArray(custom.images) && custom.images.length) {
+      return custom.images.slice();
+    }
+    return Array.isArray(stored.resumeImages) ? stored.resumeImages.slice() : [];
+  },
+
+  async _prepareResumeImages(jobId, expectedImageKeys) {
+    var expected = Array.isArray(expectedImageKeys) ? expectedImageKeys.map(String) : [];
+    if (!expected.length) return { ok: false, error: 'image_consent_mismatch' };
+    var images = await this._loadResumeImagesForJob(jobId);
+    var allSendable = images.every(function(image) {
+      return !!(image && (
+        image.fullSrc
+        || image.src
+        || image.data instanceof ArrayBuffer
+        || ArrayBuffer.isView(image.data)
+        || (Array.isArray(image.data) && image.data.length)
+      ));
+    });
+    if (!allSendable) return { ok: false, error: 'image_consent_mismatch' };
+    var actual = await resumeImageConsentKeys(images);
+    var matches = actual.length === expected.length
+      && actual.every(function(key, index) { return key && key === expected[index]; });
+    return matches
+      ? { ok: true, images: images }
+      : { ok: false, error: 'image_consent_mismatch' };
+  },
+
   // ── 发送简历图片 ──
   // 返回 { imageFailed, imageError, attempted }
-  //   attempted=false 表示根本没有可发的图（storage 里无图）——此时不算失败，调用方据此判断。
+  //   approvedImages 已在发送文字前与复核时的 imageKeys 严格比对，发送期间不再重读 storage。
   // imgOpts: 透传给 sendImage（控制单图超时/重试次数/重试间隔）
-  async _sendResumeImages(jobId, imgOpts) {
-    // 优先读取 per-job 自定义图片，没有则 fallback 到 group 级别图片
-    let imagesData = null;
-    try {
-      const { 'ui:jobCustom': jobCustom } = await chrome.storage.local.get('ui:jobCustom');
-      if (jobCustom && jobCustom[jobId] && jobCustom[jobId].images && jobCustom[jobId].images.length > 0) {
-        imagesData = jobCustom[jobId].images;
-      } else if (jobCustom && jobCustom[jobId] && jobCustom[jobId].noImages) {
-        // 组图被用户明确清空 → 不发图也不走全局兜底（无图可发不算失败）
-        try { if (typeof DiagLogger !== 'undefined') DiagLogger.info('cs.send', 'noImages命中跳过发图 jobId=' + jobId); } catch (_) {}
-        return { imageFailed: false, imageError: null, attempted: false };
-      }
-    } catch (e) { /* 静默，fallback 到 group 级别 */ }
-
+  async _sendResumeImages(jobId, approvedImages, imgOpts) {
     var imageFailed = false;
     var imageError = null;
     var attempted = false;
 
-    if (imagesData && imagesData.length > 0) {
-      // Per-job 自定义图片（data URL 格式）
-      for (const img of imagesData) {
-        if (this.stopped) break;
-        const dataUrl = img.fullSrc || img.src;
-        if (!dataUrl) continue;
-        attempted = true;
-        try {
-          const blob = dataUrlToBlob(dataUrl);
-          const imgResult = await this.sendImage(blob, img.name || 'resume.jpg', jobId, imgOpts);
-          if (!imgResult || imgResult.success === false) {
-            imageFailed = true;
-            imageError = (imgResult && imgResult.status) ? ('image_' + imgResult.status) : 'image_send_failed';
-          }
-        } catch (e) {
-          console.warn('[猎职] 发送 per-job 图片失败:', e.message);
+    for (const image of approvedImages) {
+      if (this.stopped) break;
+      attempted = true;
+      try {
+        var imageBytes = await resumeImageBytes(image);
+        if (!imageBytes || !imageBytes.byteLength) throw new Error('图片内容不可读取');
+        var blob = new Blob([imageBytes], { type: image.type || 'image/jpeg' });
+        const imgResult = await this.sendImage(blob, image.name || 'resume.jpg', jobId, imgOpts);
+        if (!imgResult || imgResult.success === false) {
           imageFailed = true;
-          imageError = 'image_send_failed';
+          imageError = (imgResult && imgResult.status) ? ('image_' + imgResult.status) : 'image_send_failed';
         }
-        await sleep(800); // ⏱️ 保留：多图之间节流（避免 BOSS 反作弊触发，不可省）
+      } catch (e) {
+        console.warn('[猎职] 发送图片失败:', e.message);
+        imageFailed = true;
+        imageError = 'image_send_failed';
       }
-    } else {
-      // Fallback: group 级别 resumeImages（二进制格式）
-      const { resumeImages: stored } = await chrome.storage.local.get('resumeImages');
-      if (stored && stored.length > 0) {
-        for (const s of stored) {
-          if (this.stopped) break;
-          attempted = true;
-          const blob = new Blob([new Uint8Array(s.data)], { type: s.type || 'image/jpeg' });
-          const imgResult = await this.sendImage(blob, s.name || 'resume.jpg', jobId, imgOpts);
-          if (!imgResult || imgResult.success === false) {
-            imageFailed = true;
-            imageError = (imgResult && imgResult.status) ? ('image_' + imgResult.status) : 'image_send_failed';
-          }
-          await sleep(800); // ⏱️ 保留：多图之间节流（避免 BOSS 反作弊触发，不可省）
-        }
-      }
+      await sleep(800); // ⏱️ 保留：多图之间节流（避免 BOSS 反作弊触发，不可省）
     }
 
     return { imageFailed: imageFailed, imageError: imageError, attempted: attempted };
@@ -608,18 +619,6 @@ const JobSender = {
     if (this._stopTimer) this._stopTimer();
   },
 };
-
-// ── Data URL → Blob 转换（用于 per-job 自定义图片）──
-function dataUrlToBlob(dataUrl) {
-  const parts = dataUrl.split(',');
-  const mimeMatch = parts[0].match(/:(.*?);/);
-  if (!mimeMatch) throw new Error('Invalid data URL');
-  const mime = mimeMatch[1];
-  const byteStr = atob(parts[1]);
-  const arr = new Uint8Array(byteStr.length);
-  for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
-  return new Blob([arr], { type: mime });
-}
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));

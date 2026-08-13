@@ -22,6 +22,7 @@ const modelInput = document.getElementById('model');
 const scoreThresholdInput = document.getElementById('scoreThreshold');
 const textResumeInput = document.getElementById('textResume');
 const aiScreeningEnabledInput = document.getElementById('aiScreeningEnabled');
+const outcomeFeedbackLearningEnabledInput = document.getElementById('outcomeFeedbackLearningEnabled');
 const autoResumeReplyEnabledInput = document.getElementById('autoResumeReplyEnabled');
 const autoResumeIdInput = document.getElementById('autoResumeId');
 const apiSectionToggle = document.getElementById('apiSectionToggle');
@@ -125,11 +126,15 @@ function bindEvents() {
         resumeImages: await serializeCurrentResumeImages(resumeImages),
         textResume: newTextResume,
         aiConfig: newAiConfig,
-      });
+      }, { preserveAutoResumeConsent: true });
       await chrome.storage.local.set({
         aiScreeningEnabled: !aiScreeningEnabledInput || aiScreeningEnabledInput.checked,
+        outcomeFeedbackLearningEnabled: !!(outcomeFeedbackLearningEnabledInput && outcomeFeedbackLearningEnabledInput.checked),
         autoResumeReplyEnabled: !!autoResumeReplyEnabledInput?.checked,
         autoResumeId,
+        autoResumeReplyConsentVersion: autoResumeReplyEnabledInput?.checked
+          ? AUTO_RESUME_REPLY_CONSENT_VERSION
+          : 0,
         backupVersion: 2,
       });
 
@@ -244,7 +249,7 @@ async function hydratePageFromStorage() {
   const [storedImages, storedResumeData, storedConfig] = await Promise.all([
     getResumeImages().catch(() => []),
     chrome.storage.local.get(['resumeImages', 'apiKey', 'textResume', AI_CONFIG_KEY, FILTER_STATE_KEY]).catch(() => ({})),
-    chrome.storage.local.get(['apiKey', 'textResume', AI_CONFIG_KEY, 'aiScreeningEnabled', 'autoResumeReplyEnabled', 'autoResumeId']).catch(() => ({})),
+    chrome.storage.local.get(['apiKey', 'textResume', AI_CONFIG_KEY, 'aiScreeningEnabled', 'outcomeFeedbackLearningEnabled', 'autoResumeReplyEnabled', 'autoResumeId', 'autoResumeReplyConsentVersion']).catch(() => ({})),
   ]);
 
   aiConfig = normalizeAiConfig(storedConfig[AI_CONFIG_KEY] || {});
@@ -258,7 +263,11 @@ async function hydratePageFromStorage() {
   if (scoreThresholdInput) scoreThresholdInput.value = Number.isFinite(Number(aiConfig.scoreThreshold)) ? aiConfig.scoreThreshold : DEFAULT_AI_CONFIG.scoreThreshold;
   if (textResumeInput) textResumeInput.value = textResume;
   if (aiScreeningEnabledInput) aiScreeningEnabledInput.checked = storedConfig.aiScreeningEnabled !== false;
-  if (autoResumeReplyEnabledInput) autoResumeReplyEnabledInput.checked = storedConfig.autoResumeReplyEnabled === true;
+  if (outcomeFeedbackLearningEnabledInput) outcomeFeedbackLearningEnabledInput.checked = storedConfig.outcomeFeedbackLearningEnabled === true;
+  if (autoResumeReplyEnabledInput) {
+    autoResumeReplyEnabledInput.checked = storedConfig.autoResumeReplyEnabled === true
+      && Number(storedConfig.autoResumeReplyConsentVersion) === AUTO_RESUME_REPLY_CONSENT_VERSION;
+  }
   if (autoResumeIdInput) autoResumeIdInput.value = storedConfig.autoResumeId || '';
 
   if (storedResumeData.resumeImages?.length) {

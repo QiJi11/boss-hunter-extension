@@ -3,6 +3,96 @@
 // ════════════════════════════════════════════════════════════
 // Depends on: E, Store, $/esc (global)
 
+var REVIEW_OUTCOME_LABELS=(window.JobOutcomeFeedback&&window.JobOutcomeFeedback.OUTCOME_LABELS)||{
+  replied:'已回复',
+  interview:'约面',
+  notFit:'不合适',
+  noResponse:'暂无回复',
+};
+
+function renderOutcomeFeedbackControls(item){
+  var jobId=String(item&&item.jobId||'').trim();
+  if(!item||item.success!==true||!jobId)return '';
+  var buttons=Object.keys(REVIEW_OUTCOME_LABELS).map(function(outcome){
+    return '<button type="button" class="review-feedback-btn" data-outcome="'+outcome+'">'
+      +esc(REVIEW_OUTCOME_LABELS[outcome])+'</button>';
+  }).join('');
+  return '<div class="review-feedback" data-outcome-job-id="'+esc(jobId)+'">'
+    +'<span class="review-feedback-label">后续结果（仅本机手动标记）</span>'
+    +buttons
+    +'<button type="button" class="review-feedback-btn" data-outcome="clear" disabled>撤销</button>'
+    +'<span class="review-feedback-status" aria-live="polite"></span>'
+    +'</div>';
+}
+
+function findReviewOutcomeSection(reviewPanel,jobId){
+  var sections=reviewPanel.querySelectorAll('.review-feedback');
+  for(var i=0;i<sections.length;i++){
+    if(sections[i].dataset.outcomeJobId===String(jobId))return sections[i];
+  }
+  return null;
+}
+
+function applyReviewOutcome(reviewPanel,jobId,record){
+  var section=findReviewOutcomeSection(reviewPanel,jobId);
+  if(!section)return;
+  var selected=record&&record.outcome||'';
+  section.dataset.currentOutcome=selected;
+  var buttons=section.querySelectorAll('.review-feedback-btn');
+  for(var i=0;i<buttons.length;i++){
+    var button=buttons[i];
+    var isClear=button.dataset.outcome==='clear';
+    button.disabled=isClear&&!selected;
+    button.classList.toggle('selected',button.dataset.outcome===selected);
+    button.setAttribute('aria-pressed',button.dataset.outcome===selected?'true':'false');
+  }
+}
+
+function showReviewOutcomeStatus(reviewPanel,jobId,text){
+  var section=findReviewOutcomeSection(reviewPanel,jobId);
+  var status=section&&section.querySelector('.review-feedback-status');
+  if(status)status.textContent=text||'';
+}
+
+function loadReviewOutcomes(reviewPanel,results){
+  var jobIds=(results||[]).filter(function(item){
+    return item&&item.success===true&&item.jobId!=null;
+  }).map(function(item){return String(item.jobId);});
+  if(!jobIds.length)return;
+  var requestKey=jobIds.join('\u001f');
+  reviewPanel._outcomeRequestKey=requestKey;
+  chrome.runtime.sendMessage({type:MSG.GET_JOB_OUTCOMES,jobIds:jobIds},function(response){
+    if(reviewPanel._outcomeRequestKey!==requestKey||!response||!response.success)return;
+    var records=response.records||{};
+    jobIds.forEach(function(jobId){applyReviewOutcome(reviewPanel,jobId,records[jobId]||null);});
+  });
+}
+
+function wireReviewOutcomeActions(reviewPanel){
+  if(reviewPanel._outcomeWired)return;
+  reviewPanel._outcomeWired=true;
+  reviewPanel.addEventListener('click',function(event){
+    var button=event.target.closest('.review-feedback-btn');
+    if(!button||button.disabled)return;
+    var section=button.closest('.review-feedback');
+    var jobId=section&&section.dataset.outcomeJobId;
+    if(!jobId)return;
+    var buttons=section.querySelectorAll('.review-feedback-btn');
+    for(var i=0;i<buttons.length;i++)buttons[i].disabled=true;
+    showReviewOutcomeStatus(reviewPanel,jobId,'正在保存...');
+    chrome.runtime.sendMessage({type:MSG.RECORD_JOB_OUTCOME,jobId:jobId,outcome:button.dataset.outcome},function(response){
+      for(var j=0;j<buttons.length;j++)buttons[j].disabled=false;
+      if(!response||!response.success){
+        applyReviewOutcome(reviewPanel,jobId,section.dataset.currentOutcome?{outcome:section.dataset.currentOutcome}:null);
+        showReviewOutcomeStatus(reviewPanel,jobId,'保存失败：'+((response&&response.error)||chrome.runtime.lastError?.message||'无响应'));
+        return;
+      }
+      applyReviewOutcome(reviewPanel,jobId,response.record||null);
+      showReviewOutcomeStatus(reviewPanel,jobId,button.dataset.outcome==='clear'?'已撤销':'已保存到本机');
+    });
+  });
+}
+
 window.renderReview=function(sendResults,duration,missedCount){
   var reviewPanel=document.getElementById('reviewPanel');
   if(!reviewPanel)return;
@@ -85,6 +175,7 @@ window.renderReview=function(sendResults,duration,missedCount){
         +'<span class="review-item-icon">'+(item.success?'&#10003;':(item.skipped?'&#8211;':'&#10007;'))+'</span>'
         +'<span class="review-item-name">'+esc(item.companyName||'')+'</span>'
         +(_note?'<span class="review-item-error"'+((item.alreadyChatted||item.skipped)?' style="color:#94a3b8"':'')+'>'+esc(_note)+'</span>':'')
+        +renderOutcomeFeedbackControls(item)
         +'</div>';
     }
     html+='</div>';
@@ -129,6 +220,8 @@ window.renderReview=function(sendResults,duration,missedCount){
       }
     });
   }
+  wireReviewOutcomeActions(reviewPanel);
+  loadReviewOutcomes(reviewPanel,results);
 
   // Wire 「重新投递」→ 回到当前 B 页岗位列表，保留岗位勾选状态，让用户重新选择后再发送。
   var retryBtn=document.getElementById('btnRetryBatch');

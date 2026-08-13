@@ -25,7 +25,7 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
         简历图片
       </h2>
-      <p class="card-desc">上传 1-2 张简历截图，海投时自动跟发。支持 JPG/PNG/WebP。</p>
+      <p class="card-desc">上传 1-2 张候选简历截图。逐岗复核时默认不发送，只有本次明确勾选才会发送。支持 JPG/PNG/WebP。</p>
       <div class="upload-zone" id="uploadZone">
         <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp" multiple hidden>
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12h14"/></svg>
@@ -48,6 +48,10 @@
       <div class="card-body-collapsible" id="apiSectionBody">
         <div class="form-group">
           <label><input type="checkbox" id="aiScreeningEnabled" checked> 采集后自动运行 AI 岗位筛选</label>
+        </div>
+        <div class="form-group">
+          <label><input type="checkbox" id="outcomeFeedbackLearningEnabled"> 把本机人工结果汇总用于下一轮 AI 筛选</label>
+          <p class="card-desc">默认关闭。新增的反馈字段只有匿名统计；原有 AI 筛选仍按既有授权发送简历和岗位信息。</p>
         </div>
         <div class="form-group">
           <label class="form-label" for="provider">Provider</label>
@@ -125,8 +129,10 @@
     </div>
   </div>
 
-  <script src="../db/indexeddb.js"></script>
-  <script src="../shared/settings-backup.js"></script>
+<script src="../db/indexeddb.js"></script>
+<script src="../shared/constants.js"></script>
+<script src="../shared/greeting-safety.js"></script>
+<script src="../shared/settings-backup.js"></script>
   <script src="options.js"></script>
 </body>
 </html>
