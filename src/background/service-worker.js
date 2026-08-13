@@ -1269,10 +1269,18 @@ function buildSendQueueV6(state, jobIds, sendOptions) {
         }
         confirmedGreeting = reviewedGreeting;
       }
+      // 1.4.0: 每岗自动生成招呼语优先（autoRun 预生成存 state.greetings[jobId]={text,...}）
+      var autoJobGreeting = '';
+      var _autoGreet = state.greetings && state.greetings[id];
+      if (_autoGreet && typeof _autoGreet === 'object' && typeof _autoGreet.text === 'string' && _autoGreet.text) {
+        autoJobGreeting = sanitizeGeneratedGreeting(_autoGreet.text, jobCompanyNames);
+      } else if (typeof _autoGreet === 'string' && _autoGreet) {
+        autoJobGreeting = sanitizeGeneratedGreeting(_autoGreet, jobCompanyNames);
+      }
       var greeting = confirmedGreeting || (
         state.sendGreeting === false
           ? ''
-          : sanitizeGeneratedGreeting(state.greetings[category] || '', jobCompanyNames)
+          : (autoJobGreeting || sanitizeGeneratedGreeting(state.greetings[category] || '', jobCompanyNames))
       );
       // per-job 自定义招呼语优先：该岗设了非空 customGreeting → 覆盖组级招呼语；为空/未设则保持组级 fallback（行为不变）
       var jcEntry = state.jobCustom && state.jobCustom[id];
@@ -4809,6 +4817,33 @@ async function startAutoRun(frozen) {
     _ranked.forEach(function(r) { _rankMap[r.jobId] = r.rank; });
     preview.auto.sort(function(a, b) { return (_rankMap[b.jobId] || 0) - (_rankMap[a.jobId] || 0); });
   } catch (_) {}
+  // 1.4.0 M4: 预生成岗位级招呼语；失败岗位移出 auto 队列进复核（不发空消息）
+  try {
+    var _greetIds = preview.auto.map(function(p) { return p.jobId; });
+    var _greetRes = await buildJobGreetingMap(_greetIds);
+    if (_greetRes.reviewIds.length) {
+      var _reviewSet = {};
+      _greetRes.reviewIds.forEach(function(id) { _reviewSet[id] = true; });
+      var _keep = [], _move = [];
+      preview.auto.forEach(function(p) {
+        if (_reviewSet[p.jobId]) _move.push(p); else _keep.push(p);
+      });
+      if (_move.length) {
+        preview.auto = _keep;
+        preview.review = preview.review.concat(_move);
+        preview.counts.auto = _keep.length;
+        preview.counts.review = preview.review.length;
+      }
+    }
+    await persistState();
+  } catch (e) {
+    try { DiagLogger.warn('sw.autoGreeting', '招呼语预生成失败，全部转复核: ' + (e.message || e)); } catch (_) {}
+    preview.review = preview.review.concat(preview.auto);
+    preview.auto = [];
+    preview.counts.auto = 0;
+    preview.counts.review = preview.review.length;
+    await persistState();
+  }
   for (var i = 0; i < preview.auto.length; i++) {
     if (sendAborted || autoRunAbort || state.phase === 'captcha_paused') { stopped = true; stopReason = state.phase === 'captcha_paused' ? '验证码暂停' : '用户停止'; break; }
     var p = preview.auto[i];
@@ -4857,4 +4892,75 @@ async function stopAutoRun() {
   await stopSend();
   if (state.autoRun) { state.autoRun.status = 'stopped'; state.autoRun.stopReason = '用户停止'; }
   await persistState();
+}
+
+// ── 1.4.0 M4: 岗位级招呼语 ──
+// 每岗独立生成 + variant/hash 存储；失败进人工复核（不发空消息/占位语）
+
+function sha256Text(text) {
+  var s = String(text || '');
+  var h = 0;
+  for (var i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  // 与内容绑定的一次性哈希：h 作为 32 位种子再叠一轮
+  var h2 = 0x811c9dc5;
+  for (var j = 0; j < s.length; j++) {
+    h2 ^= s.charCodeAt(j);
+    h2 = Math.imul(h2, 0x01000193) >>> 0;
+  }
+  return 'h-' + (h >>> 0).toString(16) + '-' + h2.toString(16);
+}
+
+async function generateJobGreeting(job) {
+  var cfg = await getAiConfig();
+  var resumeText = await getTextResume();
+  var jd = job && (job.desc || job.detail || job.jobDesc || '');
+  var jdText = String(jd || '').slice(0, 800);
+  var company = job && (job.company || job.companyName || '');
+  var position = job && (job.name || job.positionName || '');
+  var systemPrompt = '你是求职者本人，正在 BOSS 直聘上给 HR 发送招呼语。只输出招呼语正文，不要输出解释、标题、Markdown 或字数统计。';
+  // M4 结构：我是2026届 + 岗位重点 + 项目证据 + 问句
+  var userPrompt = '请为这个岗位生成一段 70-110 字招呼语。\n\n[我是]\n2026届软件工程本科应届生，方向为 AI Agent / RAG 应用工程。\n\n[简历]\n' + (resumeText || '未提供') + '\n\n[岗位]\n岗位：' + position + '\n公司：' + (company || '未知') + '\nJD：' + (jdText || '暂无') + '\n\n[要求]\n1) 以“您好”开头。\n2) 点出该岗位 1-2 个核心要求（从 JD 提取），并给出对应的真实项目/技能证据（AgentKB 六阶段 Agent 流水线、RAG 检索、FastAPI/SSE、Docker 部署等，必须真实）。\n3) 口语、自然、简短，结尾用“方便沟通吗”或同类问句。\n4) 禁止写求职者姓名、招聘者姓名、客户名、公司名、学校名或署名；禁止编造经历/项目结果；禁止声称已发送/已附简历。\n5) 不要写“贵司是我唯一选择”等模板腔。';
+  var generated = await callOpenAICompatible(cfg, [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ], 500, 120000, 'jobGreeting:' + (job && job.id));
+  var blocked = extractGreetingBlockedNames(resumeText || '');
+  if (company) blocked.push(company);
+  var cleaned = sanitizeGeneratedGreeting(generated, blocked);
+  if (!cleaned) {
+    var e = new Error('岗位招呼语清洗后为空，进人工复核');
+    e.errorCode = 'GREETING_EMPTY';
+    throw e;
+  }
+  return {
+    text: cleaned,
+    variant: 'v1',
+    sha256: sha256Text(cleaned),
+    generatedAt: Date.now(),
+    jobId: job && (job.jobId || job.id),
+    position: position,
+  };
+}
+
+// 批量预生成岗位招呼语；失败岗位标记进复核
+async function buildJobGreetingMap(jobIds) {
+  var map = {};
+  var reviewIds = [];
+  for (var i = 0; i < jobIds.length; i++) {
+    var job = state.jobs.find(function(j) { return (j.jobId || j.id) === jobIds[i]; });
+    if (!job) { reviewIds.push(jobIds[i]); continue; }
+    try {
+      var g = await generateJobGreeting(job);
+      map[jobIds[i]] = g;
+      // 写入 state.greetings[jobId]，buildSendQueueV6 优先读取
+      state.greetings = state.greetings || {};
+      state.greetings[jobIds[i]] = g;
+    } catch (e) {
+      reviewIds.push(jobIds[i]);
+      try { DiagLogger.warn('sw.autoGreeting', '岗位招呼语生成失败 jobId=' + jobIds[i] + ': ' + (e.message || e)); } catch (_) {}
+    }
+  }
+  return { map: map, reviewIds: reviewIds };
 }

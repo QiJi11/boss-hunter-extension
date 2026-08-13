@@ -209,6 +209,59 @@ async function main() {
     console.log('[PASS] rankAutoJobs/parseSalaryMidK/cityCodeToName');
   }
 
+  // ── sha256Text（M4 招呼语内容哈希） ──
+  {
+    // 从 SW 提取 sha256Text 函数
+    const sw = read('src/background/service-worker.js');
+    const mStart = sw.indexOf('function sha256Text(text)');
+    const mEnd = sw.indexOf('async function generateJobGreeting');
+    assert.ok(mStart >= 0 && mEnd > mStart, 'sha256Text markers not found');
+    const fnSrc = sw.slice(mStart, mEnd);
+    const ctx2 = loadAutoRunCtx();
+    // 用独立上下文跑函数定义
+    const c2 = vm.createContext({ console, Math });
+    vm.runInContext(fnSrc, c2);
+    const h1 = c2.sha256Text('hello');
+    const h2 = c2.sha256Text('hello');
+    const h3 = c2.sha256Text('hello world');
+    assert.strictEqual(h1, h2, 'sha256Text deterministic');
+    assert.notStrictEqual(h1, h3, 'sha256Text differs on content');
+    assert.ok(String(h1).startsWith('h-'), 'hash prefix');
+    console.log('[PASS] sha256Text: deterministic/content-bound');
+  }
+
+  // ── buildSendQueueV6 jobId 级 greeting 优先级（M4） ──
+  {
+    const sw = read('src/background/service-worker.js');
+    const fnStart = sw.indexOf('function buildSendQueueV6(');
+    const fnEnd = sw.indexOf('async function loadSendGreetingPreference');
+    assert.ok(fnStart >= 0 && fnEnd > fnStart, 'buildSendQueueV6 markers not found');
+    const fnSrc = sw.slice(fnStart, fnEnd);
+    // 构造 context：包含 buildSendQueueV6 依赖的函数
+    const c3 = vm.createContext({
+      console,
+      Date,
+      sentJobIds: new Set(),
+      state: {
+        jobs: [ { jobId: 'j1', name: 'AI应用工程师', company: '测试公司', tags: ['AI'] } ],
+        greetings: { 'j1': { text: '岗位级招呼语', variant: 'v1', sha256: 'h-x' }, 'AI': '分类级招呼语' },
+        selectedPositions: ['AI'], customPositions: [],
+        sendGreeting: true,
+        jobCustom: {},
+      },
+      SINGLE_SEND_CONFIRMATION_VERSION: 3,
+      sanitizeGeneratedGreeting: (t) => t || '',
+      normalizeImageConsentKeys: (k) => k || [],
+      uniqueStrings: (a) => Array.from(new Set((a || []).filter(Boolean))),
+      matchJobToPosition: () => 'AI',
+      DiagLogger: { info() {} },
+    });
+    vm.runInContext(fnSrc, c3, { filename: 'buildSendQueueV6.js' });
+    const q = c3.buildSendQueueV6(c3.state, ['j1'], {});
+    assert.strictEqual(q[0].greeting, '岗位级招呼语', 'jobId 级 greeting 优先于分类级');
+    console.log('[PASS] buildSendQueueV6: jobId greeting priority');
+  }
+
   console.log('All auto-run tests passed.');
   process.exit(0);
 }
