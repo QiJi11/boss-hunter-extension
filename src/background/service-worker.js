@@ -1069,6 +1069,8 @@ let sendStartTime = 0;
 let abortStage1 = null;
 // 全局停止标记：startSendV6/runWorkerLoop 在各阶段边界检查，停了立即 bail
 let sendAborted = false;
+// 1.4.0 自动投递独立停止标记：不受 startSendV6 内部 sendAborted 重置影响
+let autoRunAbort = false;
 const pendingSingleSendConfirmations = new Map();
 let singleSendLaunchInProgress = false;
 const SINGLE_SEND_CONFIRMATION_VERSION = 3;
@@ -4681,11 +4683,16 @@ function autoQuotaCheck(attemptLog, job, cfg) {
 // 单岗自动投递：复用 startSendV6（保持单岗），等待完成并提取结果
 async function attemptJobDelivery(job, attemptId) {
   var jobId = job.jobId || job.id;
+  // 停止检查：autoRunAbort 或已有 stopSend 触发的 sendAborted（startSendV6 会重置，但此处先拦）
+  if (autoRunAbort || sendAborted) {
+    return { attemptId: attemptId, jobId: jobId, company: job.company || job.companyName || '', hr: job.hrName || '', outcome: 'stopped', reason: '用户停止', attemptAt: Date.now() };
+  }
   var beforeResults = (state.sendResults || []).length;
   await startSendV6([jobId], { autoRun: true, attemptId: attemptId });
   // 等待单岗任务进入非 sending 终态
   var deadline = Date.now() + 180000;
   while (Date.now() < deadline) {
+    if (autoRunAbort) return { attemptId: attemptId, jobId: jobId, company: job.company || job.companyName || '', hr: job.hrName || '', outcome: 'stopped', reason: '用户停止', attemptAt: Date.now() };
     if (state.phase !== 'sending') break;
     await new Promise(function(r) { setTimeout(r, 2000); });
   }
@@ -4732,13 +4739,14 @@ async function startAutoRun(frozen) {
   var attemptLog = [];
   var stopped = false;
   var stopReason = '';
+  autoRunAbort = false; // 本批开始，清停止标记
 
   state.autoRun = { runId: runId, config: cfg, status: 'running', frozenJobIds: jobIds.slice(), attemptLog: attemptLog, preview: preview };
   await persistState();
 
   // 只处理 auto 队列（review 留给人工复核模式；skip 不投）
   for (var i = 0; i < preview.auto.length; i++) {
-    if (sendAborted || state.phase === 'captcha_paused') { stopped = true; stopReason = state.phase === 'captcha_paused' ? '验证码暂停' : '用户停止'; break; }
+    if (sendAborted || autoRunAbort || state.phase === 'captcha_paused') { stopped = true; stopReason = state.phase === 'captcha_paused' ? '验证码暂停' : '用户停止'; break; }
     var p = preview.auto[i];
     var job = state.jobs.find(function(j) { return (j.jobId || j.id) === p.jobId; });
     if (!job) continue;
@@ -4779,6 +4787,7 @@ async function startAutoRun(frozen) {
 
 // 停止自动投递
 async function stopAutoRun() {
+  autoRunAbort = true;
   sendAborted = true;
   if (state.autoRun) state.autoRun.status = 'stopping';
   await stopSend();
