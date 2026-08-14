@@ -343,7 +343,12 @@ function normalizeFeatureSettings(raw) {
 function findExcludeKeywordHit(job, excludeKeywords) {
   var keywords = uniqueStrings(excludeKeywords);
   if (!keywords.length || !job) return '';
-  var haystack = [
+  // M7e 修复：排除词分级匹配，避免技术/职责词（算法/全栈/测试/运营/实施/交付等）
+  // 在 JD 职责描述里出现就误杀真实开发岗（如"参与系统测试"被"测试"整体排除）。
+  // - 强岗位类型词（外包/驻场/销售/客服/标注/审核/实习/兼职/讲师/代招/猎头/派遣/主播等）：全文匹配
+  // - 其他词（技术栈/职责/学历经验如 算法/全栈/测试/运营/实施/交付/培训/推广/硕士/5年以上）：只匹配岗位名、公司、薪资、标签，不匹配 JD 正文
+  var STRONG_POSITION_WORDS = ['实习', '外包', '驻场', '销售', '主播', '客服', '讲师', '兼职', '标注', '审核', '代招', '猎头', '派遣', '伪AI', '包装AI应用开发'];
+  var jobHead = [
     job.name,
     job.title,
     job.positionName,
@@ -351,6 +356,10 @@ function findExcludeKeywordHit(job, excludeKeywords) {
     job.companyName,
     job.salary,
     Array.isArray(job.tags) ? job.tags.join(' ') : '',
+  ].map(function(part) {
+    return String(part || '').toLowerCase();
+  }).join(' ');
+  var jobJd = [
     job.detail,
     job.desc,
     job.description,
@@ -359,7 +368,15 @@ function findExcludeKeywordHit(job, excludeKeywords) {
   }).join(' ');
   for (var i = 0; i < keywords.length; i++) {
     var kw = keywords[i];
-    if (kw && haystack.indexOf(kw.toLowerCase()) >= 0) return kw;
+    if (!kw) continue;
+    var needle = kw.toLowerCase();
+    if (STRONG_POSITION_WORDS.indexOf(kw) >= 0 || kw.indexOf('岗') >= 0) {
+      // 强岗位类型词：岗位头 + JD 全文都查
+      if (jobHead.indexOf(needle) >= 0 || jobJd.indexOf(needle) >= 0) return kw;
+    } else {
+      // 普通词（技术栈/职责/学历经验）：只查岗位头，避免误杀
+      if (jobHead.indexOf(needle) >= 0) return kw;
+    }
   }
   return '';
 }

@@ -1097,7 +1097,13 @@ async function main() {
   assert.equal(ctx2.findExcludeKeywordHit({ name: 'Java工程师', company: 'X公司' }, ['销售']), '');
   // M7e 修复：AI 评分理由/风险里的字面词（如"客服运营""算法""测试"作为风险提示）不当作岗位排除词命中
   assert.equal(ctx2.findExcludeKeywordHit({ name: 'AI Agent应用开发工程师', company: 'X公司', aiScreen: { reason: '需确认职责以开发为主而非客服运营', risks: ['算法实现或运营相关风险'] } }, ['运营', '算法']), '', 'AI评分理由不应触发排除词');
-  assert.equal(ctx2.findExcludeKeywordHit({ name: '智能体开发工程师', company: 'X公司', desc: '负责测试与上线', aiScreen: { risks: ['测试覆盖率不足'] } }, ['测试']), '测试', 'JD正文的测试词仍应命中');
+  // M7e 修复：技术/职责词只匹配岗位头，不匹配 JD 正文（避免"参与系统测试"被"测试"整体误杀）
+  assert.equal(ctx2.findExcludeKeywordHit({ name: 'Agent 开发工程师', company: 'X公司', desc: '负责全流程开发，包含单元测试、系统测试与上线运维，参与算法调优' }, ['测试', '算法', '运维']), '', 'JD正文中的技术/职责词不应触发排除词');
+  assert.equal(ctx2.findExcludeKeywordHit({ name: 'Agent 测试工程师', company: 'X公司', desc: '负责Agent评测' }, ['测试']), '测试', '岗位名含测试仍应命中');
+  assert.equal(ctx2.findExcludeKeywordHit({ name: '智能体开发工程师', company: 'X公司', desc: '负责测试与上线' }, ['测试']), '', 'JD正文的测试词不应命中（非测试岗）');
+  // M7e 修复：强岗位类型词全文匹配仍生效
+  assert.equal(ctx2.findExcludeKeywordHit({ name: 'AI开发工程师', company: 'X公司', desc: '本岗位为外包驻场岗位，驻场客户现场' }, ['外包']), '外包', '外包强词JD正文仍命中');
+  assert.equal(ctx2.findExcludeKeywordHit({ name: '后端开发工程师', company: 'X公司', desc: '负责客服系统与销售数据的后端开发' }, ['销售']), '销售', '销售强词JD正文仍命中');
 
   // ── extractExperienceFromTags（年限识别） ──
   assert.equal(ctx2.extractExperienceFromTags(['1-3年', '本科']), '1-3年');
