@@ -1095,6 +1095,9 @@ async function main() {
   // ── findExcludeKeywordHit（排除词命中） ──
   assert.equal(ctx2.findExcludeKeywordHit({ name: '销售专员', company: 'X公司' }, ['销售']), '销售');
   assert.equal(ctx2.findExcludeKeywordHit({ name: 'Java工程师', company: 'X公司' }, ['销售']), '');
+  // M7e 修复：AI 评分理由/风险里的字面词（如"客服运营""算法""测试"作为风险提示）不当作岗位排除词命中
+  assert.equal(ctx2.findExcludeKeywordHit({ name: 'AI Agent应用开发工程师', company: 'X公司', aiScreen: { reason: '需确认职责以开发为主而非客服运营', risks: ['算法实现或运营相关风险'] } }, ['运营', '算法']), '', 'AI评分理由不应触发排除词');
+  assert.equal(ctx2.findExcludeKeywordHit({ name: '智能体开发工程师', company: 'X公司', desc: '负责测试与上线', aiScreen: { risks: ['测试覆盖率不足'] } }, ['测试']), '测试', 'JD正文的测试词仍应命中');
 
   // ── extractExperienceFromTags（年限识别） ──
   assert.equal(ctx2.extractExperienceFromTags(['1-3年', '本科']), '1-3年');

@@ -354,8 +354,6 @@ function findExcludeKeywordHit(job, excludeKeywords) {
     job.detail,
     job.desc,
     job.description,
-    job.aiScreen && job.aiScreen.reason,
-    job.aiScreen && Array.isArray(job.aiScreen.risks) ? job.aiScreen.risks.join(' ') : '',
   ].map(function(part) {
     return String(part || '').toLowerCase();
   }).join(' ');
