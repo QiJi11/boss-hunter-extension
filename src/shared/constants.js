@@ -9,6 +9,9 @@ const MSG = {
   SAVE_MUTABLE_STATE: 'SAVE_MUTABLE_STATE',
   START_COLLECT: 'START_COLLECT',
   STOP_COLLECT: 'STOP_COLLECT',
+  START_READONLY_SCAN: 'START_READONLY_SCAN',
+  GET_READONLY_SCAN: 'GET_READONLY_SCAN',
+  STOP_READONLY_SCAN: 'STOP_READONLY_SCAN',
   START_SEND: 'START_SEND',
   STOP_SEND: 'STOP_SEND',
   REGENERATE_GREETING: 'REGENERATE_GREETING',
@@ -38,6 +41,7 @@ const MSG = {
   AUTO_REPLY_SENT: 'AUTO_REPLY_SENT',
   JD_FETCHED: 'JD_FETCHED',
   FETCH_JOB_DETAIL: 'FETCH_JOB_DETAIL',
+  READ_JOB_DETAILS: 'READ_JOB_DETAILS',
   PONG: 'PONG',
 
   // SW → Content
@@ -100,6 +104,7 @@ const STORAGE_KEYS = {
     MISSED_JOBS: 'sw:missedJobs',
     DAILY_SEND_COUNT: 'sw:dailySendCount',  // 投递数量闸门：{date:'YYYY-MM-DD', count:N}，本地自然日成功投递岗位数，跨日归零
     LAST_SNAPSHOT: 'sw:lastSnapshot',       // 诊断旁路：每次 persistState 落盘的内存态快照摘要（脱敏），SW 卸载后导出仍有基本完整快照
+    READONLY_SCAN: 'sw:readonlyScan',       // 独立只读扫描检查点；不得参与投递状态恢复
   },
   // 诊断滚动持久化（diag: 前缀）—— 与 SW 内存态解耦，新任务清内存也不丢
   DIAG: {

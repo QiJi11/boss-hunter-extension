@@ -1094,6 +1094,13 @@ function assertOpenConversationIdentity(targetHrName, targetHrCompany) {
         );
         return true;
 
+      case MSG.READ_JOB_DETAILS:
+        handleReadJobDetails(msg).then(
+          (result) => sendResponse(result),
+          (e) => sendResponse({ success: false, error: e.message, details: [] })
+        );
+        return true;
+
       case 'GET_ERROR_LOG':
         if (typeof ErrorLogger !== 'undefined') {
           ErrorLogger.getErrors()
@@ -1127,14 +1134,17 @@ function assertOpenConversationIdentity(targetHrName, targetHrCompany) {
 // ── 处理收集 ──
 async function handleCollect(params) {
   const result = await runCollection(params, (progress) => {
+    if (params && params.readOnly === true) return;
     chrome.runtime.sendMessage({ type: MSG.COLLECT_PROGRESS, ...progress });
   });
-  chrome.runtime.sendMessage({
-    type: MSG.JOBS_COLLECTED,
-    jobs: result.jobs,
-    clusters: result.clusters,
-    jdSamples: result.jdSamples,
-  });
+  if (!params || params.readOnly !== true) {
+    chrome.runtime.sendMessage({
+      type: MSG.JOBS_COLLECTED,
+      jobs: result.jobs,
+      clusters: result.clusters,
+      jdSamples: result.jdSamples,
+    });
+  }
   return result;
 }
 
@@ -1150,6 +1160,72 @@ async function handleFetchJobDetail() {
     detail: detail,
     error: detail ? '' : 'JD 详情为空'
   };
+}
+
+function getReadOnlySecurityStop() {
+  var pageText = String(document.body && document.body.innerText || '');
+  if (/\/web\/passport\//i.test(location.pathname)) return 'BOSS 安全验证';
+  return pageText.match(/验证码|安全验证|请先完成.*验证|访问过于频繁/)?.[0] || '';
+}
+
+function getRenderedJobDetailText() {
+  var selectors = ['.job-detail', '.job-detail-section', '.job-sec-text', '.detail-content', '.job-detail-box'];
+  var blocks = [];
+  selectors.forEach(function(selector) {
+    document.querySelectorAll(selector).forEach(function(element) {
+      var text = String(element.innerText || element.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+      if (text.length > 100) blocks.push(text);
+    });
+  });
+  blocks.sort(function(left, right) { return right.length - left.length; });
+  return (blocks[0] || '').slice(0, 16000);
+}
+
+async function waitForRenderedJobDetail(job) {
+  var deadline = Date.now() + 15000;
+  var expectedTitle = normalizeJobCardText(job && job.name || '');
+  while (Date.now() < deadline) {
+    var stop = getReadOnlySecurityStop();
+    if (stop) return { status: 'blocked', stop: stop, detail: '' };
+    var detail = getRenderedJobDetailText();
+    var titleMatches = expectedTitle && normalizeJobCardText(detail).indexOf(expectedTitle) >= 0;
+    if (detail.length > 120 && titleMatches) {
+      var friendValues = Array.from(document.querySelectorAll('[data-isfriend]')).map(function(element) {
+        return element.getAttribute('data-isfriend');
+      }).filter(Boolean);
+      return { status: 'success', stop: '', detail: detail, friendValues: friendValues };
+    }
+    await sleep(400);
+  }
+  return { status: 'failed', stop: '', detail: '', error: '搜索页 JD 渲染超时' };
+}
+
+async function handleReadJobDetails(message) {
+  var requestedJobs = Array.isArray(message.jobs) ? message.jobs : [];
+  var delayMs = Math.max(600, Math.min(5000, Number(message.delayMs || 1200)));
+  var cardsById = new Map();
+  document.querySelectorAll('li.job-card-box, .job-card-box').forEach(function(card) {
+    var anchor = card.querySelector('a[href*="/job_detail/"]');
+    var id = extractJobIdFromLink(anchor && (anchor.href || anchor.getAttribute('href')) || '');
+    if (id && anchor && !cardsById.has(id) && !/company_more_job/.test(anchor.href || '')) cardsById.set(id, anchor);
+  });
+  var details = [];
+  for (var index = 0; index < requestedJobs.length; index++) {
+    var job = requestedJobs[index] || {};
+    var anchor = cardsById.get(job.id);
+    if (!anchor) {
+      details.push({ id: job.id, status: 'not-found', detail: '', error: '当前搜索页未找到岗位卡片' });
+      continue;
+    }
+    anchor.click();
+    var rendered = await waitForRenderedJobDetail(job);
+    details.push(Object.assign({ id: job.id }, rendered));
+    if (rendered.status === 'blocked') {
+      return { success: false, blocked: true, stop: rendered.stop, details: details };
+    }
+    await sleep(delayMs);
+  }
+  return { success: true, blocked: false, stop: '', details: details };
 }
 
 // ── 处理发送（按 jobIds 逐个调用 sendSingle）──

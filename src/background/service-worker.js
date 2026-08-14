@@ -1333,6 +1333,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       stopCollect().then(() => sendResponse({ success: true })).catch((e) => sendResponse({ success: false, error: e.message }));
       return true;
 
+    case MSG.START_READONLY_SCAN:
+      startReadOnlyScan(msg.params).then(function(scan) {
+        sendResponse({ success: true, scan: scan });
+      }).catch(function(error) {
+        sendResponse({ success: false, error: error.message });
+      });
+      return true;
+
+    case MSG.GET_READONLY_SCAN:
+      getReadOnlyScan().then(function(scan) {
+        sendResponse({ success: true, scan: scan });
+      }).catch(function(error) {
+        sendResponse({ success: false, error: error.message });
+      });
+      return true;
+
+    case MSG.STOP_READONLY_SCAN:
+      readOnlyScanStopped = true;
+      sendResponse({ success: true });
+      break;
+
     case 'JOBS_COLLECTED':
       if (state._multiCityCollect) { sendResponse({ success: true }); break; }
       // 单城市路径：BOSS 模糊匹配脏数据由 service-worker 再过滤一遍，clusters 重算以反映过滤后集合
@@ -2168,6 +2189,219 @@ async function collectOnTab(cityCode, params) {
   } finally {
     chrome.tabs.remove(tabId).catch(() => {});
   }
+}
+
+let readOnlyScanRunning = false;
+let readOnlyScanStopped = false;
+
+function normalizeReadOnlyScanParams(raw) {
+  var params = raw && typeof raw === 'object' ? raw : {};
+  var tasks = (Array.isArray(params.tasks) ? params.tasks : []).slice(0, 300).map(function(task) {
+    return {
+      city: String(task && task.city || '').trim().slice(0, 20),
+      cityCode: String(task && task.cityCode || '').trim(),
+      keyword: String(task && task.keyword || '').trim().slice(0, 80),
+    };
+  }).filter(function(task) { return /^\d{6,12}$/.test(task.cityCode) && task.keyword; });
+  if (!tasks.length) throw new Error('只读扫描缺少有效城市/关键词任务');
+  return {
+    scanId: String(params.scanId || 'readonly-default').trim().slice(0, 80),
+    reset: params.reset === true,
+    tasks: tasks,
+    targetJobIds: uniqueStrings(Array.isArray(params.targetJobIds) ? params.targetJobIds : []).slice(0, 3000),
+    maxDetails: Math.max(1, Math.min(500, Number(params.maxDetails || 250))),
+    maxTasksPerRun: Math.max(1, Math.min(10, Number(params.maxTasksPerRun || 1))),
+    detailDelayMs: Math.max(600, Math.min(5000, Number(params.detailDelayMs || 1200))),
+    taskDelayMs: Math.max(500, Math.min(10000, Number(params.taskDelayMs || 1500))),
+  };
+}
+
+function createReadOnlyScan(config) {
+  return {
+    scanId: config.scanId,
+    status: 'paused',
+    startedAt: Date.now(),
+    updatedAt: Date.now(),
+    tasks: config.tasks,
+    targetJobIds: config.targetJobIds,
+    maxDetails: config.maxDetails,
+    nextTaskIndex: 0,
+    taskResults: [],
+    jobs: [],
+    stopReason: '',
+  };
+}
+
+async function loadReadOnlyScan(config) {
+  var stored = await chrome.storage.local.get(STORAGE_KEYS.SW.READONLY_SCAN);
+  var scan = stored[STORAGE_KEYS.SW.READONLY_SCAN];
+  if (config.reset || !scan || scan.scanId !== config.scanId) {
+    if (scan && scan.tabId) await chrome.tabs.remove(scan.tabId).catch(function() {});
+    return createReadOnlyScan(config);
+  }
+  scan.tasks = config.tasks;
+  scan.targetJobIds = config.targetJobIds;
+  scan.maxDetails = config.maxDetails;
+  return scan;
+}
+
+async function saveReadOnlyScan(scan) {
+  scan.updatedAt = Date.now();
+  await chrome.storage.local.set({ [STORAGE_KEYS.SW.READONLY_SCAN]: scan });
+}
+
+function isReadOnlyBlocker(error) {
+  return /安全验证|验证码|访问过于频繁|登录状态失效|非预期跳转|意外打开了新详情标签/.test(String(error && error.message || error || ''));
+}
+
+function mergeReadOnlyJobs(existingJobs, nextJobs) {
+  var byId = new Map((Array.isArray(existingJobs) ? existingJobs : []).map(function(job) { return [job.id, job]; }));
+  (Array.isArray(nextJobs) ? nextJobs : []).forEach(function(job) {
+    if (!job || !job.id) return;
+    var previous = byId.get(job.id);
+    if (!previous) byId.set(job.id, job);
+    else if (job.jdStatus === 'success' && previous.jdStatus !== 'success') {
+      job.matchedKeywords = uniqueStrings((previous.matchedKeywords || []).concat(job.matchedKeywords || []));
+      byId.set(job.id, job);
+    } else {
+      previous.matchedKeywords = uniqueStrings((previous.matchedKeywords || []).concat(job.matchedKeywords || []));
+    }
+  });
+  return Array.from(byId.values());
+}
+
+function countReadOnlyDetails(scan) {
+  return (scan.jobs || []).filter(function(job) { return job && job.jdStatus === 'success'; }).length;
+}
+
+async function readOnlyTabId(scan) {
+  if (scan.tabId) {
+    try {
+      await chrome.tabs.get(scan.tabId);
+      return scan.tabId;
+    } catch (_) {
+      delete scan.tabId;
+    }
+  }
+  var tab = await chrome.tabs.create({ url: 'about:blank', active: false });
+  scan.tabId = tab.id;
+  await saveReadOnlyScan(scan);
+  return tab.id;
+}
+
+async function closeReadOnlyTab(scan) {
+  if (!scan.tabId) return;
+  var tabId = scan.tabId;
+  delete scan.tabId;
+  await chrome.tabs.remove(tabId).catch(function() {});
+}
+
+async function collectReadOnlyTask(task, config, completedIds, tabId) {
+  var urlParams = { city: task.cityCode, query: task.keyword };
+  var url = buildJobUrl(urlParams);
+  await chrome.tabs.update(tabId, { url: url, active: false, autoDiscardable: false });
+  var jobs = await collectJobsWithBfcacheRecovery(tabId, url, { urlParams: urlParams, searchKeyword: task.keyword, readOnly: true });
+  var targetIds = new Set(config.targetJobIds);
+  var selected = jobs.filter(function(job) {
+    if (!job || !job.id || completedIds.has(job.id)) return false;
+    return !targetIds.size || targetIds.has(job.id);
+  });
+  var detailTabsBefore = await chrome.tabs.query({ url: '*://*.zhipin.com/job_detail/*' });
+  var detailTabIdsBefore = new Set(detailTabsBefore.map(function(tab) { return tab.id; }));
+  var response;
+  var messageError;
+  try {
+    response = await chrome.tabs.sendMessage(tabId, {
+      type: MSG.READ_JOB_DETAILS,
+      jobs: selected.map(function(job) { return { id: job.id, name: job.name }; }),
+      delayMs: config.detailDelayMs,
+    });
+  } catch (error) {
+    messageError = error;
+  }
+  var detailTabsAfter = await chrome.tabs.query({ url: '*://*.zhipin.com/job_detail/*' });
+  var spawnedDetailTabs = detailTabsAfter.filter(function(tab) { return tab.id !== tabId && !detailTabIdsBefore.has(tab.id); });
+  if (spawnedDetailTabs.length) {
+    await Promise.all(spawnedDetailTabs.map(function(tab) { return chrome.tabs.remove(tab.id).catch(function() {}); }));
+    throw new Error('只读卡片意外打开了新详情标签，已关闭并停止');
+  }
+  if (messageError) throw messageError;
+  if (response && response.blocked) throw new Error(response.stop || 'BOSS 安全验证');
+  var detailsById = new Map((response && response.details || []).map(function(detail) { return [detail.id, detail]; }));
+  return selected.map(function(job) {
+    var detail = detailsById.get(job.id) || {};
+    return Object.assign({}, job, {
+      city: task.city,
+      cityCode: task.cityCode,
+      searchKeyword: task.keyword,
+      matchedKeywords: uniqueStrings((job.matchedKeywords || []).concat(task.keyword)),
+      detail: detail.status === 'success' ? String(detail.detail || '') : '',
+      jdStatus: detail.status || 'failed',
+      jdLastError: String(detail.error || ''),
+      friendValues: Array.isArray(detail.friendValues) ? detail.friendValues : [],
+      verifiedAt: Date.now(),
+    });
+  });
+}
+
+async function startReadOnlyScan(rawParams) {
+  await bootRestored;
+  if (readOnlyScanRunning) throw new Error('只读扫描仍在进行');
+  if (state.phase === 'sending' || state.phase === 'collecting') throw new Error('投递或普通采集进行中，不能启动只读扫描');
+  var config = normalizeReadOnlyScanParams(rawParams);
+  var scan = await loadReadOnlyScan(config);
+  var completedIds = new Set(scan.jobs.filter(function(job) { return job && job.jdStatus === 'success'; }).map(function(job) { return job.id; }));
+  readOnlyScanRunning = true;
+  readOnlyScanStopped = false;
+  scan.status = 'running';
+  scan.stopReason = '';
+  await saveReadOnlyScan(scan);
+  try {
+    var processed = 0;
+    while (scan.nextTaskIndex < scan.tasks.length && countReadOnlyDetails(scan) < config.maxDetails && processed < config.maxTasksPerRun) {
+      if (readOnlyScanStopped) break;
+      var task = scan.tasks[scan.nextTaskIndex];
+      try {
+        var tabId = await readOnlyTabId(scan);
+        var jobs = await collectReadOnlyTask(task, config, completedIds, tabId);
+        scan.jobs = mergeReadOnlyJobs(scan.jobs, jobs);
+        jobs.forEach(function(job) { if (job.jdStatus === 'success') completedIds.add(job.id); });
+        scan.taskResults.push({ city: task.city, cityCode: task.cityCode, keyword: task.keyword, status: 'ok', jobs: jobs.length });
+      } catch (error) {
+        scan.taskResults.push({ city: task.city, cityCode: task.cityCode, keyword: task.keyword, status: 'failed', error: String(error.message || error).slice(0, 200) });
+        if (isReadOnlyBlocker(error)) {
+          scan.status = 'blocked';
+          scan.stopReason = String(error.message || error);
+          await closeReadOnlyTab(scan);
+          await saveReadOnlyScan(scan);
+          return scan;
+        }
+      }
+      scan.nextTaskIndex += 1;
+      processed += 1;
+      await saveReadOnlyScan(scan);
+      if (scan.nextTaskIndex < scan.tasks.length && processed < config.maxTasksPerRun) await sleep(config.taskDelayMs);
+    }
+    if (readOnlyScanStopped) {
+      scan.status = 'stopped';
+      scan.stopReason = '用户停止只读扫描';
+    } else if (countReadOnlyDetails(scan) >= config.maxDetails || scan.nextTaskIndex >= scan.tasks.length) {
+      scan.status = 'complete';
+      await closeReadOnlyTab(scan);
+    } else {
+      scan.status = 'paused';
+    }
+    if (scan.status === 'stopped') await closeReadOnlyTab(scan);
+    await saveReadOnlyScan(scan);
+    return scan;
+  } finally {
+    readOnlyScanRunning = false;
+  }
+}
+
+async function getReadOnlyScan() {
+  var stored = await chrome.storage.local.get(STORAGE_KEYS.SW.READONLY_SCAN);
+  return stored[STORAGE_KEYS.SW.READONLY_SCAN] || null;
 }
 
 // 客户端硬过滤：BOSS 模糊匹配返回脏数据，按"全词命中"剔除非期望岗位
