@@ -1,0 +1,85 @@
+{
+  "manifest_version": 3,
+  "default_locale": "zh_CN",
+  "name": "猎职",
+  "version": "1.3.11",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAz6Q8c/XDYuUIS5u+m+2D5YkoDKrVhhx7MVaV7sI0iMrUl1RBHq2xa3vNjpu9GFLEo27N2Vtv5sK066eQtpZiMNcN1Bysz5Ic8XelD7b6cL92JSrKBtHHdWatQ+CDhf8Gp+E3E7JD3CC8oJEhuDvz/2mG+G5GHxo16/+pcI36RTkK851c45Nkgy9mzX2eJgy5yf4MrxHAY8kxMXSsqMSI2WEWiIEymw8mqpxM5jpzdOz4GspUMS7apd1WePrrmVvTb0AOqS1dw+pUwWPb8nfUKyTdqIVl4j2h8gEpyC4zaZfoqahyzawuNSuj3KLHy6o/nY95ByrnRJ1oO9nxJH6aMQIDAQAB",
+  "description": "BOSS 直聘 AI 岗位采集、筛选与逐岗确认沟通助手",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "猎职"
+  },
+  "side_panel": {
+    "default_path": "src/popup/popup.html"
+  },
+  "options_page": "src/options/options.html",
+  "permissions": ["storage", "activeTab", "scripting", "sidePanel", "alarms"],
+  "host_permissions": ["*://*.zhipin.com/*", "https://*/*", "http://*/*"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "content_scripts": [
+    {
+      "matches": ["*://*.zhipin.com/web/geek/chat*"],
+      "js": ["src/content/ws-probe.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["*://*.zhipin.com/web/geek/jobs*"],
+      "js": [
+        "src/content/selectors.js",
+        "src/content/salary-decoder.js",
+        "src/shared/greeting-safety.js",
+        "src/shared/error-logger.js",
+        "src/shared/diag-logger.js",
+        "src/shared/resume-image-consent.js",
+        "src/content/job-collector.js",
+        "src/content/job-sender.js",
+        "src/content/job-clicker.js",
+        "src/content/content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*.zhipin.com/web/geek/chat*"],
+      "js": [
+        "src/content/selectors.js",
+        "src/content/salary-decoder.js",
+        "src/shared/greeting-safety.js",
+        "src/shared/error-logger.js",
+        "src/shared/diag-logger.js",
+        "src/shared/resume-image-consent.js",
+        "src/content/chat-monitor.js",
+        "src/content/job-sender.js",
+        "src/content/content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*.zhipin.com/job_detail/*"],
+      "js": [
+        "src/content/selectors.js",
+        "src/content/salary-decoder.js",
+        "src/shared/greeting-safety.js",
+        "src/shared/error-logger.js",
+        "src/shared/diag-logger.js",
+        "src/shared/resume-image-consent.js",
+        "src/content/job-sender.js",
+        "src/content/content.js"
+      ],
+      "run_at": "document_end"
+    }
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["src/db/*", "src/popup/auto-reply-help.png"],
+      "matches": ["*://*.zhipin.com/*"]
+    }
+  ]
+}

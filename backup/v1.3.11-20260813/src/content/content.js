@@ -1145,26 +1145,9 @@ async function handleFetchJobDetail() {
     .map(function(el){ return (el.textContent || '').trim(); })
     .filter(Boolean);
   var detail = sections.join('\n\n').trim();
-  // M7e/M7f：采集页面底部工商信息（公司全称/成立日期/注册资本）与代招资质标记，
-  // 供 detectCompanyRisk 判断新公司/代招外包风险（BOSS 详情页下方区块）。
-  var companyInfo = '';
-  var bodyText = (document.body && document.body.innerText) || '';
-  var bizIdx = bodyText.indexOf('工商信息');
-  if (bizIdx >= 0) {
-    companyInfo = bodyText.slice(bizIdx, Math.min(bizIdx + 300, bodyText.length)).trim();
-  }
-  var daizhaoTag = '';
-  var daiIdx = bodyText.indexOf('代招公司');
-  if (daiIdx >= 0) {
-    daizhaoTag = bodyText.slice(daiIdx, Math.min(daiIdx + 80, bodyText.length)).trim();
-  } else if (bodyText.indexOf('人力资源服务许可证') >= 0 || bodyText.indexOf('劳务派遣经营许可证') >= 0) {
-    daizhaoTag = '代招/劳务派遣资质';
-  }
   return {
     success: !!detail,
     detail: detail,
-    companyInfo: companyInfo,
-    daizhaoTag: daizhaoTag,
     error: detail ? '' : 'JD 详情为空'
   };
 }

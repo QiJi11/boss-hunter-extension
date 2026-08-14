@@ -21,3 +21,5 @@ release/
 *.zip
 *.crx
 *.pem
+scripts/ralph/
+*.egg-info/

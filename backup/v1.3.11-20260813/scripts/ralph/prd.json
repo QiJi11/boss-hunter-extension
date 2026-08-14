@@ -1,0 +1,157 @@
+{
+  "project": "boss-hunter-extension-mvp",
+  "branchName": "ralph/mvp-resume-greeting-safety",
+  "description": "Complete the MVP safety release for per-job resume-image consent and name-free greetings without performing any real BOSS communication or delivery.",
+  "userStories": [
+    {
+      "id": "US-MVP-001",
+      "title": "Finalize resume-image consent and greeting safety",
+      "description": "As a job seeker, I want every image and greeting to remain fail-closed so the extension never sends a resume image or unreviewed identity text without my explicit per-job approval.",
+      "acceptanceCriteria": [
+        "The per-job review checkbox is unchecked every time the review opens",
+        "The immutable confirmation payload binds the selected checkbox state, reviewed greeting, and exact ordered image hashes",
+        "Preview, hashing, and actual image sending use the same canonical image bytes",
+        "No image storage is read by the send path when image sending is not approved",
+        "BOSS built-in auto greeting is read-only checked and blocks on enabled or unknown state at task start, before immediate chat, before worker send, and on captcha resume",
+        "Candidate, recruiter, client, former-employer, target-company, school, and branded-project identities are removed or cause final worker rejection when the final text differs from the reviewed text",
+        "Old job.aiGreeting and old automatic-resume consent cannot bypass the current review gates",
+        "npm test passes",
+        "node --check passes for every JavaScript and MJS file",
+        "git diff --check passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "Implementation and post-fix local acceptance checks pass. The final runtime-enforced verifier found a P1 gap for standalone former-employer and branded-project resume lines; the root agent reproduced and fixed it with executable positive and negative regressions. Keep passes=false because the task-wide three-reviewer cap is exhausted and no fresh independent reviewer remains for the post-fix diff.",
+      "subtasks": [
+        {
+          "id": "US-MVP-001-ST-001",
+          "title": "Verify and close all safety regressions",
+          "description": "Inspect the current dirty implementation, fix only verified safety defects, and run the complete local regression suite.",
+          "acceptanceCriteria": [
+            "All US-MVP-001 acceptance criteria are supported by source and executable tests",
+            "No TODO, placeholder, skipped branch, or mock success substitutes for the requested behavior"
+          ],
+          "priority": 1,
+          "passes": false,
+          "dependsOn": [],
+          "parallelSafe": false,
+          "estimatedFiles": [
+            "src/shared/resume-image-consent.js",
+            "src/shared/constants.js",
+            "src/popup/events-b.js",
+            "src/background/service-worker.js",
+            "src/content/content.js",
+            "src/content/job-sender.js",
+            "tests/run-tests.js"
+          ],
+          "touches": [
+            "resume-image-consent",
+            "single-send-confirmation",
+            "greeting-safety",
+            "boss-preflight",
+            "tests"
+          ],
+          "stateWrites": [
+            "scripts/ralph/prd.json",
+            "scripts/ralph/progress.txt"
+          ],
+          "fileBudget": 9,
+          "notes": "Per-job checkbox sealing, reviewed greeting binding, ordered SHA-256 image keys, zero-read no-consent flow, candidate/recruiter/client/employer/company/school/project name sanitization, BOSS auto-greeting fail-closed checks, old consent invalidation, and confirmationVersion=3 stale-queue invalidation are covered by executable tests. A final verifier found and prompted the standalone employer/project fix, but the mandatory post-fix independent review cannot run because the task-wide reviewer cap is exhausted.",
+          "splitRequired": false,
+          "sourceStoryId": "US-MVP-001"
+        }
+      ]
+    },
+    {
+      "id": "US-MVP-002",
+      "title": "Create the installable MVP package",
+      "description": "As the user, I want a local installable package containing the current safe extension files and no secrets, logs, review evidence, or development-only state.",
+      "acceptanceCriteria": [
+        "Create dist/liezhi-mvp-v1.3.11.zip from the current working tree",
+        "The archive root contains manifest.json and the extension runtime files required by the manifest",
+        "The archive excludes .git, node_modules, tests, scripts/ralph, review evidence, logs, secrets, private keys, and local acceptance state",
+        "The archive manifest version is 1.3.11",
+        "Record the archive SHA-256 and final path in scripts/ralph/progress.txt"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Local package completed. Do not publish, tag, release, push, or install automatically. The existing v1.3.11 tag does not contain this safety increment; a future public release must use a new version.",
+      "subtasks": [
+        {
+          "id": "US-MVP-002-ST-001",
+          "title": "Build and inspect the local MVP zip",
+          "description": "Create the minimal runtime archive, inspect its contents, and record its hash.",
+          "acceptanceCriteria": [
+            "The package passes all US-MVP-002 acceptance criteria"
+          ],
+          "priority": 2,
+          "passes": true,
+          "dependsOn": [
+            "US-MVP-001-ST-001"
+          ],
+          "parallelSafe": false,
+          "estimatedFiles": [
+            "dist/liezhi-mvp-v1.3.11.zip"
+          ],
+          "touches": [
+            "dist-package"
+          ],
+          "stateWrites": [
+            "dist/liezhi-mvp-v1.3.11.zip",
+            "scripts/ralph/progress.txt",
+            "scripts/ralph/prd.json"
+          ],
+          "fileBudget": 3,
+          "notes": "Created dist/liezhi-mvp-v1.3.11.zip. SHA-256 6557E1B2357F35F76ADCCC0D9BD31C38C4C55E65CEC17F948657D75E0D107C92; 43 entries; 32 packaged JS files passed node --check; manifest 1.3.11; no forbidden entries or secret-like content; ZIP dates fixed to 2026-08-09.",
+          "splitRequired": false,
+          "sourceStoryId": "US-MVP-002"
+        }
+      ]
+    },
+    {
+      "id": "US-MVP-003",
+      "title": "Run a no-send UI smoke test",
+      "description": "As the user, I want the installed or locally loaded popup verified without initiating any BOSS communication.",
+      "acceptanceCriteria": [
+        "Load or reload the unpacked extension from the current repository using an isolated or already-authorized debug browser path",
+        "Open the extension popup or side panel in a normal browser window",
+        "Verify the per-job image checkbox is unchecked and the BOSS built-in greeting safety warning is visible",
+        "Verify the reviewed greeting contains no candidate, recruiter, client, former-employer, target-company, school, or branded-project name in the inspected fixture/state",
+        "Do not click confirm, immediate chat, send, resume, or any BOSS account-setting control",
+        "Capture the smoke result and any blocker in scripts/ralph/progress.txt"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Completed with a synthetic no-send review fixture in the existing isolated Chrome profile. No confirm, immediate-chat, send, resume, or BOSS account-setting control was invoked.",
+      "subtasks": [
+        {
+          "id": "US-MVP-003-ST-001",
+          "title": "Verify the review UI without sending",
+          "description": "Use the safest available extension-page path to inspect the review UI and stop before any external action.",
+          "acceptanceCriteria": [
+            "The UI smoke meets all US-MVP-003 acceptance criteria or records a concrete external blocker without claiming success"
+          ],
+          "priority": 3,
+          "passes": true,
+          "dependsOn": [
+            "US-MVP-002-ST-001"
+          ],
+          "parallelSafe": false,
+          "estimatedFiles": [],
+          "touches": [
+            "extension-popup-ui"
+          ],
+          "stateWrites": [
+            "scripts/ralph/progress.txt",
+            "scripts/ralph/prd.json"
+          ],
+          "fileBudget": 2,
+          "notes": "Chrome runtime manifest 1.3.11; normal window; terminal review phase; queueLength=0; sendPhase empty; image checkbox unchecked; BOSS built-in greeting warning visible; runtime sanitizer removed candidate, recruiter, standalone former-employer, and branded-project names. Screenshot evidence SHA-256 3FDABA26E89BA1B42B36831CA09ABB045295A880BE321D4902F37E045326C4DA.",
+          "splitRequired": false,
+          "sourceStoryId": "US-MVP-003"
+        }
+      ]
+    }
+  ],
+  "dirtyBaseline": "Dirty baseline continuation on branch feature/personalized-v1.3.0 at 2026-08-09T06:46:01.3958443+08:00."
+}

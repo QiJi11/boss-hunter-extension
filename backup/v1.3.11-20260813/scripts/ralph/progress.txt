@@ -1,0 +1,75 @@
+# Ralph Progress Log
+Started: 2026-08-09
+---
+
+## 2026-08-09 - Ralph session
+- Mode: RunProject
+- Run ID: 20260809-064600-RunProject-35388
+- Branch: feature/personalized-v1.3.0
+- Dirty continuation: True
+---
+
+## 2026-08-09 - US-MVP-001 local safety acceptance
+- Status: implementation and post-fix local validation passed; mandatory post-fix independent review remains incomplete.
+- Final behavior:
+  - Every review opening resets the image-resume checkbox to unchecked.
+  - Clicking confirm seals the reviewed greeting, selected image-send boolean, ordered image SHA-256 keys, blocked identities, job ID, and expiry into a one-use token.
+  - `CONFIRM_SINGLE_SEND` no longer accepts an independent `sendImages` decision.
+  - Unapproved image flow performs zero image-storage reads.
+  - Image replacement, addition, removal, reordering, same-ID byte mutation, or empty approved images fail before text send.
+  - Historical `job.aiGreeting` is not read by the send path.
+  - Old automatic-resume consent and backup-import consent are invalidated.
+  - BOSS built-in auto greeting is read-only checked and enabled/unknown states fail closed.
+  - Paused queue confirmation version is 3; version 2 and multi-job paused queues require fresh per-job review.
+  - Candidate, recruiter, client, former-employer, target-company, school, and branded-project names are sanitized before review; worker-stage text changes are rejected.
+  - Standalone resume lines such as `北京字节跳动` and `海尔供应链项目` are blocked, while a role-only line such as `后端开发工程师` is not misclassified as an employer.
+- Validation:
+  - `npm test`: passed (`All extension policy tests passed.`).
+  - All 32 project JS/MJS files: `node --check` passed.
+  - `git diff --check`: passed; only line-ending warnings.
+  - Secret scan: 0 unexpected real secret/private-key hits after RUNBOOK redaction.
+- Quality gates:
+  - clean-code-guard: kept identity logic in the shared sanitizer and added a role-only negative guard for standalone work-history lines; no local blocking finding remains.
+  - test-guard: the real service/client regression, standalone employer/project regression, and role-only negative case assert observable output without internal mocks.
+  - docs-guard: current date, package path/hash/count, screenshot path/hash, story states, and incomplete post-fix review status match source and validation evidence.
+
+## 2026-08-09 - US-MVP-002 local package
+- Status: passed.
+- Final deliverable:
+  - `C:\Users\tianh\Documents\Codex-Contexts\boss-hunter-extension\dist\liezhi-mvp-v1.3.11.zip`
+- SHA-256: `6557E1B2357F35F76ADCCC0D9BD31C38C4C55E65CEC17F948657D75E0D107C92`
+- Verification:
+  - 43 archive entries; `manifest.json` at root; manifest version `1.3.11`.
+  - 32 packaged JS files passed `node --check` after extraction.
+  - 0 forbidden entries and 0 secret-like entries.
+  - `.git`, `node_modules`, tests, Ralph scripts/state, review evidence, logs, secrets, private keys, and local acceptance state are excluded.
+  - ZIP entry dates are fixed to `2026-08-09`.
+- Release boundary: local package only. No commit, tag, push, release, publish, or automatic installation was performed. The existing `v1.3.11` tag does not include this safety increment.
+
+## 2026-08-09 - US-MVP-003 no-send UI smoke
+- Status: passed.
+- Chrome target: existing isolated profile at CDP port 9250; extension reloaded unpacked from the current repository.
+- Runtime evidence:
+  - Manifest version `1.3.11`.
+  - Window state `normal`.
+  - Terminal `review` phase, `sendPhase` empty, and `queueLength=0`.
+  - Image checkbox present and unchecked.
+  - BOSS built-in auto-greeting safety warning visible.
+  - Synthetic fixture `您好，我是陈俊豪，曾做过北京字节跳动内部平台与海尔供应链项目，希望与李经理沟通。` was sanitized to `您好，曾做过相关客户供应链项目，希望与您沟通。`.
+  - No confirm, immediate chat, send, resume, or BOSS account-setting control was invoked.
+- Evidence screenshot:
+  - `C:\Users\tianh\Documents\Codex-Contexts\mvp-acceptance-shots\liezhi-mvp-v1.3.11-no-send-review-20260809.png`
+  - SHA-256 `3FDABA26E89BA1B42B36831CA09ABB045295A880BE321D4902F37E045326C4DA`
+
+## 2026-08-09 - Ralph and formal review status
+- Ralph iteration 1 did not modify production files. Its temporary VM probe omitted `SINGLE_SEND_CONFIRMATION_VERSION`; the remote transport then returned repeated HTTP 451 responses. The stalled child PID was terminated and the root agent completed the same dirty worktree.
+- High-risk task-wide reviewer cap: 3 model invocations.
+- Initial skeptic completed successfully. The earlier verifier returned useful findings but its runner exited on invalid JSON events.
+- Final verifier runtime enforcement passed:
+  - `acl_guard_passed=true`
+  - `runtime_enforced=true`
+  - `model_request_sent=true`
+  - Offline sandbox identity, sensitive-read denial, bundle/outside write denial, network denial, empty secret-like environment, disabled tools, and source integrity passed.
+- Final verifier runner returned `exit_code=3` with `unexpected_tool_events=["invalid_json:3"]`.
+- The verifier also reported one P1: standalone former-employer/project lines could escape `blockedNames`. The root agent reproduced it exactly, fixed it, added positive and negative regression tests, reran the no-send UI smoke, and rebuilt the package.
+- Remaining blocker: the task-wide three-reviewer cap is exhausted, so the post-fix diff has no fresh independent verifier. `US-MVP-001` and its subtask remain `passes=false`; local package and UI smoke stories remain passed.
