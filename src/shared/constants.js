@@ -258,11 +258,14 @@ function detectCompanyRisk(job) {
   // "人力资源服务许可证"、"猎头顾问"），仅查岗位头会漏掉匿名代招外包岗。
   var jdText = String(job.desc || job.description || job.detail || '');
   var hayAll = hay + ' ' + jdText.toLowerCase();
+  // M7f：采集到的页面底部资质区标记（代招公司/劳务派遣许可证）与工商信息
+  var daizhaoTag = String(job.daizhaoTag || '');
+  var companyInfo = String(job.companyInfo || '');
   var outsourceJdHit = ['代招', '猎头顾问', '劳务派遣经营许可证', '人力资源服务许可证', '人力资源许可证', '代招公司', '猎头招聘', '劳务派遣'].some(function(w) {
-    return jdText.indexOf(w) >= 0;
+    return jdText.indexOf(w) >= 0 || daizhaoTag.indexOf(w) >= 0;
   });
 
-  // 1) 外包：公司名或岗位名含外包特征，或 JD 明确代招/猎头/劳务派遣
+  // 1) 外包：公司名或岗位名含外包特征，或 JD/资质区明确代招/猎头/劳务派遣
   var isOutsource = OUTSOURCE_COMPANY_WORDS.some(function(w) {
     return company.indexOf(w) >= 0;
   }) || OUTSOURCE_JOB_WORDS.some(function(w) {
@@ -283,6 +286,17 @@ function detectCompanyRisk(job) {
     risk = { type: 'outsource', label: outsourceJdHit && !(OUTSOURCE_COMPANY_WORDS.some(function(w) { return company.indexOf(w) >= 0; }) || OUTSOURCE_JOB_WORDS.some(function(w) { return name.indexOf(w) >= 0 || tags.indexOf(w) >= 0; })) ? '代招/猎头' : '外包', color: '#e67e22' };
   } else if (isSuspicious) {
     risk = { type: 'suspicious', label: '疑似机构', color: '#e74c3c' };
+  }
+  // M7f：新成立公司风险（工商信息成立日期 < 6 个月，注册资本偏小）——AI 岗高薪但新公司
+  // 稳定性存疑（汇隆智域案例：2026-05-25 成立、注册资本 200 万）。仅当已确认为真实岗（无外包/可疑）
+  // 时标记，供人工复核使用，不直接判死。
+  var bizDateMatch = companyInfo.match(/成立日期\s*[:：]?\s*(\d{4})-(\d{2})-(\d{2})/);
+  if (!risk && bizDateMatch) {
+    var founded = new Date(Number(bizDateMatch[1]), Number(bizDateMatch[2]) - 1, Number(bizDateMatch[3]));
+    var ageDays = (Date.now() - founded.getTime()) / 86400000;
+    if (ageDays >= 0 && ageDays < 180) {
+      risk = { type: 'newcompany', label: '新公司(<6个月)', color: '#e74c3c', note: '成立日期 ' + bizDateMatch[0] };
+    }
   }
   return risk;
 }

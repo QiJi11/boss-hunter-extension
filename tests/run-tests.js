@@ -1099,6 +1099,11 @@ async function main() {
   assert.equal(ctx2.detectCompanyRisk({ name: 'AI大模型应用开发工程师', company: '深圳某大型计算机软件公司', desc: '岗位职责RAG开发' }).type, 'outsource', '某大型匿名公司识别');
   assert.equal(ctx2.detectCompanyRisk({ name: '后端开发', company: '杭州某知名互联网科技有限公司', desc: '负责后端开发' }).type, 'outsource', '某知名匿名公司识别');
   assert.equal(ctx2.detectCompanyRisk({ name: 'AI开发', company: '杭州智创科技', desc: '负责Agent开发' }), null, '实名公司不误判');
+  // M7f：采集到的资质区标记（daizhaoTag）识别代招；工商信息识别新成立公司风险
+  assert.equal(ctx2.detectCompanyRisk({ name: 'AI大模型应用开发工程师', company: '某某科技', desc: 'RAG开发', daizhaoTag: '代招公司：深圳某大型计算机软件公司' }).type, 'outsource', 'daizhaoTag识别代招');
+  var newCo = ctx2.detectCompanyRisk({ name: 'AI Agent应用开发工程师', company: '杭州汇隆智域智能科技', desc: 'Agent开发', companyInfo: '工商信息\n公司名称\n杭州汇隆智域智能科技有限公司\n成立日期\n2026-05-25\n注册资金\n200万' });
+  assert.equal(newCo && newCo.type, 'newcompany', '成立<6个月识别为新公司风险');
+  assert.equal(ctx2.detectCompanyRisk({ name: 'AI开发', company: '杭州智创科技', desc: 'Agent开发', companyInfo: '成立日期\n2019-03-15\n注册资金\n5000万' }), null, '老公司不误判');
 
   // ── findExcludeKeywordHit（排除词命中） ──
   assert.equal(ctx2.findExcludeKeywordHit({ name: '销售专员', company: 'X公司' }, ['销售']), '销售');

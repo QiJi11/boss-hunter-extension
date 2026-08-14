@@ -157,16 +157,18 @@ async function main() {
       mkJob({ id: 'a2', jobId: 'a2', name: 'B岗', company: '乙', aiScreen: { applyScore: 65 } }),
       mkJob({ id: 'a3', jobId: 'a3', name: 'C岗', company: '丙', aiScreen: { applyScore: 40 } }),
       mkJob({ id: 'a4', jobId: 'a4', name: 'D岗', company: '丁', aiScreen: { applyScore: 90 }, excludeReason: '外包' }),
+      mkJob({ id: 'a5', jobId: 'a5', name: 'E岗', company: '戊', aiScreen: { applyScore: 85 }, companyRisk: { type: 'newcompany', label: '新公司(<6个月)', note: '成立日期 2026-05-25' } }),
     ];
     const cfg = { thresholdAuto: 75, thresholdReview: 60, batchLimit: 10, dailyLimit: 30, allowedCities: [], sendImages: false };
-    const pv = ctx.buildAutoRunPreview(['a1', 'a2', 'a3', 'a4'], cfg);
-    assert.strictEqual(pv.counts.auto, 1, 'only a1 auto (a4 rejected)');
-    assert.strictEqual(pv.counts.review, 1, 'a2 review');
+    const pv = ctx.buildAutoRunPreview(['a1', 'a2', 'a3', 'a4', 'a5'], cfg);
+    assert.strictEqual(pv.counts.auto, 1, 'only a1 auto (a4 rejected, a5 new-company→review)');
+    assert.strictEqual(pv.counts.review, 2, 'a2 review + a5 new-company downgraded to review');
     assert.strictEqual(pv.counts.skip, 1, 'a3 skip only (a4 is rejected)');
     assert.strictEqual(pv.counts.rejected, 1, 'a4 rejected');
-    assert.strictEqual(pv.counts.total, 4);
+    assert.strictEqual(pv.counts.total, 5);
     assert.ok(pv.auto[0].jobId === 'a1');
-    console.log('[PASS] buildAutoRunPreview: counts/buckets/reject');
+    assert.ok(pv.review.some(r => r.jobId === 'a5' && (r.note || '').includes('新公司')), 'a5 in review with new-company note');
+    console.log('[PASS] buildAutoRunPreview: counts/buckets/reject/new-company-downgrade');
   }
 
   // ── autoQuotaCheck ──

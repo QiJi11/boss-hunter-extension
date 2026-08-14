@@ -135,7 +135,22 @@ function buildJobScreenPrompt(job, resumeText, expected, feedbackContext) {
   var excludeKeywords = uniqueStrings(state.excludeKeywords || []);
   var feedbackSection = feedbackContext ? '\n\n' + feedbackContext : '';
   var expText = job.experience ? ('经验要求：' + job.experience + '（应届生无法满足"1年以上/3-5年"等经验要求时，applyScore 必须低于 60 且 risks 注明"经验硬门槛"）') : '';
-  return `请判断这个岗位是否适合投递。只返回 JSON，不要 Markdown。\n\n[简历]\n${resumeText || '未提供文字简历'}\n\n[用户期望方向]\n${expected || ''}\n\n[排除规则]\n排除关键词：${excludeKeywords.join(' / ') || '无'}\n重点识别并降低评分：外包、驻场、培训推广、销售/主播/客服、讲师岗、剪辑/视频制作、游戏前端、把销售/运营包装成 AI 应用开发的岗位、非真实开发岗。${feedbackSection}\n\n[岗位]\n标题：${job.name || ''}\n公司：${job.company || ''}\n薪资：${job.salary || ''}\n${expText}\n标签：${(job.tags || []).join(' / ')}\nJD：${String(job.desc || job.description || job.detail || '').slice(0, 1500)}\n\n返回格式：{"score":0,"applyScore":0,"applyReason":"","interviewScore":0,"interviewReason":"","reason":"","risks":[]}\nscore 为 0-100 的综合匹配分；applyScore 为 0-100 的"能投"分（可投递性，匹配+无风险），applyReason 不超过 30 字说明能投理由；interviewScore 为 0-100 的"能进"分（进面可能性，简历竞争力 vs 岗位要求），interviewReason 不超过 30 字说明能进理由；reason 不超过 40 字；risks 是字符串数组，命中排除规则时写明具体风险。`;
+  // M7f：届别口径识别，让 AI 明确应届可投性。
+  //   明确接受 2026 届/应届 → 应届可投；明确 2027 届及以上/毕业时间含 2027 → 应届不可投；
+  //   完全没提届别 → 标注"口径未知"，applyScore 不得因"应届"假设而虚高。
+  var freshGradText = '';
+  var allText = String(job.name || '') + ' ' + String(job.desc || job.description || job.detail || '');
+  var grad2027 = /2027\s*届|27\s*届|毕业时间[:：]?\s*2027|面向\s*2027/.test(allText);
+  var grad2026 = /2026\s*届|26\s*届|毕业时间[:：]?\s*2026|面向\s*2026|2026年.{0,4}(应届|校招)/.test(allText);
+  var freshWord = /应届生|应届毕业生|应届|校招|接受.{0,4}(应届|无经验)/.test(allText);
+  if (grad2027) {
+    freshGradText = '\n届别口径：明确面向 2027 届及以后，2026 届不可投 → applyScore 必须低于 40 且 risks 注明"2027届"。';
+  } else if (grad2026 || freshWord) {
+    freshGradText = '\n届别口径：明确接受 2026 届/应届 → 应届可投，按正常规则给分。';
+  } else {
+    freshGradText = '\n届别口径：未明确应届口径（未写应届/校招/毕业时间）→ 应届可投性存疑，applyScore 最高给到 70，且 risks 注明"应届口径未明确，需人工确认"。';
+  }
+  return `请判断这个岗位是否适合投递。只返回 JSON，不要 Markdown。\n\n[简历]\n${resumeText || '未提供文字简历'}\n\n[用户期望方向]\n${expected || ''}\n\n[排除规则]\n排除关键词：${excludeKeywords.join(' / ') || '无'}\n重点识别并降低评分：外包、驻场、培训推广、销售/主播/客服、讲师岗、剪辑/视频制作、游戏前端、把销售/运营包装成 AI 应用开发的岗位、非真实开发岗。${feedbackSection}\n\n[岗位]\n标题：${job.name || ''}\n公司：${job.company || ''}\n薪资：${job.salary || ''}\n${expText}${freshGradText}\n标签：${(job.tags || []).join(' / ')}\nJD：${String(job.desc || job.description || job.detail || '').slice(0, 1500)}\n\n返回格式：{"score":0,"applyScore":0,"applyReason":"","interviewScore":0,"interviewReason":"","reason":"","risks":[]}\nscore 为 0-100 的综合匹配分；applyScore 为 0-100 的"能投"分（可投递性，匹配+无风险），applyReason 不超过 30 字说明能投理由；interviewScore 为 0-100 的"能进"分（进面可能性，简历竞争力 vs 岗位要求），interviewReason 不超过 30 字说明能进理由；reason 不超过 40 字；risks 是字符串数组，命中排除规则时写明具体风险。`;
 }
 
 async function screenSingleJob(cfg, job, resumeText, expected, feedbackContext) {
@@ -647,7 +662,18 @@ async function applyAiScreeningToJobs(jobs) {
       while (idx < batchEnd) {
         const current = jobs[idx++];
         try {
-          const screening = await screenSingleJob(cfg, current, resumeText, expected, feedbackContext);
+          let screening = await screenSingleJob(cfg, current, resumeText, expected, feedbackContext);
+          // M7f：打分波动防护——applyScore=0 且无明确拒绝理由时重试一次，
+          // 防单次 API 抖动（如同一岗位 94 分但下轮 0 分）把合格岗漏进 skip。
+          if (screening && !screening.applyScore && !screening.risks.length) {
+            try {
+              const retry = await screenSingleJob(cfg, current, resumeText, expected, feedbackContext);
+              if (retry && retry.applyScore > 0) {
+                retry._retried = true;
+                screening = retry;
+              }
+            } catch (_) { /* 重试失败保留原结果 */ }
+          }
           current.aiScreen = screening;
           current.checked = screening.score >= threshold;
           current.status = screening.score >= threshold ? 'recommended' : 'manualReview';
@@ -694,16 +720,23 @@ async function applyAiScreeningToJobs(jobs) {
 }
 
 async function fetchJobDetailText(jobLink) {
-  if (!jobLink) return '';
+  if (!jobLink) return { detail: '', companyInfo: '', daizhaoTag: '' };
   const tab = await chrome.tabs.create({ url: jobLink, active: false });
   const tabId = tab.id;
   try {
     await waitForTabLoad(tabId);
     await waitForContentScript(tabId);
     const resp = await chrome.tabs.sendMessage(tabId, { type: 'FETCH_JOB_DETAIL' });
-    return (resp && resp.success && resp.detail) ? String(resp.detail).trim() : '';
+    if (resp && resp.success) {
+      return {
+        detail: String(resp.detail || '').trim(),
+        companyInfo: String(resp.companyInfo || '').trim(),
+        daizhaoTag: String(resp.daizhaoTag || '').trim(),
+      };
+    }
+    return { detail: '', companyInfo: '', daizhaoTag: '' };
   } catch (_) {
-    return '';
+    return { detail: '', companyInfo: '', daizhaoTag: '' };
   } finally {
     try { await chrome.tabs.remove(tabId); } catch (_) {}
   }
@@ -820,7 +853,14 @@ async function runSingleJdHydrationBatch(jobs, batchJobs) {
       job.jdAttempts += 1;
       var detail = '';
       try {
-        detail = await fetchJobDetailText(job.link);
+        const fetched = await fetchJobDetailText(job.link);
+        if (fetched && typeof fetched === 'object') {
+          detail = fetched.detail || '';
+          if (fetched.companyInfo) job.companyInfo = fetched.companyInfo;
+          if (fetched.daizhaoTag) job.daizhaoTag = fetched.daizhaoTag;
+        } else {
+          detail = String(fetched || '');
+        }
       } catch (e) {
         job.jdLastError = e.message || String(e);
       }
@@ -4668,7 +4708,14 @@ function autoHardReject(job, state, handledSet, appliedCompanies) {
   if (!job) return ['岗位数据缺失'];
   if (sentJobIds.has(job.jobId || job.id)) reasons.push('本机已送达');
   if (job.excludeReason) reasons.push(job.excludeReason);
-  if (job.companyRisk) reasons.push('公司风险: ' + job.companyRisk);
+  // M7f：新公司(<6个月)风险不硬拒，降级为复核（`_newCompanyRisk` 由 preview 转 review 桶）
+  if (job.companyRisk) {
+    if (job.companyRisk.type === 'newcompany') {
+      job._newCompanyRisk = job.companyRisk;
+    } else {
+      reasons.push('公司风险: ' + job.companyRisk);
+    }
+  }
   if (job.historySkipReason) reasons.push(job.historySkipReason);
   // 1.4.0 M7c: 经验硬门槛（应届生无法满足的年限要求直接拒绝，不依赖 AI 打分）
   var exp = String(job.experience || '').trim();
@@ -4741,7 +4788,11 @@ function buildAutoRunPreview(jobIds, cfg, handledSet) {
       return;
     }
     var cls = classifyJob(job, cfg);
-    if (cls.bucket === 'auto') {
+    if (cls.bucket === 'auto' && job._newCompanyRisk) {
+      // M7f：新公司(<6个月)风险岗从 auto 降级为 review，人工确认后再投
+      preview.counts.review++;
+      preview.review.push({ jobId: id, company: job.company, position: job.name, score: cls.score, note: '新公司风险: ' + job._newCompanyRisk.label + ' ' + (job._newCompanyRisk.note || '') });
+    } else if (cls.bucket === 'auto') {
       preview.counts.auto++;
       preview.auto.push({ jobId: id, company: job.company, position: job.name, score: cls.score });
     } else if (cls.bucket === 'review') {
