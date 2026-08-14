@@ -246,6 +246,8 @@ const SUSPICIOUS_INDUSTRY_WORDS = ['文化', '传媒', '贸易', '广告', '影�
 // AI 相关岗位名（用于判断行业与岗位是否不符）。
 const AI_JOB_WORDS = ['ai', 'agent', '大模型', '算法', '人工智能', 'llm', 'rag', '机器学习', '开发'];
 const SCAM_JOB_WORDS = ['漫剧', '带教', '0基础', '零基础', '包教', '招转培', '培训费', '交费', '先学'];
+// 匿名公司名（BOSS 隐藏真实名），通常为猎头/外包代招掩体：某大型/某知名/某人工智能公司等。
+const ANONYMOUS_HEADHUNT_COMPANY_RE = /(某大型|某知名|某人工智能公司|某上市|某互联网|某大型知名|代招公司|某公司)/;
 function detectCompanyRisk(job) {
   if (!job) return null;
   var name = String(job.name || '');
@@ -266,6 +268,9 @@ function detectCompanyRisk(job) {
   }) || OUTSOURCE_JOB_WORDS.some(function(w) {
     return name.indexOf(w) >= 0 || tags.indexOf(w) >= 0;
   }) || outsourceJdHit;
+  // M7e 补充：匿名公司名（"某大型""某知名""某人工智能公司""代招公司"）通常为猎头/外包代招掩体
+  // （科锐代招案例：公司名"深圳某大型计算机软件公司"，资质信息在 BOSS 页面底部，插件 desc 未采集）。
+  if (!isOutsource && ANONYMOUS_HEADHUNT_COMPANY_RE.test(company)) isOutsource = true;
 
   // 2) 疑似机构：传媒/贸易/文化公司 + AI 岗 + 高薪；或岗位名含骗局特征词
   var industrySus = SUSPICIOUS_INDUSTRY_WORDS.some(function(w) { return company.indexOf(w) >= 0; });

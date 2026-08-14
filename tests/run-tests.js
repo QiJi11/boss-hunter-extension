@@ -1095,6 +1095,10 @@ async function main() {
   assert.equal(ctx2.detectCompanyRisk({ name: 'AI大模型应用开发工程师', company: '深圳某大型计算机软件公司', desc: '认证资质\n人力资源服务许可证\n劳务派遣经营许可证\n张女士\n上海科之锐\n·\n猎头顾问' }).type, 'outsource', 'JD含代招资质应识别');
   assert.equal(ctx2.detectCompanyRisk({ name: 'AI大模型应用开发工程师', company: '深圳某大型计算机软件公司', desc: '代招公司：深圳某大型计算机软件公司' }).type, 'outsource', 'JD含代招公司应识别');
   assert.equal(ctx2.detectCompanyRisk({ name: 'AI应用工程师', company: '某某科技', desc: '负责Agent与RAG开发，包含算法调优与系统测试' }), null, '普通JD不误判外包');
+  // M7e 补充：匿名公司名（某大型/某知名/代招公司）识别为代招外包（插件 desc 未采集资质区的兜底）
+  assert.equal(ctx2.detectCompanyRisk({ name: 'AI大模型应用开发工程师', company: '深圳某大型计算机软件公司', desc: '岗位职责RAG开发' }).type, 'outsource', '某大型匿名公司识别');
+  assert.equal(ctx2.detectCompanyRisk({ name: '后端开发', company: '杭州某知名互联网科技有限公司', desc: '负责后端开发' }).type, 'outsource', '某知名匿名公司识别');
+  assert.equal(ctx2.detectCompanyRisk({ name: 'AI开发', company: '杭州智创科技', desc: '负责Agent开发' }), null, '实名公司不误判');
 
   // ── findExcludeKeywordHit（排除词命中） ──
   assert.equal(ctx2.findExcludeKeywordHit({ name: '销售专员', company: 'X公司' }, ['销售']), '销售');
