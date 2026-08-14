@@ -128,7 +128,19 @@ async function main() {
     assert.strictEqual(ctx5.autoHardReject(jobExpFree, ctx5.state).length, 0, 'exp-free not rejected');
     const jobExpFresh = mkJob({ experience: '应届生(校招)' });
     assert.strictEqual(ctx5.autoHardReject(jobExpFresh, ctx5.state).length, 0, 'fresh-grad not rejected');
-    console.log('[PASS] autoHardReject: exclude/sent/city/history-dedup/exp-gate');
+    // JD 正文硬门槛（M7d）
+    const ctx6 = loadAutoRunCtx();
+    const job27 = mkJob({ desc: '毕业时间：2027年\n岗位要求：本科及以上' });
+    assert.ok(ctx6.autoHardReject(job27, ctx6.state).some(r => r.includes('2027届')), '2027 grad caught');
+    const jobJdExp = mkJob({ desc: '任职要求\n1、本科及以上学历，1年以上相关工作经验' });
+    assert.ok(ctx6.autoHardReject(jobJdExp, ctx6.state).some(r => r.includes('JD经验硬门槛')), 'JD 1年+ caught');
+    const jobOutsource = mkJob({ desc: '客户方使用前沿技术，外包员工也可参加培训' });
+    assert.ok(ctx6.autoHardReject(jobOutsource, ctx6.state).some(r => r.includes('外包/代招')), 'outsource caught');
+    const jobClean = mkJob({ desc: '本科及以上学历，接受2026届应届生，有项目经验者优先，Python熟练' });
+    assert.strictEqual(ctx6.autoHardReject(jobClean, ctx6.state).length, 0, 'clean JD not rejected');
+    const jobFreshJd = mkJob({ desc: '接受应届生无经验，有老师带教，Python熟练即可' });
+    assert.strictEqual(ctx6.autoHardReject(jobFreshJd, ctx6.state).length, 0, 'fresh-friendly JD not rejected');
+    console.log('[PASS] autoHardReject: exclude/sent/city/history-dedup/exp-gate/jd-gate');
   }
 
   // ── buildAutoRunPreview ──

@@ -4616,6 +4616,36 @@ function classifyJob(job, cfg) {
   return { bucket: 'skip', score: apply };
 }
 
+// 1.4.0 M7d: JD 正文硬门槛检查（BOSS 标签可能误导，如标签"经验不限"但 JD 要求 1 年以上）
+function jdHardReject(job) {
+  var reasons = [];
+  var jd = String(job.desc || job.description || job.detail || '').replace(/\s+/g, ' ');
+  if (!jd) return reasons;
+  // 1) 2027 届 / 毕业时间 2027 / 27届（2026 应届不可投）
+  if (/2027\s*届|27\s*届|毕业时间[:：]?\s*2027|面向\s*2027|2027届/.test(jd)) {
+    reasons.push('届别不符: 2027届');
+  }
+  // 2) JD 正文经验年限硬门槛：要求 1 年/2 年/3 年+ 且明确为任职要求（应届无法满足）
+  //    匹配「N年以上」「N年及以上」「N年工作经验」「要求N年」「有N年」等强表述
+  var expRe = /([一二三四五六七八九十两]|[1-9])\s*(?:年|年以|年以上|年及以上|年及以上工作经验|年工作经验|年开发经验|年相关|年工作经验)/;
+  var m = jd.match(/(?:任职要求|岗位要求|职位要求|基本要求|我们需要你|我们希望你是|岗位职责.*?任职要求)[^。]{0,120}?([一二三四五六七八九十两]|[1-9])\s*(?:年|年以上|年及以上|年工作经验|年开发经验|年相关工作经验)/);
+  var strongExp = jd.match(/([一二三四五六七八九十两]|[1-9])\s*年(?:以上|及以上|工作经验|开发经验|工作经验优先)/);
+  if (strongExp && !/经验不限|不限经验|接受.*(?:应届|无经验)|(?:应届|无经验).*也可|0-1年|1年以内/.test(jd)) {
+    reasons.push('JD经验硬门槛: ' + strongExp[0]);
+  } else if (m) {
+    reasons.push('JD经验硬门槛: ' + m[0].slice(0, 30));
+  }
+  // 3) 代招/外包/驻场识别（岗位挂公司名义但实际外包）
+  var outsourceTerms = ['代招公司', '劳务派遣', '外包员工', '驻场', '客户方', '外包岗位', '外包性质', '外派', '派遣', '猎头顾问', '项目组', '甲方', '常驻'];
+  for (var i = 0; i < outsourceTerms.length; i++) {
+    if (jd.indexOf(outsourceTerms[i]) >= 0) {
+      reasons.push('外包/代招: ' + outsourceTerms[i]);
+      break;
+    }
+  }
+  return reasons;
+}
+
 // 硬过滤补充（自动投递专用）：城市/学历/经验/已投/已沟通
 function autoHardReject(job, state, handledSet, appliedCompanies) {
   var reasons = [];
@@ -4630,6 +4660,9 @@ function autoHardReject(job, state, handledSet, appliedCompanies) {
     var EXP_HARD_REJECT = ['1年以内', '1-3年', '3-5年', '5-10年', '5年以上', '10年以上'];
     if (EXP_HARD_REJECT.indexOf(exp) >= 0) reasons.push('经验硬门槛: ' + exp);
   }
+  // 1.4.0 M7d: JD 正文硬门槛（届别/经验/外包）
+  var jdReasons = jdHardReject(job);
+  for (var j = 0; j < jdReasons.length; j++) reasons.push(jdReasons[j]);
   // 城市硬排除：BOSS 搜索已按城市过滤，此处只拦已知非目标
   if (job.cityName && state.autoRun && state.autoRun.config && state.autoRun.config.allowedCities && state.autoRun.config.allowedCities.length) {
     var cityOk = state.autoRun.config.allowedCities.some(function(c) { return (job.cityName || '').indexOf(c) >= 0; });
