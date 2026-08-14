@@ -119,7 +119,16 @@ async function main() {
     assert.ok(ctx4.autoHardReject(jobHr, ctx4.state, handled).some(r => r.includes('历史已沟通')), 'same hr caught');
     const handled2 = { '测试公司|李hr': 'sent' };
     assert.ok(ctx4.autoHardReject(jobHr, ctx4.state, handled2).some(r => r.includes('同公司')), 'same company caught');
-    console.log('[PASS] autoHardReject: exclude/sent/city/history-dedup');
+    // 经验硬门槛（M7c）
+    const ctx5 = loadAutoRunCtx();
+    const jobExp = mkJob({ experience: '3-5年' });
+    assert.ok(ctx5.autoHardReject(jobExp, ctx5.state).some(r => r.includes('经验硬门槛: 3-5年')), 'exp 3-5y caught');
+    assert.ok(ctx5.autoHardReject(mkJob({ experience: '1-3年' }), ctx5.state).some(r => r.includes('经验硬门槛')), 'exp 1-3y caught');
+    const jobExpFree = mkJob({ experience: '经验不限' });
+    assert.strictEqual(ctx5.autoHardReject(jobExpFree, ctx5.state).length, 0, 'exp-free not rejected');
+    const jobExpFresh = mkJob({ experience: '应届生(校招)' });
+    assert.strictEqual(ctx5.autoHardReject(jobExpFresh, ctx5.state).length, 0, 'fresh-grad not rejected');
+    console.log('[PASS] autoHardReject: exclude/sent/city/history-dedup/exp-gate');
   }
 
   // ── buildAutoRunPreview ──

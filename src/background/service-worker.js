@@ -134,7 +134,8 @@ function extractJsonObject(text) {
 function buildJobScreenPrompt(job, resumeText, expected, feedbackContext) {
   var excludeKeywords = uniqueStrings(state.excludeKeywords || []);
   var feedbackSection = feedbackContext ? '\n\n' + feedbackContext : '';
-  return `请判断这个岗位是否适合投递。只返回 JSON，不要 Markdown。\n\n[简历]\n${resumeText || '未提供文字简历'}\n\n[用户期望方向]\n${expected || ''}\n\n[排除规则]\n排除关键词：${excludeKeywords.join(' / ') || '无'}\n重点识别并降低评分：外包、驻场、培训推广、销售/主播/客服、讲师岗、剪辑/视频制作、游戏前端、把销售/运营包装成 AI 应用开发的岗位、非真实开发岗。${feedbackSection}\n\n[岗位]\n标题：${job.name || ''}\n公司：${job.company || ''}\n薪资：${job.salary || ''}\n标签：${(job.tags || []).join(' / ')}\nJD：${String(job.desc || job.description || job.detail || '').slice(0, 1500)}\n\n返回格式：{"score":0,"applyScore":0,"applyReason":"","interviewScore":0,"interviewReason":"","reason":"","risks":[]}\nscore 为 0-100 的综合匹配分；applyScore 为 0-100 的"能投"分（可投递性，匹配+无风险），applyReason 不超过 30 字说明能投理由；interviewScore 为 0-100 的"能进"分（进面可能性，简历竞争力 vs 岗位要求），interviewReason 不超过 30 字说明能进理由；reason 不超过 40 字；risks 是字符串数组，命中排除规则时写明具体风险。`;
+  var expText = job.experience ? ('经验要求：' + job.experience + '（应届生无法满足"1年以上/3-5年"等经验要求时，applyScore 必须低于 60 且 risks 注明"经验硬门槛"）') : '';
+  return `请判断这个岗位是否适合投递。只返回 JSON，不要 Markdown。\n\n[简历]\n${resumeText || '未提供文字简历'}\n\n[用户期望方向]\n${expected || ''}\n\n[排除规则]\n排除关键词：${excludeKeywords.join(' / ') || '无'}\n重点识别并降低评分：外包、驻场、培训推广、销售/主播/客服、讲师岗、剪辑/视频制作、游戏前端、把销售/运营包装成 AI 应用开发的岗位、非真实开发岗。${feedbackSection}\n\n[岗位]\n标题：${job.name || ''}\n公司：${job.company || ''}\n薪资：${job.salary || ''}\n${expText}\n标签：${(job.tags || []).join(' / ')}\nJD：${String(job.desc || job.description || job.detail || '').slice(0, 1500)}\n\n返回格式：{"score":0,"applyScore":0,"applyReason":"","interviewScore":0,"interviewReason":"","reason":"","risks":[]}\nscore 为 0-100 的综合匹配分；applyScore 为 0-100 的"能投"分（可投递性，匹配+无风险），applyReason 不超过 30 字说明能投理由；interviewScore 为 0-100 的"能进"分（进面可能性，简历竞争力 vs 岗位要求），interviewReason 不超过 30 字说明能进理由；reason 不超过 40 字；risks 是字符串数组，命中排除规则时写明具体风险。`;
 }
 
 async function screenSingleJob(cfg, job, resumeText, expected, feedbackContext) {
@@ -4615,7 +4616,7 @@ function classifyJob(job, cfg) {
   return { bucket: 'skip', score: apply };
 }
 
-// 硬过滤补充（自动投递专用）：城市/学历/已投/已沟通
+// 硬过滤补充（自动投递专用）：城市/学历/经验/已投/已沟通
 function autoHardReject(job, state, handledSet, appliedCompanies) {
   var reasons = [];
   if (!job) return ['岗位数据缺失'];
@@ -4623,6 +4624,12 @@ function autoHardReject(job, state, handledSet, appliedCompanies) {
   if (job.excludeReason) reasons.push(job.excludeReason);
   if (job.companyRisk) reasons.push('公司风险: ' + job.companyRisk);
   if (job.historySkipReason) reasons.push(job.historySkipReason);
+  // 1.4.0 M7c: 经验硬门槛（应届生无法满足的年限要求直接拒绝，不依赖 AI 打分）
+  var exp = String(job.experience || '').trim();
+  if (exp) {
+    var EXP_HARD_REJECT = ['1年以内', '1-3年', '3-5年', '5-10年', '5年以上', '10年以上'];
+    if (EXP_HARD_REJECT.indexOf(exp) >= 0) reasons.push('经验硬门槛: ' + exp);
+  }
   // 城市硬排除：BOSS 搜索已按城市过滤，此处只拦已知非目标
   if (job.cityName && state.autoRun && state.autoRun.config && state.autoRun.config.allowedCities && state.autoRun.config.allowedCities.length) {
     var cityOk = state.autoRun.config.allowedCities.some(function(c) { return (job.cityName || '').indexOf(c) >= 0; });
