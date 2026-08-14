@@ -4616,7 +4616,7 @@ function classifyJob(job, cfg) {
 }
 
 // 硬过滤补充（自动投递专用）：城市/学历/已投/已沟通
-function autoHardReject(job, state, handledSet) {
+function autoHardReject(job, state, handledSet, appliedCompanies) {
   var reasons = [];
   if (!job) return ['岗位数据缺失'];
   if (sentJobIds.has(job.jobId || job.id)) reasons.push('本机已送达');
@@ -4641,6 +4641,17 @@ function autoHardReject(job, state, handledSet) {
         if (companyMatch) reasons.push('历史已投同公司');
       }
     }
+  }
+  // 1.4.0 M7: 手动投递历史公司名单（BOSS 聊天核实的已投公司，模糊匹配互含）
+  var appliedList = appliedCompanies
+    || (state.autoRun && state.autoRun.config && Array.isArray(state.autoRun.config.appliedCompanies) ? state.autoRun.config.appliedCompanies : []);
+  if (Array.isArray(appliedList) && appliedList.length) {
+    var jobCompany = String(job.company || job.companyName || '').trim().toLowerCase();
+    var hitApplied = appliedList.some(function(ac) {
+      var n = String(ac || '').trim().toLowerCase();
+      return n && (jobCompany.indexOf(n) >= 0 || n.indexOf(jobCompany) >= 0);
+    });
+    if (hitApplied) reasons.push('历史已投公司（BOSS 清单）');
   }
   return reasons;
 }
@@ -4667,7 +4678,7 @@ function buildAutoRunPreview(jobIds, cfg, handledSet) {
     var job = state.jobs.find(function(j) { return (j.jobId || j.id) === id; });
     if (!job) return;
     preview.counts.total++;
-    var reject = autoHardReject(job, state, handledSet);
+    var reject = autoHardReject(job, state, handledSet, cfg.appliedCompanies);
     if (reject.length) {
       preview.counts.rejected++;
       preview.skip.push({ jobId: id, company: job.company, position: job.name, reason: reject.join('; ') });
@@ -4811,6 +4822,14 @@ async function startAutoRun(frozen) {
     allowedCities: [],
     sendImages: false,
   }, frozen.config || {});
+
+  // 1.4.0 M7: 注入手动投递历史公司名单（sw:autoAppliedCompanies），用于模糊去重
+  if (!Array.isArray(cfg.appliedCompanies)) {
+    try {
+      var _ac = await chrome.storage.local.get('sw:autoAppliedCompanies');
+      cfg.appliedCompanies = Array.isArray(_ac['sw:autoAppliedCompanies']) ? _ac['sw:autoAppliedCompanies'] : [];
+    } catch (e) { cfg.appliedCompanies = []; }
+  }
 
   var todayCount = await getDailySendCount();
   if (todayCount >= Math.min(cfg.dailyLimit, CONFIG.DAILY_SEND_LIMIT)) {
