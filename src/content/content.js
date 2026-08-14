@@ -1157,8 +1157,13 @@ async function handleFetchJobDetail() {
   var daiIdx = bodyText.indexOf('代招公司');
   if (daiIdx >= 0) {
     daizhaoTag = bodyText.slice(daiIdx, Math.min(daiIdx + 80, bodyText.length)).trim();
-  } else if (bodyText.indexOf('人力资源服务许可证') >= 0 || bodyText.indexOf('劳务派遣经营许可证') >= 0) {
-    daizhaoTag = '代招/劳务派遣资质';
+  } else {
+    // 只在「代招公司」标题存在时才联动识别劳务派遣/猎头资质，避免命中 BOSS 平台通用文案
+    var liwuIdx = bodyText.indexOf('劳务派遣经营许可证');
+    var headhuntIdx = bodyText.indexOf('猎头顾问');
+    if (liwuIdx >= 0 || headhuntIdx >= 0) {
+      daizhaoTag = '代招/劳务派遣资质';
+    }
   }
   return {
     success: !!detail,
