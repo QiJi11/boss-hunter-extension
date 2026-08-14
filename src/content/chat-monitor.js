@@ -5,6 +5,9 @@ const ChatMonitor = {
   // HR 消息含这些关键词时自动发 PDF 简历
   resumeKeywords: ['简历', '附件', 'PDF', 'pdf', '清晰', '文件', '发我', '发一份', '发个', '再发', '详细的'],
 
+  /**
+   * 启动聊天消息监听，HR 消息命中关键词时触发自动发送简历。
+   */
   start() {
     if (this.observer) return;
     this.enabled = true;
@@ -45,32 +48,36 @@ const ChatMonitor = {
     // 通知 background
     chrome.runtime.sendMessage({ type: 'CHAT_DETECTED', text: text.slice(0, 100) });
 
-    // 自动点"发简历"按钮，选第一份简历
-    await this.sendResumeAttachment();
+    const sent = await this.sendResume();
+    chrome.runtime.sendMessage({ type: sent ? 'AUTO_REPLY_SENT' : 'AUTO_REPLY_SKIPPED', reason: sent ? 'resumeSent' : 'resumeSendFailed' });
   },
 
-  async sendResumeAttachment() {
+  /**
+   * 点击聊天工具栏里的发简历入口，选择第一份简历并确认发送。
+   */
+  async sendResume() {
     try {
-      // 点"发简历"按钮
-      const resumeBtn = document.querySelector(SELECTORS.chatDetail.resumeBtn);
-      if (!resumeBtn) return;
+      const resumeBtn = await waitChatElement([
+        SELECTORS.chatDetail.resumeBtn + '[title*="简历"]',
+        SELECTORS.chatDetail.resumeBtn + '[aria-label*="简历"]',
+        SELECTORS.chatDetail.resumeBtn,
+      ], 3000);
+      if (!resumeBtn) return false;
       resumeBtn.click();
-      await sleep(800);
 
-      // 选第一份简历
-      const item = document.querySelector(SELECTORS.chatDetail.resumeItem);
-      if (!item) return;
+      const dialog = await waitChatElement(SELECTORS.chatDetail.resumeDialog, 5000);
+      if (!dialog) return false;
+      const item = await waitChatElement(SELECTORS.chatDetail.resumeItem, 5000);
+      if (!item) return false;
       item.click();
-      await sleep(300);
 
-      // 确认发送
-      const confirm = document.querySelector(SELECTORS.chatDetail.resumeConfirm);
-      if (!confirm) return;
+      const confirm = await waitChatElement(SELECTORS.chatDetail.resumeConfirm, 5000);
+      if (!confirm) return false;
       confirm.click();
-
-      chrome.runtime.sendMessage({ type: 'AUTO_REPLY_SENT', success: true });
+      return true;
     } catch (e) {
-      chrome.runtime.sendMessage({ type: 'AUTO_REPLY_SENT', success: false, error: e.message });
+      console.warn('[猎职] 自动发送简历失败:', e && e.message);
+      return false;
     }
   },
 
@@ -82,6 +89,20 @@ const ChatMonitor = {
     }
   },
 };
+
+async function waitChatElement(selectors, timeoutMs = 5000) {
+  const start = Date.now();
+  const list = Array.isArray(selectors) ? selectors : [selectors];
+  while (Date.now() - start < timeoutMs) {
+    for (const sel of list) {
+      const el = document.querySelector(sel);
+      if (!el) continue;
+      if (el.offsetParent !== null || getComputedStyle(el).position === 'fixed') return el;
+    }
+    await sleep(200);
+  }
+  return null;
+}
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));

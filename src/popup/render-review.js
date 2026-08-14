@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════
-// 猎职 — Review 页（投递完成汇总）渲染
+// 猎职 — Review 页（历史结果汇总）渲染
 // ════════════════════════════════════════════════════════════
 // Depends on: E, Store, $/esc (global)
 
@@ -7,7 +7,7 @@ window.renderReview=function(sendResults,duration,missedCount){
   var reviewPanel=document.getElementById('reviewPanel');
   if(!reviewPanel)return;
 
-  var missed=missedCount||0; // A1 漏发清单条数（SW finalizeTask 计算：已建联但未发 AI 招呼语+图）
+  var missed=missedCount||0;
   var results=sendResults||[];
   Store.set('lastReview',{sendResults:results,duration:duration||0,missedCount:missed});
   var successCount=0,failCount=0;
@@ -17,15 +17,15 @@ window.renderReview=function(sendResults,duration,missedCount){
 
   var total=successCount+failCount;
   // 根据成功率动态显示标题
-  var titleText='投递完成';
+  var titleText='历史结果';
   var iconColor='var(--green)';
   var iconBg='rgba(5,150,105,.1)';
   if(total>0&&failCount===total){
-    titleText='投递失败';
+    titleText='历史失败';
     iconColor='var(--red)';
     iconBg='rgba(220,38,38,.1)';
   }else if(failCount>0){
-    titleText='部分成功';
+    titleText='部分完成';
     iconColor='var(--accent)';
     iconBg='rgba(217,119,6,.1)';
   }
@@ -37,17 +37,16 @@ window.renderReview=function(sendResults,duration,missedCount){
     +'<div class="review-icon"><svg width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="18" fill="'+iconBg+'" stroke="'+iconColor+'" stroke-width="1.5"/><path d="M12 20l6 6 10-10" stroke="'+iconColor+'" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>'
     +'<div class="review-title">'+titleText+'</div>'
     +'<div class="review-stats">'
-    +'投递 <span class="review-stat-num">'+total+'</span> 个岗位：'
+    +'记录 <span class="review-stat-num">'+total+'</span> 个岗位：'
     +'成功 <span class="review-stat-num" style="color:#22c55e">'+successCount+'</span> ｜'
     +'失败 <span class="review-stat-num" style="color:#ef4444">'+failCount+'</span>'
     +'</div>'
     +'</div>'
 
-    // A1 漏发提示行：已建联（停止/中断前点过「立即沟通」）但未发 AI 招呼语+简历图的岗位 → 一键补发
     +(missed>0
       ?'<div class="review-missed-hint" style="margin:0 16px 12px;padding:10px 12px;background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.25);border-radius:8px;font-size:12px;color:var(--accent);display:flex;align-items:center;gap:8px;">'
-        +'<span style="flex:1;line-height:1.5">⚠️ '+missed+' 个岗位已建立沟通但未发送 AI 招呼语+简历图</span>'
-        +'<button class="btn btn-primary" id="btnRepairMissed" style="flex:none;padding:5px 12px;font-size:12px;">一键补发</button>'
+        +'<span style="flex:1;line-height:1.5">'+missed+' 个岗位可能漏发，可点击一键补发继续处理</span>'
+        +'<button class="btn btn-ghost" id="btnRepairMissed" style="padding:6px 10px;font-size:12px">一键补发</button>'
       +'</div>'
       :'')
 
@@ -95,7 +94,6 @@ window.renderReview=function(sendResults,duration,missedCount){
 
   html+='</div>' // review-groups
 
-    // Retry button — 回到现有 B 页岗位列表，不触发重新采集
     +'<div class="review-actions">'
     +'<button class="btn btn-primary" id="btnRetryBatch">重新投递</button>'
     +'</div>'
@@ -129,7 +127,7 @@ window.renderReview=function(sendResults,duration,missedCount){
     });
   }
 
-  // Wire 「重新投递」→ 回到当前 B 页岗位列表，保留岗位勾选状态，让用户重新选择后再发送。
+  // Wire 「重新投递」→ 回到当前 B 页岗位列表，保留岗位勾选状态，让用户重新选择。
   var retryBtn=document.getElementById('btnRetryBatch');
   if(retryBtn){
     retryBtn.addEventListener('click',function(){
@@ -141,22 +139,23 @@ window.renderReview=function(sendResults,duration,missedCount){
     });
   }
 
-  // Wire 「一键补发」→ SW 把漏发清单入 _v6RepairQueue、startRepairMissed 启动 runRepairV6 单 tab 补发。
-  // 进度/结果复用现有机制：SW phase=sending→review，STATE_UPDATE / SEND_COMPLETE 自动重渲 review（补发后 missed=0 提示行消失）。
   var repairBtn=document.getElementById('btnRepairMissed');
   if(repairBtn){
     repairBtn.addEventListener('click',function(){
-      repairBtn.disabled=true;repairBtn.textContent='补发中…';
+      repairBtn.disabled=true;
+      repairBtn.textContent='补发中...';
       try{
         chrome.runtime.sendMessage({type:MSG.REPAIR_MISSED},function(resp){
           if(chrome.runtime.lastError||!resp||!resp.success){
             repairBtn.disabled=false;
-            repairBtn.textContent='补发失败，点击重试';
-            repairBtn.title=(resp&&resp.error)||(chrome.runtime.lastError&&chrome.runtime.lastError.message)||'';
+            repairBtn.textContent='一键补发';
+            alert((resp&&resp.error)||(chrome.runtime.lastError&&chrome.runtime.lastError.message)||'补发启动失败');
           }
         });
       }catch(e){
-        repairBtn.disabled=false;repairBtn.textContent='补发失败，点击重试';
+        repairBtn.disabled=false;
+        repairBtn.textContent='一键补发';
+        alert('扩展上下文异常，请刷新页面重试');
       }
     });
   }

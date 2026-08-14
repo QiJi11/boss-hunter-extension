@@ -337,8 +337,12 @@ async function applyPostCollectRules(jobs, options) {
   var skipHistoryEnabled = opts.skipHistoryEnabled !== false;
   var handledHrSet = skipHistoryEnabled ? await buildHandledHrSet() : {};
   return (Array.isArray(jobs) ? jobs : []).map(function(job) {
-    var excludeHit = findExcludeKeywordHit(job, excludeKeywords);
-    if (excludeHit) {
+    var schoolHit = typeof findSchoolRequirementHit === 'function' ? findSchoolRequirementHit(job) : '';
+    var excludeHit = schoolHit ? '' : findExcludeKeywordHit(job, excludeKeywords);
+    if (schoolHit) {
+      job.checked = false;
+      job.excludeReason = '命中院校门槛：' + schoolHit;
+    } else if (excludeHit) {
       job.checked = false;
       job.excludeReason = '命中排除词：' + excludeHit;
     } else {
@@ -992,8 +996,17 @@ function buildSendQueueV6(state, jobIds) {
   var custom = Array.isArray(state.customPositions) ? state.customPositions : [];
   return jobIds
     .filter(function(id) { return !sentJobIds.has(id); })
+    .filter(function(id) {
+      var job = state.jobs.find(function(j) { return String(j.jobId || j.id || '') === String(id || ''); });
+      var schoolHit = job && typeof findSchoolRequirementHit === 'function' ? findSchoolRequirementHit(job) : '';
+      if (!schoolHit) return true;
+      job.checked = false;
+      job.excludeReason = '命中院校门槛：' + schoolHit;
+      try { DiagLogger.warn('sw.send', 'buildSendQueueV6：跳过院校门槛岗位 jobId=' + id + ' hit=' + schoolHit); } catch (_) {}
+      return false;
+    })
     .map(function(id) {
-      var job = state.jobs.find(function(j) { return (j.jobId || j.id) === id; });
+      var job = state.jobs.find(function(j) { return String(j.jobId || j.id || '') === String(id || ''); });
       if (!job) { console.warn('[猎职] buildSendQueueV6: 未找到 job id=' + id); }
       var category = job ? matchJobToPosition(job, picker, custom) : '其他';
       var greeting = state.sendGreeting === false ? '' : ((job && job.aiGreeting) || state.greetings[category] || '');
@@ -1026,6 +1039,19 @@ async function loadJobCustomIntoState() {
   } catch (_) {
     state.jobCustom = state.jobCustom || {};
   }
+}
+
+async function loadJobsIntoState() {
+  try {
+    const r = await chrome.storage.local.get([
+      STORAGE_KEYS.SW.JOBS,
+      STORAGE_KEYS.SW.SELECTED_POSITIONS,
+      STORAGE_KEYS.SW.CUSTOM_POSITIONS,
+    ]);
+    if (Array.isArray(r[STORAGE_KEYS.SW.JOBS])) state.jobs = r[STORAGE_KEYS.SW.JOBS];
+    if (Array.isArray(r[STORAGE_KEYS.SW.SELECTED_POSITIONS])) state.selectedPositions = r[STORAGE_KEYS.SW.SELECTED_POSITIONS];
+    if (Array.isArray(r[STORAGE_KEYS.SW.CUSTOM_POSITIONS])) state.customPositions = r[STORAGE_KEYS.SW.CUSTOM_POSITIONS];
+  } catch (_) {}
 }
 
 async function loadSendGreetingPreference() {
@@ -1388,32 +1414,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       break;
 
     case 'START_SEND':
-      state.phase = 'ready';
-      state.sendQueue = [];
-      state.sendQueueV6 = [];
-      state.sendPhase = '';
-      state.sendIndex = 0;
-      state.sendProgress = null;
-      persistState();
-      sendResponse({ success: false, error: '当前插件包已禁用投递，只允许采集岗位。', errorCode: 'SEND_DISABLED' });
-      return true;
-
-      // sender.tab 在 side panel 场景下为 undefined，fallback 到 lastFocused 窗口
-      if (sender && sender.tab && sender.tab.windowId) {
-        state.originalMainWindowId = sender.tab.windowId;
-      } else {
-        chrome.windows.getLastFocused().then(win => {
-          if (win && win.id) state.originalMainWindowId = win.id;
-        }).catch(() => {});
-      }
-      state.hrActiveFilter = msg.hrActiveFilter || '不限';
-      startSendV6(msg.jobIds).then(() => {
-        sendResponse({ success: true });
-      }).catch((e) => {
-        ErrorLogger.logError(e.message, e.stack, 'START_SEND failed');
-        chrome.runtime.sendMessage({ type: 'ERROR', message: e.message }).catch(() => {});
-        sendResponse({ success: false, error: e.message, errorCode: e.errorCode || null });
-      });
+      startSendV6(msg.jobIds).then(() => sendResponse({ success: true }))
+        .catch((e) => sendResponse({ success: false, error: e.message }));
       return true;
 
     case 'STOP_SEND':
@@ -1427,20 +1429,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true;
 
     case MSG.REPAIR_MISSED:
-      state.phase = 'ready';
-      state.sendQueue = [];
-      state.sendQueueV6 = [];
-      state.sendPhase = '';
-      state.missedJobs = [];
-      persistState();
-      sendResponse({ success: false, error: '当前插件包已禁用补发，只允许采集岗位。', errorCode: 'SEND_DISABLED' });
-      return true;
-
-      // A1：review 页「一键补发」漏发岗位（已建联但未发 AI 招呼语+图）
-      startRepairMissed().then(() => sendResponse({ success: true })).catch((e) => {
-        ErrorLogger.logError(e.message, e.stack, 'REPAIR_MISSED failed');
-        sendResponse({ success: false, error: e.message });
-      });
+      startRepairMissed().then(() => sendResponse({ success: true }))
+        .catch((e) => sendResponse({ success: false, error: e.message }));
       return true;
 
     case 'SEND_PROGRESS':
@@ -1691,7 +1681,6 @@ function getJobsPageUrl() {
   return 'https://www.zhipin.com/web/geek/jobs';
 }
 
-// ── 辅助：等待标签页加载完成（超时兜底） ──
 function waitForTabLoad(tabId, timeoutMs = 10000) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -1713,6 +1702,7 @@ function waitForTabLoad(tabId, timeoutMs = 10000) {
 
 // ── PING/PONG 握手：确认 content script 已注入就绪 ──
 async function waitForContentScript(tabId, timeoutMs = 3000, maxRetries = 3) {
+  let lastError = null;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const response = await new Promise((resolve, reject) => {
@@ -1730,14 +1720,93 @@ async function waitForContentScript(tabId, timeoutMs = 3000, maxRetries = 3) {
         return true;
       }
     } catch (err) {
+      lastError = err;
       console.warn(`[猎职] PING attempt ${attempt + 1}/${maxRetries} failed:`, err.message);
       ErrorLogger.logError(err.message, err.stack, `PING attempt ${attempt + 1}/${maxRetries}`);
+      if (isBfcacheMessageError(err)) throw err;
       if (attempt < maxRetries - 1) {
         await new Promise((r) => setTimeout(r, 500));
       }
     }
   }
-  throw new Error('Content script not ready after ' + maxRetries + ' attempts');
+  throw lastError || new Error('Content script not ready after ' + maxRetries + ' attempts');
+}
+
+function isBfcacheMessageError(error) {
+  const message = error && error.message || String(error || '');
+  return /back\/forward cache|message channel is closed|receiving end does not exist/i.test(message);
+}
+
+function isExpectedCollectUrl(currentUrl, targetUrl) {
+  try {
+    const current = new URL(currentUrl);
+    const target = new URL(targetUrl);
+    if (current.protocol !== 'https:' || current.hostname !== 'www.zhipin.com' || current.pathname !== '/web/geek/jobs') return false;
+    for (const [key, value] of target.searchParams) {
+      if (current.searchParams.get(key) !== value) return false;
+    }
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function assertNoCollectBlocker(currentUrl) {
+  if (/\/web\/passport\//i.test(currentUrl)) throw new Error('请先完成 BOSS 安全验证后再收集');
+  if (/\/login|\/web\/user/i.test(currentUrl)) throw new Error('BOSS 登录状态失效，请重新登录');
+}
+
+function assertStableCollectUrl(currentUrl, targetUrl) {
+  assertNoCollectBlocker(currentUrl);
+  if (!isExpectedCollectUrl(currentUrl, targetUrl)) throw new Error('岗位页发生非预期跳转：' + currentUrl);
+}
+
+async function waitForStableCollectTab(tabId, targetUrl) {
+  const deadline = Date.now() + 20000;
+  let stableUrl = '';
+  let stableSince = 0;
+  while (Date.now() < deadline) {
+    const tab = await chrome.tabs.get(tabId);
+    const currentUrl = tab.url || '';
+    assertNoCollectBlocker(currentUrl);
+    if (tab.status === 'complete') {
+      assertStableCollectUrl(currentUrl, targetUrl);
+      if (currentUrl !== stableUrl) {
+        stableUrl = currentUrl;
+        stableSince = Date.now();
+      } else if (Date.now() - stableSince >= 1000) {
+        return;
+      }
+    }
+    await sleep(250);
+  }
+  throw new Error('岗位页稳定等待超时');
+}
+
+async function requestCollectedJobs(tabId, params) {
+  const response = await chrome.tabs.sendMessage(tabId, { type: 'DO_COLLECT', params });
+  if (!response || response.success !== true) {
+    throw new Error(response && response.error || '插件采集未返回成功');
+  }
+  if (!Array.isArray(response.jobs)) throw new Error('插件采集响应缺少 jobs');
+  return response.jobs;
+}
+
+async function collectJobsWithBfcacheRecovery(tabId, targetUrl, params) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await waitForStableCollectTab(tabId, targetUrl);
+      await waitForContentScript(tabId, 3000, 5);
+      return await requestCollectedJobs(tabId, params);
+    } catch (error) {
+      const currentTab = await chrome.tabs.get(tabId);
+      assertStableCollectUrl(currentTab.url || '', targetUrl);
+      if (attempt === 1 || !isBfcacheMessageError(error)) throw error;
+      try { DiagLogger.warn('sw.collect.diag', 'BFCache message channel closed; reloading once tab=' + tabId); } catch (_) {}
+      await chrome.tabs.update(tabId, { url: targetUrl, autoDiscardable: false });
+    }
+  }
+  throw new Error('BFCache 恢复后仍无法采集');
 }
 
 // ── 通用辅助 ──
@@ -2054,14 +2123,14 @@ async function singleCityCollect(params) {
       tabId = tab.id;
     }
 
-    await waitForTabLoad(tabId);
-    await waitForContentScript(tabId);
-    await chrome.tabs.sendMessage(tabId, { type: 'DO_COLLECT', params });
+    await chrome.tabs.update(tabId, { autoDiscardable: false });
+    await collectJobsWithBfcacheRecovery(tabId, url, params);
   } else {
     const tabs = await chrome.tabs.query({ url: '*://*.zhipin.com/web/geek/jobs*' });
     if (!tabs.length) throw new Error('请先打开 BOSS 直聘岗位搜索页');
     assertCollectableBossTab(tabs[0]);
-    await chrome.tabs.sendMessage(tabs[0].id, { type: 'DO_COLLECT', params });
+    await waitForContentScript(tabs[0].id, 3000, 5);
+    await requestCollectedJobs(tabs[0].id, params);
   }
 }
 
@@ -2080,9 +2149,6 @@ function assertCollectableBossTab(tab) {
   if (!url || url.indexOf('zhipin.com') < 0 || url.indexOf('/web/geek/jobs') < 0) {
     throw new Error('请先打开 BOSS 直聘岗位搜索页');
   }
-  if (url.indexOf('_security_check') >= 0) {
-    throw new Error('请先完成 BOSS 安全验证后再收集');
-  }
 }
 
 // Multi-city: collect jobs from one city in a background tab and return results
@@ -2092,19 +2158,13 @@ async function collectOnTab(cityCode, params) {
   const tab = await chrome.tabs.create({ url, active: false });
   const tabId = tab.id;
   try {
-    await waitForTabLoad(tabId);
-    await waitForContentScript(tabId);
-    const response = await chrome.tabs.sendMessage(tabId, { type: 'DO_COLLECT', params: { ...params, urlParams } });
-    if (response && response.success && response.jobs) {
-      return response.jobs.map(function(job) {
-        job.searchKeyword = params.searchKeyword || urlParams.query || '';
-        job.matchedKeywords = uniqueStrings((job.matchedKeywords || []).concat(job.searchKeyword || []));
-        return job;
-      });
-    }
-    return [];
-  } catch (e) {
-    throw e;
+    await chrome.tabs.update(tabId, { autoDiscardable: false });
+    const jobs = await collectJobsWithBfcacheRecovery(tabId, url, { ...params, urlParams });
+    return jobs.map(function(job) {
+      job.searchKeyword = params.searchKeyword || urlParams.query || '';
+      job.matchedKeywords = uniqueStrings((job.matchedKeywords || []).concat(job.searchKeyword || []));
+      return job;
+    });
   } finally {
     chrome.tabs.remove(tabId).catch(() => {});
   }
@@ -2913,6 +2973,7 @@ async function startSendV6(jobIds) {
   sendAborted = false;        // 新批次开始，清掉上一轮的停止标记
   sendStartTime = Date.now(); // v6 也记录开始时间，finishSend/finalizeTask 计算耗时用
   await loadSendGreetingPreference();
+  await loadJobsIntoState();
   await loadJobCustomIntoState(); // per-job 自定义招呼语：建队前灌入 state.jobCustom，buildSendQueueV6 据此覆盖组级招呼语
   state.sendQueueV6 = buildSendQueueV6(state, jobIds);
   state._v6CurrentBatchQueue = state.sendQueueV6.slice();
@@ -2937,6 +2998,22 @@ async function startSendV6(jobIds) {
     chrome.runtime.sendMessage({ type: 'ERROR', phase: 'sending', error: '未找到BOSS直聘搜索页，请重新发送' }).catch(() => {});
     return;
   }
+  // 详情页兜底：搜索页结果漂移时，若目标岗位详情页已打开，也允许 stage1 从详情页提取 HR 并点立即沟通。
+  var detailTabs = await chrome.tabs.query({ url: '*://*.zhipin.com/job_detail/*' });
+  var pendingIdsForDetail = {};
+  for (var _dtQi = 0; _dtQi < state.sendQueueV6.length; _dtQi++) {
+    pendingIdsForDetail[state.sendQueueV6[_dtQi].jobId] = true;
+  }
+  detailTabs = detailTabs.filter(function(tab) {
+    var m = String(tab.url || '').match(/job_detail\/([^/?#]+?)(?:\.html)?(?:[?#]|$)/);
+    return !!(m && pendingIdsForDetail[m[1]]);
+  });
+  var detailTabJobIds = {};
+  detailTabs.forEach(function(tab) {
+    var m = String(tab.url || '').match(/job_detail\/([^/?#]+?)(?:\.html)?(?:[?#]|$)/);
+    if (m && m[1]) detailTabJobIds[tab.id] = m[1];
+  });
+  var stage1Tabs = detailTabs.concat(searchTabs);
 
   // pre-flight：BOSS「自动打招呼」开关必须开启（陷阱 #31：关着时点立即沟通整页跳转，stage1 卡死）
   // 读失败放行（unknown）；确认 false 则自动开启（API 主路径 + 设置页 DOM 降级）；都失败才中止。
@@ -2959,8 +3036,8 @@ async function startSendV6(jobIds) {
 
   // 遍历所有搜索 tab，逐个激活并提取 HR 信息
   // 每个 tab 上的 DOM 只包含对应城市的岗位卡片
-  for (var ti = 0; ti < searchTabs.length; ti++) {
-    var tab = searchTabs[ti];
+  for (var ti = 0; ti < stage1Tabs.length; ti++) {
+    var tab = stage1Tabs[ti];
     // 检查是否还有待处理的岗位
     var remainingCount = state.sendQueueV6.filter(function(item) { return !item.hrName; }).length;
     if (remainingCount === 0) {
@@ -2971,7 +3048,12 @@ async function startSendV6(jobIds) {
       await chrome.tabs.update(tab.id, { active: true });
       await sleep(2000);
       state.searchTabId = tab.id;
-      await runStage1();
+      var detailJobId = detailTabJobIds[tab.id];
+      var queueOverride = detailJobId
+        ? state.sendQueueV6.filter(function(item) { return item && item.jobId === detailJobId && !item.hrName; })
+        : state.sendQueueV6.filter(function(item) { return item && !item.hrName; });
+      if (!queueOverride.length) continue;
+      await runStage1(queueOverride);
     } catch(e) {
       console.error('[猎职] v6 stage1: tab', (ti + 1), '处理失败:', e.message);
       // 单个 tab 失败不影响其它 tab，继续下一个
@@ -2997,12 +3079,12 @@ async function startSendV6(jobIds) {
     pushState();
   }
 
-  // 剥离 alreadyChatted=true 的岗位：BOSS 标记已沟通过，chatBtn 进 disabled 态，stage2 必然 findConv 失败
-  // → 直接计入 sendResults 成功 + alreadyChatted 标，不入 worker queue
-  var _skippedAlready = state.sendQueueV6.filter(function(item) { return item.alreadyChatted; });
-  state.sendQueueV6 = state.sendQueueV6.filter(function(item) { return !item.alreadyChatted; });
-  for (var _si = 0; _si < _skippedAlready.length; _si++) {
-    var _it = _skippedAlready[_si];
+  // BOSS 当前页面点击「立即沟通」后会由平台自动发送打招呼语。
+  // stage1 已拿到 HR 即代表建联成功；继续 stage2 再发自定义文本会变成重复消息。
+  var _stage1Connected = state.sendQueueV6.slice();
+  state.sendQueueV6 = [];
+  for (var _si = 0; _si < _stage1Connected.length; _si++) {
+    var _it = _stage1Connected[_si];
     if (sentJobIds.has(_it.jobId)) continue;
     sentJobIds.add(_it.jobId);
     state.sendProgress.sent++;
@@ -3011,12 +3093,14 @@ async function startSendV6(jobIds) {
       positionName: _it.positionName,
       companyName: _it.companyName,
       success: true,
-      alreadyChatted: true,
+      alreadyChatted: !!_it.alreadyChatted,
+      autoGreeting: true,
+      stage: 'stage1Chat',
       hrName: _it.hrName,
       time: Date.now(),
     });
   }
-  if (_skippedAlready.length) {
+  if (_stage1Connected.length) {
     pushState();
   }
 
@@ -3041,7 +3125,8 @@ async function startSendV6(jobIds) {
   await cleanupV6();
 }
 
-async function runStage1() {
+async function runStage1(queueOverride) {
+  var stage1Queue = Array.isArray(queueOverride) && queueOverride.length ? queueOverride : state.sendQueueV6;
   // 等待搜索 tab 就绪
   await waitForContentScript(state.searchTabId);
 
@@ -3209,10 +3294,10 @@ async function runStage1() {
 
     var doSend = function(retryCount) {
       retryCount = retryCount || 0;
-      if (!_stage1SentQueue) _stage1SentQueue = state.sendQueueV6; // #39：仅首发赋值，恢复重发不重置（done 集合过滤的恒定基准）
+      if (!_stage1SentQueue) _stage1SentQueue = stage1Queue; // #39：仅首发赋值，恢复重发不重置（done 集合过滤的恒定基准）
       chrome.tabs.sendMessage(state.searchTabId, {
         type: MSG.DO_BATCH_EXTRACT,
-        queue: state.sendQueueV6,
+        queue: stage1Queue,
         hrActiveFilter: state.hrActiveFilter || '不限'
       }).catch(function(err) {
         if (timedOut || settled) return;

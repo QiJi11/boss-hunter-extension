@@ -15,7 +15,7 @@ const SELECTORS = {
     // Vue 下拉强制打开
     industryDropdown: '.condition-industry-select .filter-select-dropdown',
     // 立即沟通按钮（搜索页右侧详情面板），href=javascript:;
-    immediateChatBtn: 'a.op-btn-chat',
+    immediateChatBtn: 'a.op-btn-chat, .btn-startchat',
   },
 
   // ── 聊天列表页 /web/geek/chat ──

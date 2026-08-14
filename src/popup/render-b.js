@@ -670,6 +670,7 @@ window.updResCnt=function(){
   var c=jobs.filter(function(j){return j.checked}).length;
   E.resultCountNum.textContent=c;
   E.resultCountTotal.textContent=jobs.length;
+  E.btnSend.textContent='一键发送';
   E.btnSend.disabled=c===0
 };
 

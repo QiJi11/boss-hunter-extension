@@ -172,6 +172,27 @@ const DEFAULT_EXCLUDE_KEYWORDS = [
   '游戏前端',
   '伪AI',
   '包装AI应用开发',
+  '985',
+  '211',
+  '双一流',
+  '重点院校',
+  '名校',
+  '一本',
+  '公立一本',
+  '院校背景',
+  '限211',
+];
+
+const SCHOOL_REQUIREMENT_KEYWORDS = [
+  '985',
+  '211',
+  '双一流',
+  '重点院校',
+  '名校',
+  '一本',
+  '公立一本',
+  '院校背景',
+  '限211',
 ];
 
 function uniqueStrings(list) {
@@ -217,6 +238,36 @@ function findExcludeKeywordHit(job, excludeKeywords) {
   }).join(' ');
   for (var i = 0; i < keywords.length; i++) {
     var kw = keywords[i];
+    if (kw && haystack.indexOf(kw.toLowerCase()) >= 0) return kw;
+  }
+  return '';
+}
+
+/**
+ * 检测岗位文本里的学校背景门槛，命中即从投递队列排除。
+ */
+function findSchoolRequirementHit(job) {
+  if (!job) return '';
+  var haystack = [
+    job.name,
+    job.title,
+    job.positionName,
+    job.company,
+    job.companyName,
+    job.detail,
+    job.desc,
+    job.description,
+    job.aiReason,
+    job.reason,
+    job.matchReason,
+    Array.isArray(job.matchReasons) ? job.matchReasons.join(' ') : '',
+    job.aiScreen && job.aiScreen.reason,
+    job.aiScreen && Array.isArray(job.aiScreen.risks) ? job.aiScreen.risks.join(' ') : '',
+  ].map(function(part) {
+    return String(part || '').toLowerCase();
+  }).join(' ');
+  for (var i = 0; i < SCHOOL_REQUIREMENT_KEYWORDS.length; i++) {
+    var kw = SCHOOL_REQUIREMENT_KEYWORDS[i];
     if (kw && haystack.indexOf(kw.toLowerCase()) >= 0) return kw;
   }
   return '';

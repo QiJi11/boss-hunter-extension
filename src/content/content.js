@@ -156,21 +156,29 @@ var JobClicker = {
     var _isStopped = function() { return typeof JobCollector !== 'undefined' && JobCollector.stopped; };
     if (_isStopped()) { _dbg('click:bail', { at: 'start' }); return { success: false, stopped: true }; }
     var card = null;
-    if (jobLink) card = this.findCardByLink(jobLink);
-    if (!card && positionName && companyName) card = this.findCardByText(positionName, companyName);
+    var targetJobId = typeof extractJobIdFromLink === 'function' ? extractJobIdFromLink(jobLink) : '';
+    var currentJobId = typeof extractJobIdFromLink === 'function' ? extractJobIdFromLink(location.href) : '';
+    var isTargetDetailPage = location.pathname.indexOf('/job_detail/') === 0 && targetJobId && currentJobId === targetJobId;
+    if (!isTargetDetailPage) {
+      if (jobLink) card = this.findCardByLink(jobLink);
+      if (!card && positionName && companyName) card = this.findCardByText(positionName, companyName);
+    }
     var findDiag = this.buildFindCardDiagnostics(jobLink, positionName, companyName);
-    findDiag.found = !!card;
+    findDiag.found = !!card || !!isTargetDetailPage;
     findDiag.byLink = !!(jobLink && this.findCardByLink(jobLink));
+    findDiag.detailPage = !!isTargetDetailPage;
     _dbg('click:findCard', findDiag);
-    if (!card) return { success: false, error: '未找到岗位卡片: ' + (positionName || jobLink) + '（候选卡片 ' + findDiag.cardCount + ' 个）' };
-    card.scrollIntoView({ block: 'center', behavior: 'instant' });
-    await new Promise(function(r) { setTimeout(r, 200); });
-    if (_isStopped()) { _dbg('click:bail', { at: 'beforeCardClick' }); return { success: false, stopped: true }; }
-    _dbg('click:beforeCardClick', { urlBefore: location.href });
-    card.click();
-    await new Promise(function(r) { setTimeout(r, 800); });
-    if (_isStopped()) { _dbg('click:bail', { at: 'afterCardClick' }); return { success: false, stopped: true }; }
-    _dbg('click:afterCardClick', { urlAfter: location.href });
+    if (!card && !isTargetDetailPage) return { success: false, error: '未找到岗位卡片: ' + (positionName || jobLink) + '（候选卡片 ' + findDiag.cardCount + ' 个）' };
+    if (!isTargetDetailPage) {
+      card.scrollIntoView({ block: 'center', behavior: 'instant' });
+      await new Promise(function(r) { setTimeout(r, 200); });
+      if (_isStopped()) { _dbg('click:bail', { at: 'beforeCardClick' }); return { success: false, stopped: true }; }
+      _dbg('click:beforeCardClick', { urlBefore: location.href });
+      card.click();
+      await new Promise(function(r) { setTimeout(r, 800); });
+      if (_isStopped()) { _dbg('click:bail', { at: 'afterCardClick' }); return { success: false, stopped: true }; }
+      _dbg('click:afterCardClick', { urlAfter: location.href });
+    }
     if (typeof detectCaptcha === 'function' && detectCaptcha().detected) {
       _dbg('click:captcha', {});
       return { success: false, error: 'captcha detected after clicking card' };
@@ -548,11 +556,23 @@ function _tagMatchMode(el, mode) {
 }
 
 function findChatConversation(hrName, hrCompany) {
-  var items = document.querySelectorAll('.user-list-content li, .friend-content-warp');
+  var items = document.querySelectorAll('.user-list-content li, .friend-content-warp, .friend-content');
   hrName = (hrName || '').trim();
   hrCompany = (hrCompany || '').trim();
 
   for (var i = 0; i < items.length; i++) {
+    var itemText = (items[i].textContent || '').replace(/\s+/g, '');
+    var compactHr = hrName.replace(/\s+/g, '');
+    var compactCompany = hrCompany.replace(/\s+/g, '');
+    if (!items[i].querySelector('.name-text') && compactHr && itemText.indexOf(compactHr) >= 0 && (!compactCompany || itemText.indexOf(compactCompany) >= 0)) {
+      if (items[i].tagName === 'LI') {
+        return _tagMatchMode(items[i].querySelector('.friend-content, [class*="friend-content"]') || items[i].querySelector('.friend-content-warp') || items[i], 'exact');
+      }
+      if (items[i].classList.contains('friend-content-warp')) {
+        return _tagMatchMode(items[i].querySelector('.friend-content') || items[i], 'exact');
+      }
+      return _tagMatchMode(items[i], 'exact');
+    }
     var nameEl = items[i].querySelector('.name-text');
     if (!nameEl) continue;
     var nameText = nameEl.textContent.trim();
@@ -898,7 +918,7 @@ function assertOpenConversationIdentity(targetHrName, targetHrCompany) {
         var jobIds = event.data.jobIds;
         var _testHrFilter = event.data.hrActiveFilter || '不限';
         var doSend = function(ids) {
-          chrome.runtime.sendMessage({ type: 'START_SEND', jobIds: ids, hrActiveFilter: _testHrFilter }, function(resp) {
+          chrome.runtime.sendMessage({ type: MSG.START_SEND, jobIds: ids, hrActiveFilter: _testHrFilter }, function(resp) {
             if (chrome.runtime.lastError) {
               document.documentElement.setAttribute('data-ext-cmd-result', JSON.stringify({ success: false, error: chrome.runtime.lastError.message }));
               if (typeof ErrorLogger !== 'undefined') {
@@ -1250,7 +1270,7 @@ async function handleBatchExtract(msg) {
   // → 文档正在拆毁，继续跑全是假失败。≥0 即中止索引。
   var navAbortedAt = -1;
   var _navGone = function() {
-    return _navAborting || location.pathname.indexOf('/web/geek/jobs') !== 0;
+    return _navAborting || (location.pathname.indexOf('/web/geek/jobs') !== 0 && location.pathname.indexOf('/job_detail/') !== 0);
   };
 
   for (var i = 0; i < queue.length; i++) {

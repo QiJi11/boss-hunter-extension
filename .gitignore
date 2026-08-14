@@ -21,3 +21,8 @@ release/
 *.zip
 *.crx
 *.pem
+
+# Ralph runtime artifacts
+scripts/ralph/
+*.log
+*.egg-info/

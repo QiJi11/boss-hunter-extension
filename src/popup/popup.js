@@ -165,8 +165,7 @@ function toResults(){
   // B 页无缓存：标记「等待新一轮采集」，在 SW 确认新采集开始(phase='collecting')前，
   // handleStateUpdate 忽略上一轮残留 state，杜绝旧结果回填造成混淆。
   Store.set('awaitingCollect',true);
-  // 重置投递按钮到初始态——杜绝上一批「已发送完成」(disabled+绿底)+sending=true 残留带进本批，
-  // 否则进 B 页按钮显示「已发送完成」、首点命中停止分支(if sending)只重置文案、需点两次才开投。
+  // 重置投递按钮到初始态，杜绝上一批按钮状态残留带进本批。
   Store.set('sending',false);
   if(E.btnSend){E.btnSend.textContent='一键发送';E.btnSend.classList.remove('sending');E.btnSend.disabled=false;E.btnSend.style.background='';}
   E.hdrTitle.classList.add('hidden');E.btnBack.classList.remove('hidden');
@@ -1067,7 +1066,7 @@ function applyFilterStateToStore(filterState){
   Store.set('excludeKeywords',filterState&&Array.isArray(filterState.excludeKeywords)?filterState.excludeKeywords:(typeof DEFAULT_EXCLUDE_KEYWORDS!=='undefined'?DEFAULT_EXCLUDE_KEYWORDS.slice():[]));
   Store.set('skipHistoryEnabled',!filterState||filterState.skipHistoryEnabled!==false);
   Store.set('skipHistoryScope','hr');
-  Store.set('sendGreeting',!filterState||typeof filterState.sendGreeting!=='boolean'?true:filterState.sendGreeting);
+  Store.set('sendGreeting',!filterState||filterState.sendGreeting!==false);
   window.renderCityChips(E.cityInput&&E.cityInput.value||'');
   window.renderChipSecs();
   window.renderSettings();
@@ -1165,15 +1164,14 @@ function init(){
   updateAiFilterAssistantState();
   window.renderFilterSuggestionPreview&&window.renderFilterSuggestionPreview(Store.get('filterSuggestionDraft'));
 
-  hydratePopupFromStorage();
+  hydratePopupFromStorage(function(){
+    try{
+      chrome.runtime.sendMessage({type:MSG.GET_STATE},function(resp){
+        if(resp&&resp.success&&resp.state)handleStateUpdate(resp.state);
+      });
+    }catch(e){}
+  });
   bindPopupStorageSync();
-
-  // Load state from background
-  try{
-    chrome.runtime.sendMessage({type:MSG.GET_STATE},function(resp){
-      if(resp&&resp.success&&resp.state)handleStateUpdate(resp.state);
-    });
-  }catch(e){}
 
   // Init event delegation
   window.initEventsA();
@@ -1378,8 +1376,7 @@ document.addEventListener('DOMContentLoaded',init);
             if(btn){btn.click();result={action:'START_COLLECT',triggered:true}}
             else result={action:'START_COLLECT',triggered:false,error:'Button #btnCollect not found'};
           }else if(action==='START_SEND'){
-            var btn=document.getElementById('btnSend');
-            if(btn){btn.click();result={action:'START_SEND',triggered:true}}
+            if(btn){btn.click();result={action:'START_SEND',triggered:true};}
             else result={action:'START_SEND',triggered:false,error:'Button #btnSend not found'};
           }else if(action==='STOP_COLLECT'){
             try{
