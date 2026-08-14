@@ -140,6 +140,12 @@ async function main() {
     assert.strictEqual(ctx6.autoHardReject(jobClean, ctx6.state).length, 0, 'clean JD not rejected');
     const jobFreshJd = mkJob({ desc: '接受应届生无经验，有老师带教，Python熟练即可' });
     assert.strictEqual(ctx6.autoHardReject(jobFreshJd, ctx6.state).length, 0, 'fresh-friendly JD not rejected');
+    const jobName27 = mkJob({ name: 'AI Agent 应用工程师-2027届', desc: '负责构建 AI Agent 应用' });
+    assert.ok(ctx6.autoHardReject(jobName27, ctx6.state).some(r => r.includes('2027届')), 'name 2027 caught');
+    const job985 = mkJob({ desc: '任职要求：985本科以上学历，善于沟通' });
+    assert.ok(ctx6.autoHardReject(job985, ctx6.state).some(r => r.includes('学历硬门槛')), '985 caught');
+    const jobExpCanApply = mkJob({ desc: '1-3年工作经验可投，接受优秀应届生' });
+    assert.strictEqual(ctx6.autoHardReject(jobExpCanApply, ctx6.state).length, 0, '1-3年可投(接受应届) not rejected');
     console.log('[PASS] autoHardReject: exclude/sent/city/history-dedup/exp-gate/jd-gate');
   }
 
