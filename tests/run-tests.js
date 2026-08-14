@@ -1091,6 +1091,10 @@ async function main() {
   assert.equal(ctx2.detectCompanyRisk({ name: 'AI 全栈工程师', company: '安徽亮剑文化传媒', salary: '35-50K' }).type, 'suspicious');
   assert.equal(ctx2.detectCompanyRisk({ name: 'AI漫剧全栈制作', company: '杭州承影载文文化' }).type, 'suspicious');
   assert.equal(ctx2.detectCompanyRisk({ name: '后端开发', company: '阿里巴巴' }), null);
+  // M7e 修复：匿名代招/猎头特征出现在 JD 正文时也应识别为外包（科锐代招案例）
+  assert.equal(ctx2.detectCompanyRisk({ name: 'AI大模型应用开发工程师', company: '深圳某大型计算机软件公司', desc: '认证资质\n人力资源服务许可证\n劳务派遣经营许可证\n张女士\n上海科之锐\n·\n猎头顾问' }).type, 'outsource', 'JD含代招资质应识别');
+  assert.equal(ctx2.detectCompanyRisk({ name: 'AI大模型应用开发工程师', company: '深圳某大型计算机软件公司', desc: '代招公司：深圳某大型计算机软件公司' }).type, 'outsource', 'JD含代招公司应识别');
+  assert.equal(ctx2.detectCompanyRisk({ name: 'AI应用工程师', company: '某某科技', desc: '负责Agent与RAG开发，包含算法调优与系统测试' }), null, '普通JD不误判外包');
 
   // ── findExcludeKeywordHit（排除词命中） ──
   assert.equal(ctx2.findExcludeKeywordHit({ name: '销售专员', company: 'X公司' }, ['销售']), '销售');

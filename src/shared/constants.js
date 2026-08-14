@@ -252,23 +252,30 @@ function detectCompanyRisk(job) {
   var company = String(job.company || '');
   var tags = Array.isArray(job.tags) ? job.tags.join(' ') : '';
   var hay = (name + ' ' + company + ' ' + tags).toLowerCase();
+  // M7e 修复：代招/猎头信息常出现在 JD 正文（"代招公司"、"劳务派遣经营许可证"、
+  // "人力资源服务许可证"、"猎头顾问"），仅查岗位头会漏掉匿名代招外包岗。
+  var jdText = String(job.desc || job.description || job.detail || '');
+  var hayAll = hay + ' ' + jdText.toLowerCase();
+  var outsourceJdHit = ['代招', '猎头顾问', '劳务派遣经营许可证', '人力资源服务许可证', '人力资源许可证', '代招公司', '猎头招聘', '劳务派遣'].some(function(w) {
+    return jdText.indexOf(w) >= 0;
+  });
 
-  // 1) 外包：公司名或岗位名含外包特征
+  // 1) 外包：公司名或岗位名含外包特征，或 JD 明确代招/猎头/劳务派遣
   var isOutsource = OUTSOURCE_COMPANY_WORDS.some(function(w) {
     return company.indexOf(w) >= 0;
   }) || OUTSOURCE_JOB_WORDS.some(function(w) {
     return name.indexOf(w) >= 0 || tags.indexOf(w) >= 0;
-  });
+  }) || outsourceJdHit;
 
   // 2) 疑似机构：传媒/贸易/文化公司 + AI 岗 + 高薪；或岗位名含骗局特征词
   var industrySus = SUSPICIOUS_INDUSTRY_WORDS.some(function(w) { return company.indexOf(w) >= 0; });
   var isAiJob = AI_JOB_WORDS.some(function(w) { return name.toLowerCase().indexOf(w) >= 0; });
-  var isScamWord = SCAM_JOB_WORDS.some(function(w) { return hay.indexOf(w) >= 0; });
+  var isScamWord = SCAM_JOB_WORDS.some(function(w) { return hayAll.indexOf(w) >= 0; });
   var isSuspicious = (industrySus && isAiJob) || isScamWord;
 
   var risk = null;
   if (isOutsource) {
-    risk = { type: 'outsource', label: '外包', color: '#e67e22' };
+    risk = { type: 'outsource', label: outsourceJdHit && !(OUTSOURCE_COMPANY_WORDS.some(function(w) { return company.indexOf(w) >= 0; }) || OUTSOURCE_JOB_WORDS.some(function(w) { return name.indexOf(w) >= 0 || tags.indexOf(w) >= 0; })) ? '代招/猎头' : '外包', color: '#e67e22' };
   } else if (isSuspicious) {
     risk = { type: 'suspicious', label: '疑似机构', color: '#e74c3c' };
   }
