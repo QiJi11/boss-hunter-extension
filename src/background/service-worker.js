@@ -627,9 +627,14 @@ async function applyAiScreeningToJobs(jobs) {
   }, 8000);
   state._screenKeepaliveTimer = _screenKeepaliveTimer;
   // 断点续筛：从已完成的 done 开始（SW 重启后 state 恢复，继续未完成部分）
+  // M7e 修复：进度计数可能来自上一次 SW 会话（storage 恢复），但当前 jobs 可能没有
+  // 对应的 aiScreen 结果（打分结果未落盘即休眠）。此时若直接信任 done 会跳过全部重筛，
+  // 导致 auto/review 队列假性为 0。以"实际已有 aiScreen 的岗位数"为准收敛续筛点。
   let done = state.aiScreeningProgress && typeof state.aiScreeningProgress.done === 'number'
     ? Math.min(state.aiScreeningProgress.done, jobs.length)
     : 0;
+  const existingScreenCount = jobs.filter(function(j) { return j && j.aiScreen; }).length;
+  if (done > existingScreenCount) done = existingScreenCount;
   state.aiScreeningProgress = { done: done, total: jobs.length };
   pushState();
 
@@ -680,6 +685,11 @@ async function applyAiScreeningToJobs(jobs) {
   if (state._screenKeepaliveTimer) { clearInterval(state._screenKeepaliveTimer); state._screenKeepaliveTimer = null; }
   try { chrome.alarms.clear(_screenKeepaliveAlarm).catch(function(){}); } catch (_) {}
   pushState();
+  // M7e 修复：打分结果立即落盘（persistState 走 500ms debounce，SW 提前休眠会丢 aiScreen，
+  // 重启后依赖进度续筛时 jobs 无结果 → auto 队列假性为 0）。此处直接写一次，不依赖 debounce。
+  try {
+    await chrome.storage.local.set({ [STORAGE_KEYS.SW.JOBS]: jobs }).catch(function(){});
+  } catch (_) {}
   return jobs;
 }
 
