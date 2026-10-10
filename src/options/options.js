@@ -127,6 +127,17 @@ function bindEvents() {
       showImportStatus('正在导出配置...', '');
       try {
         const snapshot = await readBackupSnapshot();
+        const containsSensitiveData = Boolean(
+          (snapshot.aiConfig && snapshot.aiConfig.apiKey) ||
+          snapshot.textResume ||
+          (Array.isArray(snapshot.resumeImages) && snapshot.resumeImages.length)
+        );
+        if (containsSensitiveData && !window.confirm(
+          '配置备份可能包含明文 API Key、简历正文和简历图片。文件只会下载到本机，但请勿上传到 GitHub、聊天或公共云盘。确认继续导出？'
+        )) {
+          showImportStatus('已取消导出（未生成文件）', '');
+          return;
+        }
         downloadBackup(snapshot);
         showImportStatus('配置已导出', 'success');
       } catch (e) {
