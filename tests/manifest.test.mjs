@@ -37,3 +37,11 @@ test('dangerous broad host permissions remain an explicit review finding', () =>
   if (broad.length) console.warn('REVIEW_REQUIRED: broad host_permissions are still present; do not publish without a provider-permission audit:', broad.join(', '));
   assert.ok(manifest.host_permissions.some((p) => p.includes('zhipin.com')), 'expected scoped BOSS access');
 });
+
+test('sensitive configuration export requires explicit confirmation', () => {
+  const options = readFileSync(resolve(root, 'src/options/options.js'), 'utf8');
+  assert.match(options, /containsSensitiveData && !window\.confirm\(/);
+  const promptIndex = options.indexOf('window.confirm(');
+  const downloadIndex = options.indexOf('downloadBackup(snapshot)');
+  assert.ok(promptIndex >= 0 && downloadIndex > promptIndex, 'confirmation must precede download');
+});
