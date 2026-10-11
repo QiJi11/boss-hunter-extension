@@ -5,7 +5,11 @@ on:
     branches: [main]
     paths:
       - 'manifest.json'
-      - 'src/**'
+      - 'src/options/**'
+      - 'src/popup/**'
+      - 'src/shared/**'
+      - 'src/db/**'
+      - 'src/background/service-worker.js'
       - 'tests/extension-browser-smoke.mjs'
       - '.github/workflows/extension-chromium.yml'
 
