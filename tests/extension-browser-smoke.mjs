@@ -174,7 +174,7 @@ test('non-sensitive configuration backup does not display unnecessary warning', 
     const data = JSON.parse(readFileSync(await download.path(), 'utf8'));
     assert.equal(dialogs, 0);
     assert.equal(data.aiConfig.apiKey, '');
-    assert.equal(data.textResume, null);
+    assert.equal(data.textResume, '');
   } finally {
     await page.close();
   }
@@ -183,6 +183,7 @@ test('non-sensitive configuration backup does not display unnecessary warning', 
 async function openOptionsWithoutSecret() {
   const page = await context.newPage();
   await page.goto('chrome-extension://' + extensionId + '/src/options/options.html', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.getElementById('provider')?.value === 'synthetic');
   await page.waitForFunction(() => document.getElementById('apiKey')?.value === '');
   return page;
 }
