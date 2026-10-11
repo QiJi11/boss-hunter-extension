@@ -150,6 +150,42 @@ test('sensitive backup requires explicit approval and only exports synthetic fix
   }
 });
 
+test('side-panel backup entry also requires confirmation for plaintext secrets', { timeout: 30000 }, async () => {
+  const page = await context.newPage();
+  const dialogs = [];
+  let downloads = 0;
+  page.on('download', () => { downloads++; });
+  try {
+    await page.goto('chrome-extension://' + extensionId + '/src/popup/popup.html', { waitUntil: 'domcontentloaded' });
+    await page.locator('#compositeBtn').click();
+    await page.locator('#compositeExportBtn').waitFor({ state: 'visible', timeout: 12000 });
+    page.once('dialog', async (dialog) => {
+      dialogs.push(dialog.message());
+      await dialog.dismiss();
+    });
+    await page.locator('#compositeExportBtn').click();
+    await page.waitForFunction(() => document.getElementById('compositeImportStatus')?.textContent?.includes('已取消导出'));
+    assert.equal(dialogs.length, 1, 'side-panel must show the same confirmation as options');
+    assert.match(dialogs[0], /API Key/);
+    assert.equal(downloads, 0, 'declined export must not download a plaintext file');
+
+    page.once('dialog', async (dialog) => {
+      dialogs.push(dialog.message());
+      await dialog.accept();
+    });
+    const downloadPromise = page.waitForEvent('download', { timeout: 12000 });
+    await page.locator('#compositeExportBtn').click();
+    const file = await downloadPromise;
+    const snapshot = JSON.parse(readFileSync(await file.path(), 'utf8'));
+    assert.equal(dialogs.length, 2);
+    assert.equal(snapshot.aiConfig.apiKey, fixture.key);
+    assert.equal(snapshot.textResume, fixture.resume);
+    assert.match(file.suggestedFilename(), /^liezhi-backup-/);
+  } finally {
+    await page.close();
+  }
+});
+
 test('non-sensitive configuration backup does not display unnecessary warning', { timeout: 30000 }, async () => {
   await worker.evaluate(async () => {
     await chrome.storage.local.set({
