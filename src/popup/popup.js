@@ -941,6 +941,10 @@ function wireCompositeDrawer(){
     E.compositeExportBtn.disabled=true;
     showCompositeImportStatus('正在导出配置...','');
     SettingsBackupApi.readBackupSnapshot().then(function(snapshot){
+      if(!SettingsBackupApi.confirmBackupExport(snapshot)){
+        showCompositeImportStatus('已取消导出（未生成文件）','');
+        return;
+      }
       downloadBackupSnapshot(snapshot);
       showCompositeImportStatus('配置已导出','success');
     }).catch(function(err){

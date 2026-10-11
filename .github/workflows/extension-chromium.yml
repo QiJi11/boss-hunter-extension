@@ -1,0 +1,42 @@
+name: Hunter isolated Chromium MV3 smoke
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'manifest.json'
+      - 'src/options/**'
+      - 'src/popup/**'
+      - 'src/shared/**'
+      - 'src/db/**'
+      - 'src/background/service-worker.js'
+      - 'tests/extension-browser-smoke.mjs'
+      - '.github/workflows/extension-chromium.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  mv3-options:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install only isolated test browser dependencies
+        run: |
+          npm init -y >/dev/null
+          npm install --no-save --ignore-scripts --no-package-lock playwright@1.64.0
+          npx playwright install --with-deps --no-shell chromium
+      - name: Validate test source syntax
+        run: node --check tests/extension-browser-smoke.mjs
+      - name: Real Chromium MV3 options and synthetic backup test
+        env:
+          CI: 'true'
+        run: node --test tests/extension-browser-smoke.mjs

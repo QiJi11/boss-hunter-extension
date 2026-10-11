@@ -1,0 +1,27 @@
+name: Extension static checks
+
+on:
+  pull_request:
+    branches: [main]
+
+# Cancel superseded PR runs to avoid burning private Actions minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  extension-static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Manifest and assets integrity
+        run: node --test tests/manifest.test.mjs
+      - name: JavaScript syntax only (no browser or site login)
+        run: find . -type f -name '*.js' -not -path './.git/*' -exec node --check {} \;
+      - name: Existing branding guard
+        shell: pwsh
+        run: ./scripts/check-brand.ps1

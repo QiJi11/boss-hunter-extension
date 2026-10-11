@@ -3,6 +3,7 @@ const {
   AI_CONFIG_KEY,
   DEFAULT_AI_CONFIG,
   readBackupSnapshot,
+  confirmBackupExport,
   normalizeImportPayload,
   applySnapshotToStorage,
   serializeCurrentResumeImages,
@@ -127,6 +128,10 @@ function bindEvents() {
       showImportStatus('正在导出配置...', '');
       try {
         const snapshot = await readBackupSnapshot();
+        if (!confirmBackupExport(snapshot)) {
+          showImportStatus('已取消导出（未生成文件）', '');
+          return;
+        }
         downloadBackup(snapshot);
         showImportStatus('配置已导出', 'success');
       } catch (e) {

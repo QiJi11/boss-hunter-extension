@@ -36,6 +36,22 @@
   }
 
   /**
+   * 两个导出入口共享同一安全确认：完整备份可能包含明文密钥、简历正文和图片。
+   * 必须在真实的用户点击事件链路内调用，不得自动触发下载。
+   */
+  function confirmBackupExport(snapshot) {
+    const hasSensitiveData = Boolean(
+      (snapshot.aiConfig && snapshot.aiConfig.apiKey) ||
+      snapshot.textResume ||
+      (Array.isArray(snapshot.resumeImages) && snapshot.resumeImages.length)
+    );
+    if (!hasSensitiveData) return true;
+    return global.confirm(
+      '完整备份包含明文 API Key、简历正文或图片。导出的 JSON 文件不会加密，请仅保存在可信设备，不要上传至 GitHub、聊天或公共云盘。确认继续导出？'
+    );
+  }
+
+  /**
    * 规范化导入 JSON，只保留合法分组。
    */
   function normalizeImportPayload(raw) {
@@ -288,6 +304,7 @@
     AI_CONFIG_KEY,
     DEFAULT_AI_CONFIG,
     readBackupSnapshot,
+    confirmBackupExport,
     normalizeImportPayload,
     applySnapshotToStorage,
     serializeCurrentResumeImages,
