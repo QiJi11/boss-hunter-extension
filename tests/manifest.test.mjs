@@ -38,10 +38,14 @@ test('dangerous broad host permissions remain an explicit review finding', () =>
   assert.ok(manifest.host_permissions.some((p) => p.includes('zhipin.com')), 'expected scoped BOSS access');
 });
 
-test('sensitive configuration export requires explicit confirmation', () => {
+test('both options and side-panel backups share one sensitive confirmation guard', () => {
+  const helper = readFileSync(resolve(root, 'src/shared/settings-backup.js'), 'utf8');
   const options = readFileSync(resolve(root, 'src/options/options.js'), 'utf8');
-  assert.match(options, /containsSensitiveData && !window\.confirm\(/);
-  const promptIndex = options.indexOf('window.confirm(');
-  const downloadIndex = options.indexOf('downloadBackup(snapshot)');
-  assert.ok(promptIndex >= 0 && downloadIndex > promptIndex, 'confirmation must precede download');
+  const popup = readFileSync(resolve(root, 'src/popup/popup.js'), 'utf8');
+  assert.match(helper, /function confirmBackupExport\(snapshot\)/);
+  assert.match(helper, /global\.confirm\(/);
+  assert.match(options, /if \(!confirmBackupExport\(snapshot\)\)/);
+  assert.match(popup, /if\(!SettingsBackupApi\.confirmBackupExport\(snapshot\)\)/);
+  assert.ok(options.indexOf('if (!confirmBackupExport(snapshot))') < options.indexOf('downloadBackup(snapshot)'));
+  assert.ok(popup.indexOf('SettingsBackupApi.confirmBackupExport(snapshot)') < popup.indexOf('downloadBackupSnapshot(snapshot)'));
 });
